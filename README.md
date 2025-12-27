@@ -108,7 +108,7 @@ Join the QRL Discord for support, feature suggestions, and research discussions.
 
 ## License
 
-[License TBD]
+GPL-3.0 - see [LICENSE](LICENSE)
 
 ---
 
