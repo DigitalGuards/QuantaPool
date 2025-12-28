@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #e2e8f0;
+  background-color: #060d18;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0a1628;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e3a5f;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2d4a6f;
+}
+
+/* Card styles */
+.card {
+  @apply bg-qrl-dark border border-gray-700 rounded-lg p-4;
+}
+
+/* Button styles */
+.btn-primary {
+  @apply bg-qrl-primary hover:bg-qrl-secondary text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.btn-secondary {
+  @apply bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors;
+}
+
+/* Input styles */
+.input {
+  @apply bg-qrl-darker border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-qrl-primary w-full;
+}
