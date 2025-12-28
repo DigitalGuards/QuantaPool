@@ -1,0 +1,28 @@
+{
+  "name": "quantapool",
+  "version": "0.1.0",
+  "description": "Post-quantum liquid staking protocol for QRL Zond",
+  "main": "index.js",
+  "scripts": {
+    "compile": "node scripts/compile.js",
+    "deploy:test": "node scripts/deploy-test-token.js",
+    "deploy": "node scripts/deploy.js",
+    "test": "node scripts/test.js"
+  },
+  "keywords": [
+    "qrl",
+    "zond",
+    "liquid-staking",
+    "post-quantum",
+    "defi"
+  ],
+  "author": "DigitalGuards",
+  "license": "GPL-3.0",
+  "dependencies": {
+    "@theqrl/wallet.js": "^0.1.3",
+    "@theqrl/web3": "^0.3.3"
+  },
+  "devDependencies": {
+    "solc": "^0.8.20"
+  }
+}
