@@ -36,14 +36,14 @@ export const ProtocolStats = observer(function ProtocolStats() {
   ];
 
   return (
-    <Card title="Protocol Statistics">
+    <Card title="Protocol Statistics" accent="orange">
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {stats.map((stat) => (
-          <div key={stat.label} className="bg-qrl-darker p-3 rounded-lg">
-            <div className="text-gray-400 text-sm">{stat.label}</div>
+          <div key={stat.label} className="bg-qrl-darker/50 p-4 rounded-xl border border-qrl-border">
+            <div className="text-qrl-muted text-sm">{stat.label}</div>
             <div
-              className={`text-lg font-semibold ${
-                stat.highlight ? 'text-qrl-accent' : 'text-white'
+              className={`text-lg font-semibold mt-1 ${
+                stat.highlight ? 'text-qrl-cyan' : 'text-white'
               }`}
             >
               {stat.value}
@@ -53,26 +53,26 @@ export const ProtocolStats = observer(function ProtocolStats() {
       </div>
 
       {/* Status indicators */}
-      <div className="flex items-center gap-4 mt-4 pt-4 border-t border-gray-700">
+      <div className="flex items-center gap-4 mt-5 pt-4 border-t border-qrl-border">
         <div className="flex items-center gap-2">
           <div
             className={`w-2 h-2 rounded-full ${
               protocolStore.isPaused ? 'bg-red-500' : 'bg-green-500'
-            }`}
+            } ${!protocolStore.isPaused ? 'animate-pulse' : ''}`}
           />
-          <span className="text-sm text-gray-400">
+          <span className="text-sm text-qrl-muted">
             {protocolStore.isPaused ? 'Paused' : 'Active'}
           </span>
         </div>
 
         {protocolStore.lastUpdate && (
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-qrl-muted">
             Updated: {protocolStore.lastUpdate.toLocaleTimeString()}
           </span>
         )}
 
         {protocolStore.isLoading && (
-          <span className="text-sm text-gray-500">Refreshing...</span>
+          <span className="text-sm text-qrl-muted">Refreshing...</span>
         )}
       </div>
     </Card>
@@ -83,21 +83,21 @@ export const ProtocolStatsCompact = observer(function ProtocolStatsCompact() {
   const protocolStore = useProtocolStore();
 
   return (
-    <div className="flex flex-wrap gap-4 text-sm">
+    <div className="flex flex-wrap gap-6 text-sm bg-qrl-card backdrop-blur-sm border border-qrl-border rounded-xl p-4">
       <div>
-        <span className="text-gray-400">TVL: </span>
+        <span className="text-qrl-muted">TVL: </span>
         <span className="text-white font-semibold">{protocolStore.tvlFormatted} QRL</span>
       </div>
       <div>
-        <span className="text-gray-400">Rate: </span>
+        <span className="text-qrl-muted">Rate: </span>
         <span className="text-white">{protocolStore.exchangeRateFormatted}</span>
       </div>
       <div>
-        <span className="text-gray-400">APY: </span>
-        <span className="text-qrl-accent font-semibold">{protocolStore.estimatedAPY}%</span>
+        <span className="text-qrl-muted">APY: </span>
+        <span className="text-qrl-cyan font-semibold">{protocolStore.estimatedAPY}%</span>
       </div>
       <div>
-        <span className="text-gray-400">Validators: </span>
+        <span className="text-qrl-muted">Validators: </span>
         <span className="text-white">{protocolStore.validatorCount}</span>
       </div>
     </div>

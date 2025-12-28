@@ -12,8 +12,10 @@ export const Stake = observer(function Stake() {
   const [tab, setTab] = useState<'deposit' | 'withdraw'>('deposit');
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-white">Stake & Withdraw</h1>
+    <div className="space-y-8">
+      <h1 className="text-3xl font-bold text-white">
+        Stake & <span className="text-qrl-cyan">Withdraw</span>
+      </h1>
 
       <div className="grid md:grid-cols-3 gap-6">
         {/* Left: Balance */}
@@ -24,23 +26,23 @@ export const Stake = observer(function Stake() {
         {/* Right: Actions */}
         <div className="md:col-span-2 space-y-6">
           {/* Tabs */}
-          <div className="flex gap-2">
+          <div className="flex gap-2 bg-qrl-darker/50 p-1 rounded-xl w-fit">
             <button
               onClick={() => setTab('deposit')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 ${
                 tab === 'deposit'
-                  ? 'bg-qrl-primary text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  ? 'bg-qrl-cyan text-qrl-darker'
+                  : 'text-qrl-muted hover:text-white'
               }`}
             >
               Deposit
             </button>
             <button
               onClick={() => setTab('withdraw')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 ${
                 tab === 'withdraw'
-                  ? 'bg-qrl-primary text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  ? 'bg-qrl-orange text-white'
+                  : 'text-qrl-muted hover:text-white'
               }`}
             >
               Withdraw

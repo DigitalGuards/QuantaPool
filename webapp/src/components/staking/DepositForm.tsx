@@ -93,14 +93,14 @@ export const DepositForm = observer(function DepositForm() {
   const canDeposit = walletStore.isConnected && !isReadOnly && !txStore.isSubmitting && !protocolStore.isPaused;
 
   return (
-    <Card title="Deposit QRL">
-      <div className="space-y-4">
+    <Card title="Deposit QRL" accent="cyan">
+      <div className="space-y-5">
         {/* Amount Input */}
         <div>
-          <div className="flex justify-between items-center mb-1">
-            <label className="text-sm text-gray-400">Amount</label>
+          <div className="flex justify-between items-center mb-2">
+            <label className="text-sm text-white font-medium">Amount</label>
             <button
-              className="text-sm text-qrl-primary hover:underline"
+              className="text-sm text-qrl-cyan hover:text-qrl-cyan-hover transition-colors"
               onClick={handleMaxClick}
               disabled={!walletStore.isConnected}
             >
@@ -120,29 +120,33 @@ export const DepositForm = observer(function DepositForm() {
 
         {/* Preview */}
         {previewShares > 0n && (
-          <div className="bg-qrl-darker p-3 rounded-lg">
+          <div className="bg-qrl-darker/50 p-4 rounded-xl border border-qrl-border">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-400">You will receive</span>
-              <span className="text-white">{formatQRL(previewShares, 4)} stQRL</span>
+              <span className="text-qrl-muted">You will receive</span>
+              <span className="text-white font-medium">{formatQRL(previewShares, 4)} stQRL</span>
             </div>
-            <div className="flex justify-between text-sm mt-1">
-              <span className="text-gray-400">Exchange rate</span>
-              <span className="text-gray-300">1 stQRL = {protocolStore.exchangeRateFormatted} QRL</span>
+            <div className="flex justify-between text-sm mt-2">
+              <span className="text-qrl-muted">Exchange rate</span>
+              <span className="text-white">1 stQRL = {protocolStore.exchangeRateFormatted} QRL</span>
             </div>
           </div>
         )}
 
         {/* Warnings */}
         {isReadOnly && walletStore.isConnected && (
-          <p className="text-yellow-400 text-sm">
-            Connect with wallet extension to deposit. View-only mode cannot send transactions.
-          </p>
+          <div className="bg-qrl-orange/10 border border-qrl-orange/30 p-3 rounded-xl">
+            <p className="text-qrl-orange text-sm">
+              Connect with wallet extension to deposit. View-only mode cannot send transactions.
+            </p>
+          </div>
         )}
 
         {protocolStore.isPaused && (
-          <p className="text-red-400 text-sm">
-            Protocol is paused. Deposits are temporarily disabled.
-          </p>
+          <div className="bg-red-900/20 border border-red-500/30 p-3 rounded-xl">
+            <p className="text-red-400 text-sm">
+              Protocol is paused. Deposits are temporarily disabled.
+            </p>
+          </div>
         )}
 
         {txStore.error && (
@@ -151,7 +155,6 @@ export const DepositForm = observer(function DepositForm() {
 
         {/* Submit Button */}
         <Button
-          className="w-full"
           size="lg"
           onClick={handleDeposit}
           disabled={!canDeposit || !amount}
