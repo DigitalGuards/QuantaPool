@@ -1,0 +1,12 @@
+{
+  "provider": "http://localhost:8545",
+  "chainId": 32382,
+  "txConfirmations": 12,
+  "contracts": {
+    "testToken": "",
+    "stQRL": "Z844A6eB87927780E938908743eA24a56A220Efe8",
+    "depositPool": "Z3C6927FDD1b9C81eb73a60AbE73DeDfFC65c8943",
+    "rewardsOracle": "Z541b1f2c501956BCd7a4a6913180b2Fc27BdE17E",
+    "operatorRegistry": "ZD370e9505D265381e839f8289f46D02815d0FF95"
+  }
+}

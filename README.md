@@ -49,6 +49,27 @@ QuantaPool is a next-generation liquid staking solution for QRL that:
 | Cryptography | ML-DSA-87 (Dilithium) |
 | EVM Compatibility | ~95-98% via Hyperion compiler |
 
+## Testnet Deployment (Live)
+
+QuantaPool MVP is deployed on Zond Testnet (Chain ID: 32382):
+
+| Contract | Address |
+|----------|---------|
+| stQRL | `Z844A6eB87927780E938908743eA24a56A220Efe8` |
+| DepositPool | `Z3C6927FDD1b9C81eb73a60AbE73DeDfFC65c8943` |
+| RewardsOracle | `Z541b1f2c501956BCd7a4a6913180b2Fc27BdE17E` |
+| OperatorRegistry | `ZD370e9505D265381e839f8289f46D02815d0FF95` |
+
+## Smart Contracts
+
+```
+contracts/
+├── stQRL.sol           # ERC-4626 liquid staking token
+├── DepositPool.sol     # User deposit/withdrawal entry point
+├── RewardsOracle.sol   # Validator rewards reporting
+└── OperatorRegistry.sol # Node operator management
+```
+
 ## Development
 
 ### Prerequisites
@@ -67,8 +88,14 @@ cd QuantaPool
 # Install dependencies
 npm install
 
-# Run tests
-npm test
+# Compile contracts
+npm run compile
+
+# Deploy to testnet
+npm run deploy
+
+# Test deposit functionality
+node scripts/test-deposit.js
 ```
 
 ### Check Local Node Status
