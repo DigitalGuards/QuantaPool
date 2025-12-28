@@ -1,5 +1,5 @@
 {
-  "provider": "http://localhost:8545",
+  "provider": "https://qrlwallet.com/api/zond-rpc/testnet",
   "chainId": 32382,
   "txConfirmations": 12,
   "contracts": {
