@@ -16,7 +16,7 @@ export const DevToolsPanel = observer(function DevToolsPanel() {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-4 right-4 bg-qrl-primary text-white px-4 py-2 rounded-lg shadow-lg hover:bg-qrl-secondary transition-colors z-50"
+        className="fixed bottom-4 right-4 bg-qrl-orange text-white px-4 py-2 rounded-xl shadow-lg hover:bg-qrl-orange/80 transition-all duration-200 z-50"
       >
         DevTools
       </button>
@@ -24,18 +24,18 @@ export const DevToolsPanel = observer(function DevToolsPanel() {
   }
 
   return (
-    <div className="fixed bottom-0 right-0 w-full md:w-[600px] h-[400px] bg-qrl-darker border-t border-l border-gray-700 shadow-xl z-50 flex flex-col">
+    <div className="fixed bottom-0 right-0 w-full md:w-[600px] h-[400px] bg-qrl-bg border-t border-l border-qrl-border shadow-xl z-50 flex flex-col backdrop-blur-sm">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-qrl-dark border-b border-gray-700">
-        <div className="flex gap-2">
+      <div className="flex items-center justify-between px-4 py-3 bg-qrl-dark/80 border-b border-qrl-border">
+        <div className="flex gap-1 bg-qrl-darker/50 p-1 rounded-xl">
           {(['state', 'logs', 'contracts'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-3 py-1 rounded text-sm ${
+              className={`px-3 py-1.5 rounded-lg text-sm transition-all duration-200 ${
                 activeTab === tab
-                  ? 'bg-qrl-primary text-white'
-                  : 'text-gray-400 hover:text-white'
+                  ? 'bg-qrl-cyan text-qrl-darker'
+                  : 'text-qrl-muted hover:text-white'
               }`}
             >
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -43,12 +43,12 @@ export const DevToolsPanel = observer(function DevToolsPanel() {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="secondary" onClick={() => stores.refreshAll()}>
+          <Button size="sm" variant="outline" fullWidth={false} onClick={() => stores.refreshAll()}>
             Refresh
           </Button>
           <button
             onClick={() => setIsOpen(false)}
-            className="text-gray-400 hover:text-white"
+            className="text-qrl-muted hover:text-white transition-colors"
           >
             ✕
           </button>
@@ -108,8 +108,8 @@ const StateView = observer(function StateView({ stores }: { stores: ReturnType<t
 function StateSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h4 className="text-qrl-primary font-semibold mb-1">{title}</h4>
-      <div className="bg-qrl-dark rounded p-2 space-y-1">{children}</div>
+      <h4 className="text-qrl-cyan font-semibold mb-2">{title}</h4>
+      <div className="bg-qrl-dark/50 rounded-xl p-3 space-y-1 border border-qrl-border">{children}</div>
     </div>
   );
 }
@@ -121,11 +121,11 @@ function StateRow({ label, value }: { label: string; value: unknown }) {
 
   const valueColor = typeof value === 'boolean'
     ? value ? 'text-green-400' : 'text-red-400'
-    : 'text-gray-300';
+    : 'text-white';
 
   return (
     <div className="flex justify-between">
-      <span className="text-gray-500">{label}:</span>
+      <span className="text-qrl-muted">{label}:</span>
       <span className={valueColor}>{displayValue}</span>
     </div>
   );
@@ -150,30 +150,30 @@ function LogsView({ logs }: { logs: import('../../services/logger').LogEntry[] }
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <input
         type="text"
         placeholder="Filter logs..."
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
-        className="w-full bg-qrl-dark border border-gray-600 rounded px-2 py-1 text-white text-sm"
+        className="w-full bg-qrl-darker/50 border border-qrl-border rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-qrl-cyan transition-colors"
       />
       <div className="space-y-1 max-h-[280px] overflow-auto">
         {filteredLogs.slice(-100).reverse().map((log, i) => (
           <div key={i} className="text-xs">
-            <span className="text-gray-600">{log.timestamp.split('T')[1].split('.')[0]}</span>
-            <span className="text-gray-500 mx-1">[{log.prefix}]</span>
+            <span className="text-qrl-muted">{log.timestamp.split('T')[1].split('.')[0]}</span>
+            <span className="text-qrl-muted mx-1">[{log.prefix}]</span>
             <span className={levelColors[log.level] || 'text-white'}>{log.level}:</span>
-            <span className="text-gray-300 ml-1">{log.message}</span>
+            <span className="text-white ml-1">{log.message}</span>
             {log.data !== undefined && (
-              <pre className="text-gray-500 ml-4 text-xs overflow-x-auto">
+              <pre className="text-qrl-muted ml-4 text-xs overflow-x-auto">
                 {JSON.stringify(log.data, null, 2)}
               </pre>
             )}
           </div>
         ))}
         {filteredLogs.length === 0 && (
-          <div className="text-gray-500 text-center py-4">No logs yet</div>
+          <div className="text-qrl-muted text-center py-4">No logs yet</div>
         )}
       </div>
     </div>
@@ -187,12 +187,12 @@ function ContractsView() {
 
   return (
     <div className="space-y-3">
-      <p className="text-gray-400 text-xs mb-2">Click address to copy</p>
+      <p className="text-qrl-muted text-xs mb-2">Click address to copy</p>
       {Object.entries(CONTRACTS).map(([name, address]) => (
-        <div key={name} className="bg-qrl-dark rounded p-2">
-          <div className="text-qrl-primary font-semibold">{name}</div>
+        <div key={name} className="bg-qrl-dark/50 rounded-xl p-3 border border-qrl-border">
+          <div className="text-qrl-cyan font-semibold">{name}</div>
           <div
-            className="text-gray-300 text-xs cursor-pointer hover:text-white break-all"
+            className="text-white text-xs cursor-pointer hover:text-qrl-cyan break-all transition-colors"
             onClick={() => copyToClipboard(address)}
             title="Click to copy"
           >
@@ -200,9 +200,9 @@ function ContractsView() {
           </div>
         </div>
       ))}
-      <div className="mt-4 text-gray-500 text-xs">
+      <div className="mt-4 text-qrl-muted text-xs">
         <p>Console shortcuts:</p>
-        <code className="block bg-qrl-dark p-2 rounded mt-1">
+        <code className="block bg-qrl-dark/50 p-3 rounded-xl mt-2 border border-qrl-border">
           window.__QUANTAPOOL__.stores<br />
           window.__QUANTAPOOL__.refresh()<br />
           window.__QUANTAPOOL__.formatQRL(bigint)<br />
