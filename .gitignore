@@ -4,3 +4,4 @@ CLAUDE.md
 node_modules/
 artifacts/
 ccagent
+webapp/node_modules
