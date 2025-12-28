@@ -1,8 +1,9 @@
 import { ButtonHTMLAttributes, ReactNode } from 'react';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'danger';
+  variant?: 'primary' | 'secondary' | 'danger' | 'outline';
   size?: 'sm' | 'md' | 'lg';
+  fullWidth?: boolean;
   isLoading?: boolean;
   children: ReactNode;
 }
@@ -10,35 +11,39 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 export function Button({
   variant = 'primary',
   size = 'md',
+  fullWidth = true,
   isLoading = false,
   children,
   className = '',
   disabled,
   ...props
 }: ButtonProps) {
-  const baseStyles = 'font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+  const baseStyles = 'font-semibold rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed';
 
   const variantStyles = {
-    primary: 'bg-qrl-primary hover:bg-qrl-secondary text-white',
-    secondary: 'bg-gray-700 hover:bg-gray-600 text-white',
+    primary: 'bg-qrl-cyan hover:bg-qrl-cyan-hover text-qrl-darker',
+    secondary: 'bg-transparent border-2 border-qrl-border hover:border-qrl-cyan text-white',
     danger: 'bg-red-600 hover:bg-red-700 text-white',
+    outline: 'bg-transparent border border-qrl-border hover:border-qrl-orange hover:text-qrl-orange text-qrl-muted',
   };
 
   const sizeStyles = {
-    sm: 'py-1.5 px-3 text-sm',
-    md: 'py-2 px-4 text-base',
-    lg: 'py-3 px-6 text-lg',
+    sm: 'py-2 px-4 text-sm',
+    md: 'py-3 px-6 text-base',
+    lg: 'py-4 px-8 text-lg',
   };
+
+  const widthStyle = fullWidth ? 'w-full' : '';
 
   return (
     <button
-      className={`${baseStyles} ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
+      className={`${baseStyles} ${variantStyles[variant]} ${sizeStyles[size]} ${widthStyle} ${className}`}
       disabled={disabled || isLoading}
       {...props}
     >
       {isLoading ? (
         <span className="flex items-center justify-center gap-2">
-          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+          <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
             <circle
               className="opacity-25"
               cx="12"
