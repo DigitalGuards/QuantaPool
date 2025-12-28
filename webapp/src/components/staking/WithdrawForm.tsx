@@ -68,26 +68,26 @@ export const WithdrawForm = observer(function WithdrawForm() {
   const canWithdraw = walletStore.isConnected && !isReadOnly && !txStore.isSubmitting && userStore.stQRLBalance > 0n;
 
   return (
-    <Card title="Withdraw stQRL">
-      <div className="space-y-4">
+    <Card title="Withdraw stQRL" accent="orange">
+      <div className="space-y-5">
         {/* Current stQRL Balance */}
-        <div className="bg-qrl-darker p-3 rounded-lg">
+        <div className="bg-qrl-darker/50 p-4 rounded-xl border border-qrl-border">
           <div className="flex justify-between text-sm">
-            <span className="text-gray-400">Your stQRL balance</span>
-            <span className="text-white">{userStore.stQRLFormatted} stQRL</span>
+            <span className="text-qrl-muted">Your stQRL balance</span>
+            <span className="text-white font-medium">{userStore.stQRLFormatted} stQRL</span>
           </div>
-          <div className="flex justify-between text-sm mt-1">
-            <span className="text-gray-400">Current value</span>
-            <span className="text-qrl-accent">{userStore.stQRLValueFormatted} QRL</span>
+          <div className="flex justify-between text-sm mt-2">
+            <span className="text-qrl-muted">Current value</span>
+            <span className="text-qrl-cyan font-medium">{userStore.stQRLValueFormatted} QRL</span>
           </div>
         </div>
 
         {/* Amount Input */}
         <div>
-          <div className="flex justify-between items-center mb-1">
-            <label className="text-sm text-gray-400">Amount to withdraw</label>
+          <div className="flex justify-between items-center mb-2">
+            <label className="text-sm text-white font-medium">Amount to withdraw</label>
             <button
-              className="text-sm text-qrl-primary hover:underline"
+              className="text-sm text-qrl-cyan hover:text-qrl-cyan-hover transition-colors"
               onClick={handleMaxClick}
               disabled={userStore.stQRLBalance === 0n}
             >
@@ -107,31 +107,33 @@ export const WithdrawForm = observer(function WithdrawForm() {
 
         {/* Preview */}
         {amount && parseFloat(amount) > 0 && (
-          <div className="bg-qrl-darker p-3 rounded-lg">
+          <div className="bg-qrl-darker/50 p-4 rounded-xl border border-qrl-border">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-400">You will receive</span>
-              <span className="text-white">{formatQRL(getQRLValue(), 4)} QRL</span>
+              <span className="text-qrl-muted">You will receive</span>
+              <span className="text-white font-medium">{formatQRL(getQRLValue(), 4)} QRL</span>
             </div>
-            <div className="flex justify-between text-sm mt-1">
-              <span className="text-gray-400">Wait time</span>
-              <span className="text-gray-300">~128 blocks (~2 hours)</span>
+            <div className="flex justify-between text-sm mt-2">
+              <span className="text-qrl-muted">Wait time</span>
+              <span className="text-white">~128 blocks (~2 hours)</span>
             </div>
           </div>
         )}
 
         {/* Pending withdrawal info */}
         {userStore.hasPendingWithdrawal && (
-          <div className="bg-yellow-900/30 border border-yellow-700 p-3 rounded-lg">
-            <p className="text-yellow-400 text-sm">
+          <div className="bg-qrl-orange/10 border border-qrl-orange/30 p-3 rounded-xl">
+            <p className="text-qrl-orange text-sm">
               You have a pending withdrawal request. Claim it before making a new request.
             </p>
           </div>
         )}
 
         {isReadOnly && walletStore.isConnected && (
-          <p className="text-yellow-400 text-sm">
-            Connect with wallet extension to withdraw.
-          </p>
+          <div className="bg-qrl-orange/10 border border-qrl-orange/30 p-3 rounded-xl">
+            <p className="text-qrl-orange text-sm">
+              Connect with wallet extension to withdraw.
+            </p>
+          </div>
         )}
 
         {txStore.error && (
@@ -140,7 +142,6 @@ export const WithdrawForm = observer(function WithdrawForm() {
 
         {/* Submit Button */}
         <Button
-          className="w-full"
           size="lg"
           onClick={handleWithdraw}
           disabled={!canWithdraw || !amount || userStore.hasPendingWithdrawal}
@@ -168,37 +169,36 @@ export const ClaimWithdrawal = observer(function ClaimWithdrawal() {
   const canClaim = !isReadOnly && userStore.canClaimWithdrawal && !txStore.isSubmitting;
 
   return (
-    <Card title="Pending Withdrawal">
-      <div className="space-y-3">
-        <div className="bg-qrl-darker p-3 rounded-lg">
+    <Card title="Pending Withdrawal" accent="cyan">
+      <div className="space-y-4">
+        <div className="bg-qrl-darker/50 p-4 rounded-xl border border-qrl-border">
           <div className="flex justify-between text-sm">
-            <span className="text-gray-400">Shares to burn</span>
-            <span className="text-white">
+            <span className="text-qrl-muted">Shares to burn</span>
+            <span className="text-white font-medium">
               {formatQRL(userStore.withdrawalRequest.shares, 4)} stQRL
             </span>
           </div>
-          <div className="flex justify-between text-sm mt-1">
-            <span className="text-gray-400">QRL to receive</span>
-            <span className="text-qrl-accent">
+          <div className="flex justify-between text-sm mt-2">
+            <span className="text-qrl-muted">QRL to receive</span>
+            <span className="text-qrl-cyan font-medium">
               {formatQRL(userStore.withdrawalRequest.assets, 4)} QRL
             </span>
           </div>
-          <div className="flex justify-between text-sm mt-1">
-            <span className="text-gray-400">Status</span>
-            <span className={userStore.canClaimWithdrawal ? 'text-green-400' : 'text-yellow-400'}>
+          <div className="flex justify-between text-sm mt-2">
+            <span className="text-qrl-muted">Status</span>
+            <span className={userStore.canClaimWithdrawal ? 'text-green-400 font-medium' : 'text-qrl-orange font-medium'}>
               {userStore.canClaimWithdrawal ? 'Ready to claim' : userStore.timeUntilClaim}
             </span>
           </div>
         </div>
 
         {!userStore.canClaimWithdrawal && (
-          <p className="text-gray-400 text-sm">
+          <p className="text-qrl-muted text-sm">
             {userStore.blocksUntilClaim} blocks remaining until you can claim.
           </p>
         )}
 
         <Button
-          className="w-full"
           size="lg"
           onClick={handleClaim}
           disabled={!canClaim}
