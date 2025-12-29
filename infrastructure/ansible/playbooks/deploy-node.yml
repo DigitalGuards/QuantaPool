@@ -1,0 +1,86 @@
+---
+# Deploy QuantaPool validator node
+# Usage: ansible-playbook playbooks/deploy-node.yml -i inventory.ini
+
+- name: Deploy QuantaPool Validator Node
+  hosts: validators
+  become: yes
+  vars_files:
+    - ../group_vars/all.yml
+
+  pre_tasks:
+    - name: Verify connectivity
+      ping:
+
+    - name: Gather facts
+      setup:
+
+    - name: Display deployment info
+      debug:
+        msg: |
+          Deploying QuantaPool node to {{ inventory_hostname }}
+          Role: {{ 'PRIMARY' if 'primary' in group_names else 'BACKUP' }}
+          Environment: {{ environment }}
+
+  roles:
+    - role: security
+      tags: [security]
+
+    - role: gzond
+      tags: [gzond, execution]
+
+    - role: qrysm-beacon
+      tags: [qrysm-beacon, beacon, consensus]
+
+    - role: qrysm-validator
+      vars:
+        is_primary_validator: "{{ 'primary' in group_names }}"
+      tags: [qrysm-validator, validator]
+
+  post_tasks:
+    - name: Verify all services are running
+      systemd:
+        name: "{{ item }}"
+        state: started
+      loop:
+        - gzond
+        - qrysm-beacon
+      register: service_status
+      failed_when: false
+
+    - name: Check validator service (primary only)
+      systemd:
+        name: qrysm-validator
+        state: started
+      when: "'primary' in group_names"
+      register: validator_status
+      failed_when: false
+
+    - name: Display deployment summary
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          QuantaPool Node Deployment Complete
+          ═══════════════════════════════════════════════════════════
+
+          Node: {{ inventory_hostname }}
+          Role: {{ 'PRIMARY' if 'primary' in group_names else 'BACKUP' }}
+
+          Services:
+          - gzond:         {{ 'RUNNING' if service_status.results[0].status.ActiveState == 'active' else 'STOPPED' }}
+          - qrysm-beacon:  {{ 'RUNNING' if service_status.results[1].status.ActiveState == 'active' else 'STOPPED' }}
+          {% if 'primary' in group_names %}
+          - qrysm-validator: {{ 'RUNNING' if validator_status.status.ActiveState == 'active' else 'STOPPED' }}
+          {% else %}
+          - qrysm-validator: DISABLED (backup node)
+          {% endif %}
+
+          Metrics endpoints:
+          - Node Exporter: http://{{ private_ip }}:9100
+          - gzond:         http://{{ private_ip }}:6060
+          - Beacon:        http://{{ private_ip }}:8080
+          {% if 'primary' in group_names %}
+          - Validator:     http://{{ private_ip }}:8081
+          {% endif %}
+
+          ═══════════════════════════════════════════════════════════

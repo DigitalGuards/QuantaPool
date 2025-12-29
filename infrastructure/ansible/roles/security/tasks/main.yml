@@ -1,0 +1,197 @@
+---
+# Security hardening tasks
+
+- name: Update apt cache and upgrade packages
+  apt:
+    update_cache: yes
+    upgrade: safe
+  when: auto_updates_enabled
+
+- name: Install security packages
+  apt:
+    name:
+      - fail2ban
+      - ufw
+      - unattended-upgrades
+      - apt-listchanges
+      - logwatch
+      - rkhunter
+    state: present
+
+# SSH Hardening
+- name: Configure SSH hardening
+  copy:
+    content: |
+      # SSH hardening configuration
+      PermitRootLogin {{ ssh_permit_root_login }}
+      PasswordAuthentication {{ 'yes' if ssh_password_auth else 'no' }}
+      ChallengeResponseAuthentication no
+      UsePAM yes
+      X11Forwarding no
+      AllowTcpForwarding no
+      MaxAuthTries {{ ssh_max_auth_tries }}
+      ClientAliveInterval 300
+      ClientAliveCountMax 2
+      Protocol 2
+      PermitEmptyPasswords no
+      LoginGraceTime 30
+    dest: /etc/ssh/sshd_config.d/99-hardening.conf
+    mode: '0644'
+  notify: restart sshd
+
+# UFW Firewall
+- name: Reset UFW to default
+  ufw:
+    state: reset
+  when: firewall_enabled
+
+- name: Set UFW default policies
+  ufw:
+    direction: "{{ item.direction }}"
+    policy: "{{ item.policy }}"
+  loop:
+    - { direction: incoming, policy: "{{ firewall_default_incoming }}" }
+    - { direction: outgoing, policy: "{{ firewall_default_outgoing }}" }
+  when: firewall_enabled
+
+- name: Allow SSH
+  ufw:
+    rule: allow
+    port: "{{ ssh_port }}"
+    proto: tcp
+    comment: 'SSH'
+  when: firewall_enabled
+
+- name: Allow gzond P2P
+  ufw:
+    rule: allow
+    port: 30303
+    proto: "{{ item }}"
+    comment: 'gzond P2P'
+  loop:
+    - tcp
+    - udp
+  when: firewall_enabled and ('validators' in group_names)
+
+- name: Allow qrysm beacon P2P TCP
+  ufw:
+    rule: allow
+    port: 13000
+    proto: tcp
+    comment: 'qrysm beacon P2P TCP'
+  when: firewall_enabled and ('validators' in group_names)
+
+- name: Allow qrysm beacon P2P UDP
+  ufw:
+    rule: allow
+    port: 12000
+    proto: udp
+    comment: 'qrysm beacon P2P UDP'
+  when: firewall_enabled and ('validators' in group_names)
+
+- name: Allow metrics from monitoring server
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+    from_ip: "{{ hostvars[groups['monitoring'][0]]['private_ip'] | default('10.0.0.0/24') }}"
+    comment: 'Metrics'
+  loop:
+    - 9100  # node_exporter
+    - 6060  # gzond metrics
+    - 8080  # beacon metrics
+    - 8081  # validator metrics
+  when: firewall_enabled and ('validators' in group_names) and ('monitoring' in groups)
+
+- name: Allow Grafana on monitoring server
+  ufw:
+    rule: allow
+    port: 3000
+    proto: tcp
+    comment: 'Grafana'
+  when: firewall_enabled and ('monitoring' in group_names)
+
+- name: Enable UFW
+  ufw:
+    state: enabled
+  when: firewall_enabled
+
+# fail2ban
+- name: Configure fail2ban jail
+  copy:
+    content: |
+      [DEFAULT]
+      bantime = {{ fail2ban_bantime }}
+      findtime = {{ fail2ban_findtime }}
+      maxretry = {{ fail2ban_maxretry }}
+      backend = systemd
+
+      [sshd]
+      enabled = true
+      port = {{ ssh_port }}
+      filter = sshd
+      logpath = /var/log/auth.log
+      maxretry = {{ fail2ban_maxretry }}
+    dest: /etc/fail2ban/jail.local
+    mode: '0644'
+  notify: restart fail2ban
+  when: fail2ban_enabled
+
+- name: Enable and start fail2ban
+  systemd:
+    name: fail2ban
+    enabled: yes
+    state: started
+  when: fail2ban_enabled
+
+# Automatic updates
+- name: Configure unattended-upgrades
+  copy:
+    content: |
+      Unattended-Upgrade::Allowed-Origins {
+          "${distro_id}:${distro_codename}";
+          "${distro_id}:${distro_codename}-security";
+          "${distro_id}ESMApps:${distro_codename}-apps-security";
+          "${distro_id}ESM:${distro_codename}-infra-security";
+      };
+      Unattended-Upgrade::Package-Blacklist {
+      };
+      Unattended-Upgrade::AutoFixInterruptedDpkg "true";
+      Unattended-Upgrade::MinimalSteps "true";
+      Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+      Unattended-Upgrade::Remove-Unused-Dependencies "true";
+      Unattended-Upgrade::Automatic-Reboot "false";
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    mode: '0644'
+  when: auto_updates_enabled
+
+- name: Enable automatic updates
+  copy:
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+      APT::Periodic::Download-Upgradeable-Packages "1";
+      APT::Periodic::AutocleanInterval "7";
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: '0644'
+  when: auto_updates_enabled
+
+# Kernel hardening
+- name: Apply kernel hardening settings
+  sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: yes
+    state: present
+    reload: yes
+  loop:
+    - { key: 'net.ipv4.tcp_syncookies', value: '1' }
+    - { key: 'net.ipv4.conf.all.accept_redirects', value: '0' }
+    - { key: 'net.ipv6.conf.all.accept_redirects', value: '0' }
+    - { key: 'net.ipv4.conf.all.send_redirects', value: '0' }
+    - { key: 'net.ipv4.conf.all.accept_source_route', value: '0' }
+    - { key: 'net.ipv6.conf.all.accept_source_route', value: '0' }
+    - { key: 'net.ipv4.conf.all.log_martians', value: '1' }
+    - { key: 'kernel.randomize_va_space', value: '2' }
+    - { key: 'fs.suid_dumpable', value: '0' }
+  when: kernel_hardening_enabled

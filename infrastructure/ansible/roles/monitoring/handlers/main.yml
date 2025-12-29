@@ -1,0 +1,11 @@
+---
+- name: restart docker
+  systemd:
+    name: docker
+    state: restarted
+
+- name: restart monitoring stack
+  docker_compose:
+    project_src: "{{ monitoring_stack_path }}"
+    state: present
+    recreate: always

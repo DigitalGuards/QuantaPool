@@ -1,0 +1,48 @@
+---
+# Deploy QuantaPool monitoring stack
+# Usage: ansible-playbook playbooks/deploy-monitoring.yml -i inventory.ini
+
+- name: Deploy QuantaPool Monitoring Stack
+  hosts: monitoring
+  become: yes
+  vars_files:
+    - ../group_vars/all.yml
+
+  pre_tasks:
+    - name: Verify connectivity
+      ping:
+
+    - name: Gather facts
+      setup:
+
+    - name: Display deployment info
+      debug:
+        msg: |
+          Deploying QuantaPool Monitoring Stack
+          Target: {{ inventory_hostname }}
+          Environment: {{ environment }}
+
+  roles:
+    - role: security
+      tags: [security]
+
+    - role: monitoring
+      tags: [monitoring, prometheus, grafana]
+
+  post_tasks:
+    - name: Display monitoring URLs
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          QuantaPool Monitoring Stack Deployed
+          ═══════════════════════════════════════════════════════════
+
+          Grafana Dashboard: http://{{ ansible_host }}:3000
+          - Default user: admin
+          - Default password: (check your configuration)
+
+          Prometheus (internal): http://{{ private_ip }}:9090
+          Alertmanager (internal): http://{{ private_ip }}:9093
+          Contract Exporter (internal): http://{{ private_ip }}:9101
+
+          ═══════════════════════════════════════════════════════════

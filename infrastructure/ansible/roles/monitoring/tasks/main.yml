@@ -1,0 +1,83 @@
+---
+# Monitoring stack deployment
+
+- name: Install Docker prerequisites
+  apt:
+    name:
+      - docker.io
+      - docker-compose
+      - python3-pip
+      - python3-docker
+    state: present
+    update_cache: yes
+
+- name: Enable and start Docker
+  systemd:
+    name: docker
+    enabled: yes
+    state: started
+
+- name: Create monitoring directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - "{{ monitoring_stack_path }}"
+    - "{{ monitoring_stack_path }}/prometheus"
+    - "{{ monitoring_stack_path }}/prometheus/rules"
+    - "{{ monitoring_stack_path }}/alertmanager"
+    - "{{ monitoring_stack_path }}/grafana"
+    - "{{ monitoring_stack_path }}/grafana/dashboards"
+    - "{{ monitoring_stack_path }}/grafana/provisioning"
+    - "{{ monitoring_stack_path }}/contract-exporter"
+    - /var/lib/prometheus
+    - /var/lib/grafana
+    - /var/lib/alertmanager
+
+- name: Copy monitoring stack from repository
+  synchronize:
+    src: "{{ playbook_dir }}/../../monitoring/"
+    dest: "{{ monitoring_stack_path }}/"
+    delete: no
+    recursive: yes
+  delegate_to: "{{ inventory_hostname }}"
+
+- name: Create environment file for monitoring stack
+  template:
+    src: monitoring.env.j2
+    dest: "{{ monitoring_stack_path }}/.env"
+    mode: '0600'
+
+- name: Update Prometheus config with actual targets
+  template:
+    src: prometheus.yml.j2
+    dest: "{{ monitoring_stack_path }}/prometheus/prometheus.yml"
+    mode: '0644'
+
+- name: Start monitoring stack with Docker Compose
+  docker_compose:
+    project_src: "{{ monitoring_stack_path }}"
+    state: present
+    pull: yes
+    recreate: smart
+  register: docker_compose_result
+
+- name: Wait for Grafana to be available
+  uri:
+    url: "http://127.0.0.1:{{ grafana_port }}/api/health"
+    method: GET
+    status_code: 200
+  register: grafana_health
+  until: grafana_health.status == 200
+  retries: 30
+  delay: 5
+
+- name: Display monitoring URLs
+  debug:
+    msg: |
+      Monitoring stack deployed successfully!
+
+      Grafana: http://{{ ansible_host }}:{{ grafana_port }}
+      Prometheus: http://{{ ansible_host }}:9090 (internal only)
+      Alertmanager: http://{{ ansible_host }}:9093 (internal only)

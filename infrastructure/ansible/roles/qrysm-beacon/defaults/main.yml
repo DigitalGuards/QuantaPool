@@ -1,0 +1,47 @@
+---
+# qrysm beacon node defaults
+
+# Version and source
+qrysm_version: "latest"
+qrysm_repo: "https://github.com/theQRL/qrysm"
+qrysm_beacon_binary_path: "/usr/local/bin/qrysm-beacon"
+
+# Data directories
+qrysm_beacon_data_dir: "/var/lib/qrysm/beacon"
+qrysm_user: "qrysm"
+qrysm_group: "qrysm"
+
+# Network configuration
+qrysm_network: "testnet"
+qrysm_p2p_port: 13000
+qrysm_p2p_udp_port: 12000
+qrysm_grpc_port: 4000
+qrysm_grpc_gateway_port: 3500
+qrysm_rpc_port: 4001
+
+# Execution client connection
+gzond_authrpc_addr: "127.0.0.1"
+gzond_authrpc_port: 8551
+jwt_secret_path: "/etc/quantapool/jwt.hex"
+
+# P2P settings
+qrysm_p2p_max_peers: 45
+qrysm_min_sync_peers: 3
+
+# Checkpoint sync (speeds up initial sync dramatically)
+qrysm_checkpoint_sync_url: ""
+qrysm_genesis_beacon_api_url: ""
+
+# Metrics
+qrysm_metrics_enabled: true
+qrysm_metrics_port: 8080
+qrysm_metrics_addr: "0.0.0.0"
+
+# gRPC settings
+qrysm_grpc_gateway_host: "127.0.0.1"
+
+# Logging
+qrysm_log_level: "info"
+
+# Fee recipient (receives priority fees and MEV)
+fee_recipient_address: ""

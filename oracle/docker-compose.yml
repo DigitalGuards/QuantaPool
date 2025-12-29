@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  oracle:
+    build: .
+    container_name: quantapool-oracle
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - oracle_logs:/var/log/quantapool-oracle
+    networks:
+      - quantapool
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  oracle_logs:
+
+networks:
+  quantapool:
+    external: true
