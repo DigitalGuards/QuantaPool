@@ -216,7 +216,7 @@ function fundValidator(
 ) external onlyOwner nonReentrant returns (uint256 validatorId) {
     require(pendingDeposits >= VALIDATOR_THRESHOLD, "DepositPool: below threshold");
     require(pubkey.length == 2592, "DepositPool: invalid pubkey length");
-    require(withdrawal_credentials.length == 32, "DepositPool: invalid credentials");
+    require(withdrawal_credentials.length == 32, "DepositPool: invalid credentials length");
     require(signature.length == 4595, "DepositPool: invalid signature length");
 
     pendingDeposits -= VALIDATOR_THRESHOLD;
