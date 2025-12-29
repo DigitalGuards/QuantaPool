@@ -1,0 +1,9 @@
+---
+- name: reload systemd
+  systemd:
+    daemon_reload: yes
+
+- name: restart qrysm-beacon
+  systemd:
+    name: qrysm-beacon
+    state: restarted

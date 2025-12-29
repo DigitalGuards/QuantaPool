@@ -1,0 +1,23 @@
+---
+# Monitoring configuration defaults
+
+# Node exporter
+node_exporter_version: "1.7.0"
+node_exporter_port: 9100
+
+# Paths to QuantaPool monitoring stack
+monitoring_stack_path: "/opt/quantapool/monitoring"
+
+# Docker compose file location
+docker_compose_file: "{{ monitoring_stack_path }}/docker-compose.yml"
+
+# Prometheus
+prometheus_retention: "30d"
+prometheus_scrape_interval: "15s"
+
+# Grafana
+grafana_admin_password: "changeme"
+grafana_port: 3000
+
+# Alertmanager
+alertmanager_port: 9093

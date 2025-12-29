@@ -1,0 +1,10 @@
+---
+- name: reload systemd
+  systemd:
+    daemon_reload: yes
+
+- name: restart qrysm-validator
+  systemd:
+    name: qrysm-validator
+    state: restarted
+  when: is_primary_validator | default(true)

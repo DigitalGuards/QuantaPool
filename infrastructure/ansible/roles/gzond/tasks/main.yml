@@ -1,0 +1,119 @@
+---
+# gzond (go-zond) execution client installation and configuration
+
+- name: Create gzond user
+  user:
+    name: "{{ gzond_user }}"
+    system: yes
+    shell: /bin/false
+    home: "{{ gzond_data_dir }}"
+    create_home: no
+
+- name: Create gzond directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ gzond_user }}"
+    group: "{{ gzond_group }}"
+    mode: '0750'
+  loop:
+    - "{{ gzond_data_dir }}"
+    - /opt/quantapool/gzond
+    - /var/log/gzond
+
+- name: Install build dependencies
+  apt:
+    name:
+      - build-essential
+      - git
+      - golang-go
+      - wget
+      - curl
+    state: present
+    update_cache: yes
+  when: gzond_version == "latest" or gzond_version == "source"
+
+- name: Clone go-zond repository
+  git:
+    repo: "{{ gzond_repo }}"
+    dest: /opt/quantapool/gzond/source
+    version: "{{ gzond_version if gzond_version != 'latest' else 'main' }}"
+    force: yes
+  register: gzond_clone
+  when: gzond_version == "latest" or gzond_version == "source"
+
+- name: Build gzond from source
+  shell: |
+    cd /opt/quantapool/gzond/source
+    make gzond
+    cp build/bin/gzond {{ gzond_binary_path }}
+  args:
+    creates: "{{ gzond_binary_path }}"
+  when: gzond_clone.changed or not ansible_check_mode
+  notify: restart gzond
+
+- name: Set gzond binary permissions
+  file:
+    path: "{{ gzond_binary_path }}"
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Ensure JWT secret exists
+  stat:
+    path: "{{ jwt_secret_path }}"
+  register: jwt_stat
+
+- name: Generate JWT secret if missing
+  shell: |
+    openssl rand -hex 32 > {{ jwt_secret_path }}
+  when: not jwt_stat.stat.exists
+
+- name: Set JWT secret permissions
+  file:
+    path: "{{ jwt_secret_path }}"
+    owner: "{{ gzond_user }}"
+    group: "{{ gzond_group }}"
+    mode: '0600'
+
+- name: Create gzond systemd service
+  template:
+    src: gzond.service.j2
+    dest: /etc/systemd/system/gzond.service
+    mode: '0644'
+  notify:
+    - reload systemd
+    - restart gzond
+
+- name: Enable and start gzond
+  systemd:
+    name: gzond
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Wait for gzond to start
+  wait_for:
+    port: "{{ gzond_http_port }}"
+    host: "127.0.0.1"
+    delay: 5
+    timeout: 60
+
+- name: Check gzond sync status
+  uri:
+    url: "http://127.0.0.1:{{ gzond_http_port }}"
+    method: POST
+    body_format: json
+    body:
+      jsonrpc: "2.0"
+      method: "eth_syncing"
+      params: []
+      id: 1
+    return_content: yes
+  register: sync_status
+  ignore_errors: yes
+
+- name: Display gzond sync status
+  debug:
+    msg: "gzond sync status: {{ sync_status.json.result | default('starting') }}"
+  when: sync_status is succeeded

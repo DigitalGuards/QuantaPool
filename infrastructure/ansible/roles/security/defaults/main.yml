@@ -1,0 +1,25 @@
+---
+# Security hardening defaults
+
+# SSH configuration
+ssh_port: 22
+ssh_permit_root_login: "prohibit-password"
+ssh_password_auth: false
+ssh_max_auth_tries: 3
+
+# Firewall
+firewall_enabled: true
+firewall_default_incoming: deny
+firewall_default_outgoing: allow
+
+# fail2ban
+fail2ban_enabled: true
+fail2ban_bantime: 3600
+fail2ban_findtime: 600
+fail2ban_maxretry: 5
+
+# Automatic updates
+auto_updates_enabled: true
+
+# Kernel hardening
+kernel_hardening_enabled: true
