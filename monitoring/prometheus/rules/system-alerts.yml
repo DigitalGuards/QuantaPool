@@ -1,0 +1,112 @@
+groups:
+  - name: system_alerts
+    rules:
+      # Node exporter down
+      - alert: NodeExporterDown
+        expr: up{job="node-exporter"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Node exporter is down"
+          description: "Cannot collect system metrics from validator node."
+
+      # High CPU usage
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage on validator node"
+          description: "CPU usage is above 80% for more than 15 minutes. Current: {{ $value | printf \"%.1f\" }}%"
+
+      # Critical CPU usage
+      - alert: CriticalCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 95
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical CPU usage on validator node"
+          description: "CPU usage is above 95%. Current: {{ $value | printf \"%.1f\" }}%. This may affect validator performance."
+
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on validator node"
+          description: "Memory usage is above 85%. Current: {{ $value | printf \"%.1f\" }}%"
+
+      # Critical memory usage
+      - alert: CriticalMemoryUsage
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 95
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical memory usage on validator node"
+          description: "Memory usage is above 95%. Current: {{ $value | printf \"%.1f\" }}%. System may become unstable."
+
+      # Disk space warning
+      - alert: DiskSpaceWarning
+        expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 > 75
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High disk usage on {{ $labels.mountpoint }}"
+          description: "Disk usage on {{ $labels.mountpoint }} is above 75%. Current: {{ $value | printf \"%.1f\" }}%"
+
+      # Disk space critical
+      - alert: DiskSpaceCritical
+        expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 > 90
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical disk space on {{ $labels.mountpoint }}"
+          description: "Disk usage on {{ $labels.mountpoint }} is above 90%. Current: {{ $value | printf \"%.1f\" }}%. Validator may stop functioning."
+
+      # High disk I/O wait
+      - alert: HighDiskIOWait
+        expr: avg by(instance) (rate(node_cpu_seconds_total{mode="iowait"}[5m])) * 100 > 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High disk I/O wait"
+          description: "CPU I/O wait is above 20%. Current: {{ $value | printf \"%.1f\" }}%. This may indicate slow disk or high I/O load."
+
+      # Network interface down
+      - alert: NetworkInterfaceDown
+        expr: node_network_up{device!~"lo|veth.*|docker.*|br-.*"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Network interface {{ $labels.device }} is down"
+          description: "Network interface {{ $labels.device }} has been down for more than 2 minutes."
+
+      # High network errors
+      - alert: HighNetworkErrors
+        expr: rate(node_network_receive_errs_total[5m]) + rate(node_network_transmit_errs_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High network error rate"
+          description: "Network interface experiencing high error rate: {{ $value | printf \"%.1f\" }} errors/sec."
+
+      # System load high
+      - alert: HighSystemLoad
+        expr: node_load5 / count without(cpu, mode) (node_cpu_seconds_total{mode="idle"}) > 2
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High system load"
+          description: "System load average (5min) is more than 2x the number of CPUs. Current load ratio: {{ $value | printf \"%.2f\" }}."

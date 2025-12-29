@@ -1,0 +1,81 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'quantapool'
+    environment: 'testnet'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# Rule files
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Alertmanager metrics
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets: ['alertmanager:9093']
+
+  # ============================================
+  # SMART CONTRACT METRICS
+  # ============================================
+  - job_name: 'contract-exporter'
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['contract-exporter:9101']
+        labels:
+          component: 'smart-contracts'
+
+  # ============================================
+  # VALIDATOR NODE METRICS (Remote targets)
+  # Update these targets to match your validator server IP
+  # ============================================
+
+  # Go-Zond (Execution Client) metrics
+  # Enable with: gzond --metrics --metrics.addr 0.0.0.0 --metrics.port 6060
+  - job_name: 'gzond'
+    metrics_path: /debug/metrics/prometheus
+    static_configs:
+      - targets: ['VALIDATOR_HOST:6060']
+        labels:
+          client: 'gzond'
+          layer: 'execution'
+
+  # Qrysm Beacon Chain (Consensus Client) metrics
+  # Enable with: --monitoring-host 0.0.0.0 --monitoring-port 8080
+  - job_name: 'beacon-chain'
+    static_configs:
+      - targets: ['VALIDATOR_HOST:8080']
+        labels:
+          client: 'qrysm'
+          layer: 'consensus'
+
+  # Qrysm Validator Client metrics
+  # Enable with: --monitoring-host 0.0.0.0 --monitoring-port 8081
+  - job_name: 'validator'
+    static_configs:
+      - targets: ['VALIDATOR_HOST:8081']
+        labels:
+          client: 'qrysm'
+          layer: 'validator'
+
+  # ============================================
+  # SYSTEM METRICS (Node Exporter on validator)
+  # ============================================
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['VALIDATOR_HOST:9100']
+        labels:
+          instance: 'validator-node'
