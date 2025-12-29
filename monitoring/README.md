@@ -33,7 +33,8 @@ cp .env.example .env
 # Edit .env with your contract addresses and Discord webhook
 
 # 2. Update prometheus.yml with your validator IP
-# Replace VALIDATOR_HOST with your validator server IP
+export VALIDATOR_IP="<your-validator-ip>"
+sed -i.bak "s/VALIDATOR_HOST/$VALIDATOR_IP/g" prometheus/prometheus.yml
 
 # 3. Start the stack
 docker compose up -d
@@ -90,7 +91,7 @@ monitoring/
 The monitoring stack expects your validator node to expose metrics. Run the setup script from `infrastructure/scripts/`:
 
 ```bash
-./setup-validator-node.sh
+../infrastructure/scripts/setup-validator-node.sh
 ```
 
 Or manually enable metrics:

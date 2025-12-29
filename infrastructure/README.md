@@ -27,6 +27,7 @@ infrastructure/
 
 ```bash
 # Set required environment variables
+# IMPORTANT: Do not commit your API token to version control.
 export HCLOUD_TOKEN="your-hetzner-api-token"
 
 # Deploy testnet infrastructure
