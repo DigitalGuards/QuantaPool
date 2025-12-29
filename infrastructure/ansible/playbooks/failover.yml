@@ -1,0 +1,268 @@
+---
+# QuantaPool Failover Playbook
+# CRITICAL: This playbook performs validator failover from primary to backup
+#
+# Usage: ansible-playbook playbooks/failover.yml -i inventory.ini
+#
+# WARNING: Running two validators with the same keys = SLASHING
+# This playbook includes multiple safety checks to prevent this.
+
+- name: QuantaPool Validator Failover
+  hosts: localhost
+  gather_facts: no
+  vars:
+    primary_host: "{{ groups['primary'][0] }}"
+    backup_host: "{{ groups['backup'][0] }}"
+    confirmation_required: true
+    max_stop_attempts: 5
+    stop_wait_seconds: 10
+
+  pre_tasks:
+    - name: Display failover warning
+      debug:
+        msg: |
+          ╔═══════════════════════════════════════════════════════════════╗
+          ║                    VALIDATOR FAILOVER                         ║
+          ╠═══════════════════════════════════════════════════════════════╣
+          ║                                                               ║
+          ║  This playbook will transfer validator duties from:           ║
+          ║    PRIMARY: {{ primary_host | default('NOT SET') }}
+          ║    BACKUP:  {{ backup_host | default('NOT SET') }}
+          ║                                                               ║
+          ║  WARNING: Running two validators with the same keys will      ║
+          ║  result in SLASHING and loss of funds!                        ║
+          ║                                                               ║
+          ╚═══════════════════════════════════════════════════════════════╝
+
+    - name: Require manual confirmation
+      pause:
+        prompt: |
+          Are you SURE you want to perform failover?
+          Type 'FAILOVER' to confirm:
+      register: confirmation
+      when: confirmation_required
+
+    - name: Verify confirmation
+      fail:
+        msg: "Failover cancelled - confirmation not received"
+      when: confirmation_required and confirmation.user_input != 'FAILOVER'
+
+# Step 1: Verify we can connect to both hosts
+- name: Verify connectivity to primary
+  hosts: primary
+  gather_facts: no
+  tasks:
+    - name: Check primary connectivity
+      ping:
+      register: primary_ping
+      ignore_errors: yes
+
+    - name: Set primary status
+      set_fact:
+        primary_reachable: "{{ primary_ping is succeeded }}"
+
+- name: Verify connectivity to backup
+  hosts: backup
+  gather_facts: no
+  tasks:
+    - name: Check backup connectivity
+      ping:
+
+# Step 2: Stop primary validator (CRITICAL)
+- name: Stop Primary Validator
+  hosts: primary
+  become: yes
+  tasks:
+    - name: Check if primary validator is running
+      systemd:
+        name: qrysm-validator
+      register: primary_validator_status
+      ignore_errors: yes
+
+    - name: Stop primary validator service
+      systemd:
+        name: qrysm-validator
+        state: stopped
+      when: primary_validator_status.status.ActiveState == 'active'
+      register: stop_result
+
+    - name: Force kill validator if still running
+      shell: |
+        pkill -9 -f qrysm-validator || true
+        sleep 2
+      when: stop_result is changed
+
+    - name: Verify primary validator is stopped
+      shell: |
+        systemctl is-active qrysm-validator && exit 1 || exit 0
+        pgrep -f qrysm-validator && exit 1 || exit 0
+      register: verify_stopped
+      retries: 5
+      delay: 5
+      until: verify_stopped.rc == 0
+
+    - name: CRITICAL - Double verify validator stopped
+      shell: |
+        if systemctl is-active qrysm-validator 2>/dev/null; then
+          echo "DANGER: Validator still active!"
+          exit 1
+        fi
+        if pgrep -f "qrysm-validator" > /dev/null; then
+          echo "DANGER: Validator process still running!"
+          exit 1
+        fi
+        echo "VERIFIED: No validator processes running"
+      register: final_verify
+      failed_when: final_verify.rc != 0
+
+    - name: Display primary stop confirmation
+      debug:
+        msg: "PRIMARY VALIDATOR STOPPED AND VERIFIED"
+
+# Step 3: Backup slashing protection from primary
+- name: Backup Slashing Protection
+  hosts: primary
+  become: yes
+  tasks:
+    - name: Create timestamp
+      set_fact:
+        failover_timestamp: "{{ ansible_date_time.iso8601_basic_short }}"
+
+    - name: Backup slashing protection database
+      archive:
+        path: "{{ slashing_protection_db }}"
+        dest: "/tmp/slashing-protection-failover-{{ failover_timestamp }}.tar.gz"
+        format: gz
+
+    - name: Fetch slashing protection to control node
+      fetch:
+        src: "/tmp/slashing-protection-failover-{{ failover_timestamp }}.tar.gz"
+        dest: "/tmp/"
+        flat: yes
+
+# Step 4: Transfer slashing protection to backup
+- name: Transfer Slashing Protection to Backup
+  hosts: backup
+  become: yes
+  vars:
+    failover_timestamp: "{{ hostvars[groups['primary'][0]]['failover_timestamp'] }}"
+  tasks:
+    - name: Copy slashing protection to backup
+      copy:
+        src: "/tmp/slashing-protection-failover-{{ failover_timestamp }}.tar.gz"
+        dest: "/tmp/slashing-protection-failover.tar.gz"
+
+    - name: Stop backup beacon and validator (if running)
+      systemd:
+        name: "{{ item }}"
+        state: stopped
+      loop:
+        - qrysm-validator
+        - qrysm-beacon
+      ignore_errors: yes
+
+    - name: Backup existing slashing protection on backup
+      archive:
+        path: "{{ slashing_protection_db }}"
+        dest: "/opt/quantapool/backups/slashing-protection-backup-pre-failover.tar.gz"
+        format: gz
+      ignore_errors: yes
+
+    - name: Extract new slashing protection
+      unarchive:
+        src: "/tmp/slashing-protection-failover.tar.gz"
+        dest: "{{ slashing_protection_db | dirname }}"
+        remote_src: yes
+        owner: qrysm
+        group: qrysm
+
+# Step 5: Remove lock and start backup validator
+- name: Activate Backup Validator
+  hosts: backup
+  become: yes
+  tasks:
+    - name: Start beacon node first
+      systemd:
+        name: qrysm-beacon
+        state: started
+
+    - name: Wait for beacon to sync
+      uri:
+        url: "http://127.0.0.1:3500/eth/v1/node/health"
+        method: GET
+        status_code: [200, 206]
+      register: beacon_health
+      until: beacon_health.status in [200, 206]
+      retries: 60
+      delay: 10
+
+    - name: Remove validator lock file
+      file:
+        path: "{{ validator_lock_file }}"
+        state: absent
+
+    - name: Start validator service
+      systemd:
+        name: qrysm-validator
+        state: started
+        enabled: yes
+
+    - name: Wait for validator to start
+      pause:
+        seconds: 30
+
+    - name: Verify validator is running
+      systemd:
+        name: qrysm-validator
+      register: backup_validator_status
+      failed_when: backup_validator_status.status.ActiveState != 'active'
+
+# Step 6: Final verification and cleanup
+- name: Final Verification
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Triple verify primary is stopped
+      delegate_to: "{{ groups['primary'][0] }}"
+      shell: |
+        if pgrep -f qrysm-validator; then
+          echo "CRITICAL: Primary validator still running!"
+          exit 1
+        fi
+      become: yes
+      ignore_errors: yes
+
+    - name: Verify backup is running
+      delegate_to: "{{ groups['backup'][0] }}"
+      shell: |
+        if ! systemctl is-active qrysm-validator; then
+          echo "ERROR: Backup validator not running!"
+          exit 1
+        fi
+      become: yes
+
+    - name: Display failover summary
+      debug:
+        msg: |
+          ╔═══════════════════════════════════════════════════════════════╗
+          ║                FAILOVER COMPLETE                              ║
+          ╠═══════════════════════════════════════════════════════════════╣
+          ║                                                               ║
+          ║  Primary validator: STOPPED                                   ║
+          ║  Backup validator:  RUNNING                                   ║
+          ║                                                               ║
+          ║  Slashing protection: TRANSFERRED                             ║
+          ║                                                               ║
+          ║  NEXT STEPS:                                                  ║
+          ║  1. Monitor backup for successful attestations                ║
+          ║  2. Check Grafana dashboard for validator metrics             ║
+          ║  3. Investigate primary node failure                          ║
+          ║  4. When primary is fixed, keep as new backup                 ║
+          ║                                                               ║
+          ╚═══════════════════════════════════════════════════════════════╝
+
+    - name: Clean up temporary files
+      file:
+        path: "/tmp/slashing-protection-failover-{{ hostvars[groups['primary'][0]]['failover_timestamp'] }}.tar.gz"
+        state: absent
+      ignore_errors: yes

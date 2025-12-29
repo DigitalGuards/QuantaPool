@@ -1,0 +1,130 @@
+---
+# Update gzond and qrysm clients
+# Usage: ansible-playbook playbooks/update-clients.yml -i inventory.ini
+
+- name: Update QuantaPool Node Clients
+  hosts: validators
+  become: yes
+  serial: 1  # Update one node at a time to maintain availability
+  vars_files:
+    - ../group_vars/all.yml
+  vars:
+    update_gzond: true
+    update_qrysm: true
+
+  pre_tasks:
+    - name: Display update info
+      debug:
+        msg: |
+          Updating clients on {{ inventory_hostname }}
+          Role: {{ 'PRIMARY' if 'primary' in group_names else 'BACKUP' }}
+
+          Updates:
+          - gzond: {{ 'YES' if update_gzond else 'NO' }}
+          - qrysm: {{ 'YES' if update_qrysm else 'NO' }}
+
+    - name: Confirm update for primary node
+      pause:
+        prompt: |
+          WARNING: About to update PRIMARY validator node.
+          This will cause brief service interruption.
+          Press ENTER to continue or Ctrl+C to abort.
+      when: "'primary' in group_names"
+
+  tasks:
+    # Backup slashing protection before update
+    - name: Backup slashing protection database
+      command: /usr/local/bin/backup-slashing-protection
+      when: "'primary' in group_names"
+      ignore_errors: yes
+
+    # Update gzond
+    - name: Stop gzond for update
+      systemd:
+        name: gzond
+        state: stopped
+      when: update_gzond
+
+    - name: Pull latest gzond source
+      git:
+        repo: "{{ gzond_repo }}"
+        dest: /opt/quantapool/gzond/source
+        version: main
+        force: yes
+      when: update_gzond
+
+    - name: Rebuild gzond
+      shell: |
+        cd /opt/quantapool/gzond/source
+        make gzond
+        cp build/bin/gzond /usr/local/bin/gzond
+      when: update_gzond
+
+    - name: Start gzond
+      systemd:
+        name: gzond
+        state: started
+      when: update_gzond
+
+    # Update qrysm
+    - name: Stop qrysm services for update
+      systemd:
+        name: "{{ item }}"
+        state: stopped
+      loop:
+        - qrysm-validator
+        - qrysm-beacon
+      when: update_qrysm
+      ignore_errors: yes
+
+    - name: Pull latest qrysm source
+      git:
+        repo: "{{ qrysm_repo }}"
+        dest: /opt/quantapool/qrysm/source
+        version: main
+        force: yes
+      when: update_qrysm
+
+    - name: Rebuild qrysm beacon
+      shell: |
+        cd /opt/quantapool/qrysm/source
+        go build -o /usr/local/bin/qrysm-beacon ./cmd/beacon-chain
+      environment:
+        CGO_ENABLED: "1"
+      when: update_qrysm
+
+    - name: Rebuild qrysm validator
+      shell: |
+        cd /opt/quantapool/qrysm/source
+        go build -o /usr/local/bin/qrysm-validator ./cmd/validator
+      environment:
+        CGO_ENABLED: "1"
+      when: update_qrysm
+
+    - name: Start qrysm beacon
+      systemd:
+        name: qrysm-beacon
+        state: started
+      when: update_qrysm
+
+    - name: Start qrysm validator (primary only)
+      systemd:
+        name: qrysm-validator
+        state: started
+      when: update_qrysm and ('primary' in group_names)
+
+  post_tasks:
+    - name: Verify services after update
+      systemd:
+        name: "{{ item }}"
+        state: started
+      loop:
+        - gzond
+        - qrysm-beacon
+      register: service_check
+
+    - name: Display update summary
+      debug:
+        msg: |
+          Update complete on {{ inventory_hostname }}
+          All services restarted successfully.

@@ -1,0 +1,61 @@
+[Unit]
+Description=qrysm Beacon Chain Client
+Documentation=https://github.com/theQRL/qrysm
+After=network-online.target gzond.service
+Wants=network-online.target
+Requires=gzond.service
+
+[Service]
+Type=simple
+User={{ qrysm_user }}
+Group={{ qrysm_group }}
+Restart=always
+RestartSec=5
+TimeoutStopSec=180
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+ExecStart={{ qrysm_beacon_binary_path }} \
+{% if qrysm_network == "testnet" %}
+  --{{ qrysm_network }} \
+{% endif %}
+  --datadir={{ qrysm_beacon_data_dir }} \
+  --execution-endpoint=http://{{ gzond_authrpc_addr }}:{{ gzond_authrpc_port }} \
+  --jwt-secret={{ jwt_secret_path }} \
+  --p2p-tcp-port={{ qrysm_p2p_port }} \
+  --p2p-udp-port={{ qrysm_p2p_udp_port }} \
+  --p2p-max-peers={{ qrysm_p2p_max_peers }} \
+  --min-sync-peers={{ qrysm_min_sync_peers }} \
+  --grpc-gateway-host={{ qrysm_grpc_gateway_host }} \
+  --grpc-gateway-port={{ qrysm_grpc_gateway_port }} \
+  --rpc-port={{ qrysm_rpc_port }} \
+{% if qrysm_checkpoint_sync_url != "" %}
+  --checkpoint-sync-url={{ qrysm_checkpoint_sync_url }} \
+{% endif %}
+{% if qrysm_genesis_beacon_api_url != "" %}
+  --genesis-beacon-api-url={{ qrysm_genesis_beacon_api_url }} \
+{% endif %}
+{% if fee_recipient_address != "" %}
+  --suggested-fee-recipient={{ fee_recipient_address }} \
+{% endif %}
+{% if qrysm_metrics_enabled %}
+  --monitoring-host={{ qrysm_metrics_addr }} \
+  --monitoring-port={{ qrysm_metrics_port }} \
+{% endif %}
+  --accept-terms-of-use \
+  --verbosity={{ qrysm_log_level }}
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=qrysm-beacon
+
+# Resource limits
+LimitNOFILE=65535
+LimitNPROC=65535
+
+[Install]
+WantedBy=multi-user.target

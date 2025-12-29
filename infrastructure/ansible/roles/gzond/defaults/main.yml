@@ -1,0 +1,52 @@
+---
+# gzond (go-zond) execution client defaults
+
+# Version and source
+gzond_version: "latest"
+gzond_repo: "https://github.com/theQRL/go-zond"
+gzond_binary_path: "/usr/local/bin/gzond"
+
+# Data directories
+gzond_data_dir: "/var/lib/gzond"
+gzond_user: "gzond"
+gzond_group: "gzond"
+
+# Network configuration
+gzond_network: "testnet"
+gzond_chain_id: 32382
+gzond_port: 30303
+gzond_http_port: 8545
+gzond_ws_port: 8546
+gzond_authrpc_port: 8551
+
+# P2P settings
+gzond_max_peers: 50
+gzond_bootnodes: []
+
+# API settings
+gzond_http_api: "eth,net,web3,txpool"
+gzond_http_addr: "127.0.0.1"
+gzond_http_corsdomain: "*"
+gzond_http_vhosts: "localhost"
+
+# Auth RPC (for beacon connection)
+gzond_authrpc_addr: "127.0.0.1"
+gzond_authrpc_vhosts: "localhost"
+
+# JWT secret path
+jwt_secret_path: "/etc/quantapool/jwt.hex"
+
+# Metrics
+gzond_metrics_enabled: true
+gzond_metrics_port: 6060
+gzond_metrics_addr: "0.0.0.0"
+
+# Logging
+gzond_log_level: "info"
+
+# Cache and performance
+gzond_cache: 4096  # MB
+
+# Pruning
+gzond_gcmode: "full"
+gzond_syncmode: "snap"

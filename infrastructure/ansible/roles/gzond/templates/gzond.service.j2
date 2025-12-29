@@ -1,0 +1,63 @@
+[Unit]
+Description=go-zond Execution Client
+Documentation=https://github.com/theQRL/go-zond
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ gzond_user }}
+Group={{ gzond_group }}
+Restart=always
+RestartSec=5
+TimeoutStopSec=180
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+ExecStart={{ gzond_binary_path }} \
+{% if gzond_network == "testnet" %}
+  --{{ gzond_network }} \
+{% endif %}
+  --datadir {{ gzond_data_dir }} \
+  --port {{ gzond_port }} \
+  --syncmode {{ gzond_syncmode }} \
+  --gcmode {{ gzond_gcmode }} \
+  --cache {{ gzond_cache }} \
+  --maxpeers {{ gzond_max_peers }} \
+{% if gzond_bootnodes | length > 0 %}
+  --bootnodes {{ gzond_bootnodes | join(',') }} \
+{% endif %}
+  --http \
+  --http.addr {{ gzond_http_addr }} \
+  --http.port {{ gzond_http_port }} \
+  --http.api {{ gzond_http_api }} \
+  --http.corsdomain "{{ gzond_http_corsdomain }}" \
+  --http.vhosts "{{ gzond_http_vhosts }}" \
+  --ws \
+  --ws.addr {{ gzond_http_addr }} \
+  --ws.port {{ gzond_ws_port }} \
+  --authrpc.addr {{ gzond_authrpc_addr }} \
+  --authrpc.port {{ gzond_authrpc_port }} \
+  --authrpc.vhosts "{{ gzond_authrpc_vhosts }}" \
+  --authrpc.jwtsecret {{ jwt_secret_path }} \
+{% if gzond_metrics_enabled %}
+  --metrics \
+  --metrics.addr {{ gzond_metrics_addr }} \
+  --metrics.port {{ gzond_metrics_port }} \
+{% endif %}
+  --verbosity 3
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gzond
+
+# Resource limits
+LimitNOFILE=65535
+LimitNPROC=65535
+
+[Install]
+WantedBy=multi-user.target
