@@ -224,8 +224,12 @@ docker exec prometheus promtool tsdb analyze /prometheus
 
 ```bash
 # Export dashboards via API
-for dashboard in $(curl -s "http://admin:password@localhost:3000/api/search" | jq -r '.[].uid'); do
-    curl -s "http://admin:password@localhost:3000/api/dashboards/uid/$dashboard" > "dashboard_$dashboard.json"
+# NOTE: Use environment variables for credentials, never hardcode!
+export GRAFANA_USER="admin"
+export GRAFANA_PASS="<your-password>"  # Or use: read -s GRAFANA_PASS
+
+for dashboard in $(curl -s "http://${GRAFANA_USER}:${GRAFANA_PASS}@localhost:3000/api/search" | jq -r '.[].uid'); do
+    curl -s "http://${GRAFANA_USER}:${GRAFANA_PASS}@localhost:3000/api/dashboards/uid/$dashboard" > "dashboard_$dashboard.json"
 done
 ```
 

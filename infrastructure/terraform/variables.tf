@@ -143,3 +143,16 @@ variable "zond_rpc_url" {
   type        = string
   default     = "https://qrlwallet.com/api/zond-rpc/testnet"
 }
+
+# Security: IP allowlists
+variable "allowed_ssh_ips" {
+  description = "List of IP addresses/CIDRs allowed to SSH (e.g., ['1.2.3.4/32', '5.6.7.8/32']). Empty list allows all (NOT recommended for production)."
+  type        = list(string)
+  default     = []  # Empty = allow all (for initial setup only)
+}
+
+variable "allowed_grafana_ips" {
+  description = "List of IP addresses/CIDRs allowed to access Grafana (e.g., ['1.2.3.4/32']). Empty list allows all."
+  type        = list(string)
+  default     = []  # Empty = allow all
+}

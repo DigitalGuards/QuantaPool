@@ -89,11 +89,14 @@ The QuantaPool infrastructure provides automated deployment and management of QR
 │              FIREWALL RULES                  │
 ├─────────────────────────────────────────────┤
 │  ALLOW IN:                                   │
-│  • 22/tcp (SSH) - All                       │
+│  • 22/tcp (SSH) - Trusted IPs only*         │
 │  • 30303/tcp+udp (gzond P2P) - All          │
 │  • 13000/tcp (beacon P2P) - All             │
 │  • 12000/udp (beacon P2P) - All             │
-│  • 3000/tcp (Grafana) - Monitoring only     │
+│  • 3000/tcp (Grafana) - Trusted IPs only*   │
+│                                              │
+│  *Configure via allowed_ssh_ips and         │
+│   allowed_grafana_ips Terraform variables   │
 │                                              │
 │  DENY IN:                                    │
 │  • 8545, 8551 (RPC) - External              │

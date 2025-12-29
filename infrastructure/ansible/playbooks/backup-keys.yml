@@ -9,6 +9,11 @@
     backup_dir: "/opt/quantapool/backups"
     remote_backup_path: ""  # Set to rsync destination for off-site backup
     encrypt_backup: true
+  vars_prompt:
+    - name: backup_passphrase
+      prompt: "Enter backup encryption passphrase (min 12 chars)"
+      private: yes
+      confirm: yes
 
   pre_tasks:
     - name: Create backup directory
@@ -55,8 +60,9 @@
 
     - name: Encrypt backups with GPG (if enabled)
       shell: |
-        gpg --symmetric --cipher-algo AES256 \
-            --batch --passphrase-file /etc/quantapool/backup-passphrase \
+        echo "{{ backup_passphrase }}" | gpg --symmetric --cipher-algo AES256 \
+            --batch --passphrase-fd 0 \
+            --output "{{ item }}.gpg" \
             "{{ item }}"
         rm "{{ item }}"
       loop:
@@ -64,6 +70,7 @@
         - "{{ backup_dir }}/slashing-protection-{{ backup_timestamp }}.tar.gz"
         - "{{ backup_dir }}/validator-wallet-{{ backup_timestamp }}.tar.gz"
       when: encrypt_backup
+      no_log: true  # Don't log passphrase
 
     - name: Sync to remote backup location
       synchronize:

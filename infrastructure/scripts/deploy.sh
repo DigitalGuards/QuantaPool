@@ -219,6 +219,25 @@ EOF
     cd - > /dev/null
 }
 
+# Wait for SSH connectivity on a host
+wait_for_ssh() {
+    local host="$1"
+    local max_attempts="${2:-30}"
+    local attempt=1
+
+    while [[ $attempt -le $max_attempts ]]; do
+        if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes \
+               -i "$SSH_PRIVATE_KEY" "root@$host" exit 0 2>/dev/null; then
+            return 0
+        fi
+        log "Waiting for SSH on $host (attempt $attempt/$max_attempts)..."
+        sleep 10
+        ((attempt++))
+    done
+
+    return 1
+}
+
 # Run Ansible
 run_ansible() {
     header "Provisioning Nodes with Ansible"
@@ -230,9 +249,24 @@ run_ansible() {
         error "Ansible inventory not found. Run Terraform first or create inventory.ini"
     fi
 
-    # Wait for SSH to be available
-    log "Waiting for nodes to be accessible..."
-    sleep 30
+    # Wait for SSH to be available on all nodes
+    log "Waiting for nodes to be accessible via SSH..."
+
+    # Extract hosts from inventory
+    local hosts
+    hosts=$(grep -E "^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+" inventory.ini | cut -d' ' -f1 || true)
+
+    if [[ -z "$hosts" ]]; then
+        warn "Could not parse hosts from inventory, waiting 30s..."
+        sleep 30
+    else
+        for host in $hosts; do
+            if ! wait_for_ssh "$host" 30; then
+                error "Failed to connect to $host after 30 attempts"
+            fi
+            log "SSH available on $host"
+        done
+    fi
 
     # Deploy validator nodes
     log "Deploying validator nodes..."
