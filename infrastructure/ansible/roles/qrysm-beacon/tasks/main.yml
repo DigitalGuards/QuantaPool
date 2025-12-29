@@ -1,0 +1,110 @@
+---
+# qrysm beacon node installation and configuration
+
+- name: Create qrysm user
+  user:
+    name: "{{ qrysm_user }}"
+    system: yes
+    shell: /bin/false
+    home: "{{ qrysm_beacon_data_dir }}"
+    create_home: no
+
+- name: Create qrysm directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ qrysm_user }}"
+    group: "{{ qrysm_group }}"
+    mode: '0750'
+  loop:
+    - "{{ qrysm_beacon_data_dir }}"
+    - /opt/quantapool/qrysm
+    - /var/log/qrysm
+
+- name: Install build dependencies
+  apt:
+    name:
+      - build-essential
+      - git
+      - golang-go
+      - cmake
+      - libssl-dev
+      - libtool
+      - autoconf
+      - wget
+      - curl
+    state: present
+    update_cache: yes
+  when: qrysm_version == "latest" or qrysm_version == "source"
+
+- name: Clone qrysm repository
+  git:
+    repo: "{{ qrysm_repo }}"
+    dest: /opt/quantapool/qrysm/source
+    version: "{{ qrysm_version if qrysm_version != 'latest' else 'main' }}"
+    force: yes
+  register: qrysm_clone
+  when: qrysm_version == "latest" or qrysm_version == "source"
+
+- name: Build qrysm beacon-chain from source
+  shell: |
+    cd /opt/quantapool/qrysm/source
+    go build -o {{ qrysm_beacon_binary_path }} ./cmd/beacon-chain
+  args:
+    creates: "{{ qrysm_beacon_binary_path }}"
+  environment:
+    CGO_ENABLED: "1"
+  when: qrysm_clone.changed or not ansible_check_mode
+  notify: restart qrysm-beacon
+
+- name: Set qrysm beacon binary permissions
+  file:
+    path: "{{ qrysm_beacon_binary_path }}"
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Wait for JWT secret
+  wait_for:
+    path: "{{ jwt_secret_path }}"
+    state: present
+    timeout: 30
+
+- name: Create qrysm-beacon systemd service
+  template:
+    src: qrysm-beacon.service.j2
+    dest: /etc/systemd/system/qrysm-beacon.service
+    mode: '0644'
+  notify:
+    - reload systemd
+    - restart qrysm-beacon
+
+- name: Enable and start qrysm-beacon
+  systemd:
+    name: qrysm-beacon
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Wait for qrysm-beacon to start
+  wait_for:
+    port: "{{ qrysm_grpc_gateway_port }}"
+    host: "127.0.0.1"
+    delay: 10
+    timeout: 120
+
+- name: Check beacon node health
+  uri:
+    url: "http://127.0.0.1:{{ qrysm_grpc_gateway_port }}/eth/v1/node/health"
+    method: GET
+    return_content: yes
+    status_code: [200, 206]  # 200 = synced, 206 = syncing
+  register: beacon_health
+  ignore_errors: yes
+  retries: 3
+  delay: 10
+
+- name: Display beacon sync status
+  debug:
+    msg: "Beacon node health check: {{ 'synced' if beacon_health.status == 200 else 'syncing' }}"
+  when: beacon_health is succeeded

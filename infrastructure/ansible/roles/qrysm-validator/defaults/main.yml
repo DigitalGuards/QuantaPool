@@ -1,0 +1,53 @@
+---
+# qrysm validator client defaults
+# CRITICAL: Only ONE validator instance should run at a time with the same keys
+
+# Version and source
+qrysm_version: "latest"
+qrysm_repo: "https://github.com/theQRL/qrysm"
+qrysm_validator_binary_path: "/usr/local/bin/qrysm-validator"
+
+# Data directories
+qrysm_validator_data_dir: "/var/lib/qrysm/validator"
+qrysm_user: "qrysm"
+qrysm_group: "qrysm"
+
+# Validator keys
+validator_keys_dir: "/opt/quantapool/validator-keys"
+validator_wallet_dir: "{{ qrysm_validator_data_dir }}/wallet"
+validator_wallet_password_file: "/etc/quantapool/validator-wallet-password"
+
+# Slashing protection
+slashing_protection_db: "{{ qrysm_validator_data_dir }}/slashing-protection"
+
+# Beacon node connection
+qrysm_beacon_rpc_provider: "127.0.0.1:4000"
+
+# Metrics
+qrysm_validator_metrics_enabled: true
+qrysm_validator_metrics_port: 8081
+qrysm_validator_metrics_addr: "0.0.0.0"
+
+# gRPC settings
+qrysm_validator_grpc_port: 7500
+qrysm_validator_grpc_gateway_port: 7501
+
+# Web interface (optional, for monitoring)
+qrysm_validator_web_enabled: false
+qrysm_validator_web_port: 7502
+
+# Fee recipient (receives priority fees)
+fee_recipient_address: ""
+
+# Graffiti (identifies your blocks)
+validator_graffiti: "QuantaPool"
+
+# Logging
+qrysm_log_level: "info"
+
+# Primary/Backup role
+# CRITICAL: On backup nodes, this should be false
+is_primary_validator: true
+
+# Lock file for failover safety
+validator_lock_file: "/etc/quantapool/VALIDATOR_LOCKED"

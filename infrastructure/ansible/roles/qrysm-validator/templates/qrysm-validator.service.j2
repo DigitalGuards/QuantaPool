@@ -1,0 +1,59 @@
+[Unit]
+Description=qrysm Validator Client
+Documentation=https://github.com/theQRL/qrysm
+After=network-online.target qrysm-beacon.service
+Wants=network-online.target
+Requires=qrysm-beacon.service
+
+[Service]
+Type=simple
+User={{ qrysm_user }}
+Group={{ qrysm_group }}
+Restart=always
+RestartSec=5
+TimeoutStopSec=180
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+# CRITICAL: Pre-start check to prevent running on backup nodes
+ExecStartPre=/usr/local/bin/qrysm-validator-precheck
+
+ExecStart={{ qrysm_validator_binary_path }} \
+{% if qrysm_network == "testnet" %}
+  --{{ qrysm_network }} \
+{% endif %}
+  --datadir={{ qrysm_validator_data_dir }} \
+  --beacon-rpc-provider={{ qrysm_beacon_rpc_provider }} \
+  --wallet-dir={{ validator_wallet_dir }} \
+{% if validator_wallet_password_file is defined and validator_wallet_password_file != "" %}
+  --wallet-password-file={{ validator_wallet_password_file }} \
+{% endif %}
+{% if fee_recipient_address != "" %}
+  --suggested-fee-recipient={{ fee_recipient_address }} \
+{% endif %}
+  --graffiti="{{ validator_graffiti }}" \
+{% if qrysm_validator_metrics_enabled %}
+  --monitoring-host={{ qrysm_validator_metrics_addr }} \
+  --monitoring-port={{ qrysm_validator_metrics_port }} \
+{% endif %}
+{% if qrysm_validator_web_enabled %}
+  --web \
+  --grpc-gateway-port={{ qrysm_validator_web_port }} \
+{% endif %}
+  --accept-terms-of-use \
+  --verbosity={{ qrysm_log_level }}
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=qrysm-validator
+
+# Resource limits
+LimitNOFILE=65535
+LimitNPROC=65535
+
+[Install]
+WantedBy=multi-user.target

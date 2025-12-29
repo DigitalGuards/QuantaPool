@@ -1,0 +1,180 @@
+---
+# qrysm validator client installation and configuration
+# CRITICAL: Implements slashing protection measures
+
+- name: Create qrysm user (if not exists)
+  user:
+    name: "{{ qrysm_user }}"
+    system: yes
+    shell: /bin/false
+    home: "{{ qrysm_validator_data_dir }}"
+    create_home: no
+
+- name: Create validator directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ qrysm_user }}"
+    group: "{{ qrysm_group }}"
+    mode: '0750'
+  loop:
+    - "{{ qrysm_validator_data_dir }}"
+    - "{{ validator_keys_dir }}"
+    - "{{ validator_wallet_dir }}"
+    - "{{ slashing_protection_db }}"
+    - /var/log/qrysm
+
+- name: Install build dependencies
+  apt:
+    name:
+      - build-essential
+      - git
+      - golang-go
+      - cmake
+      - libssl-dev
+    state: present
+    update_cache: yes
+  when: qrysm_version == "latest" or qrysm_version == "source"
+
+- name: Check if qrysm source exists
+  stat:
+    path: /opt/quantapool/qrysm/source
+  register: qrysm_source
+
+- name: Clone qrysm repository
+  git:
+    repo: "{{ qrysm_repo }}"
+    dest: /opt/quantapool/qrysm/source
+    version: "{{ qrysm_version if qrysm_version != 'latest' else 'main' }}"
+    force: yes
+  register: qrysm_clone
+  when: (qrysm_version == "latest" or qrysm_version == "source") and not qrysm_source.stat.exists
+
+- name: Build qrysm validator from source
+  shell: |
+    cd /opt/quantapool/qrysm/source
+    go build -o {{ qrysm_validator_binary_path }} ./cmd/validator
+  args:
+    creates: "{{ qrysm_validator_binary_path }}"
+  environment:
+    CGO_ENABLED: "1"
+  when: qrysm_clone.changed or not ansible_check_mode
+  notify: restart qrysm-validator
+
+- name: Set qrysm validator binary permissions
+  file:
+    path: "{{ qrysm_validator_binary_path }}"
+    owner: root
+    group: root
+    mode: '0755'
+
+# CRITICAL: Create lock file for backup nodes
+- name: Create validator lock file (backup nodes only)
+  copy:
+    content: |
+      # CRITICAL SAFETY FILE - DO NOT REMOVE MANUALLY
+      # This file prevents the validator service from starting.
+      #
+      # This is a BACKUP node. The validator keys are stored here
+      # but the validator service should NOT run unless a failover
+      # is performed.
+      #
+      # To perform a failover:
+      # 1. VERIFY primary validator is STOPPED (check multiple times)
+      # 2. Copy slashing protection database from primary
+      # 3. Run: rm {{ validator_lock_file }}
+      # 4. Run: systemctl start qrysm-validator
+      # 5. Monitor for successful attestations
+      #
+      # WARNING: Running two validators with the same keys = SLASHING
+      # Created: {{ ansible_date_time.iso8601 }}
+    dest: "{{ validator_lock_file }}"
+    owner: root
+    group: root
+    mode: '0444'
+  when: not is_primary_validator
+
+# Pre-start check script to prevent running locked validators
+- name: Create validator pre-start check script
+  copy:
+    content: |
+      #!/bin/bash
+      # Pre-start check for qrysm-validator
+      # Prevents starting if lock file exists
+
+      LOCK_FILE="{{ validator_lock_file }}"
+
+      if [ -f "$LOCK_FILE" ]; then
+        echo "ERROR: Validator is LOCKED. This is a backup node."
+        echo "Lock file: $LOCK_FILE"
+        echo ""
+        echo "To start the validator, you must:"
+        echo "1. VERIFY primary validator is STOPPED"
+        echo "2. Copy slashing protection from primary"
+        echo "3. Remove the lock file: rm $LOCK_FILE"
+        echo ""
+        echo "WARNING: Running two validators = SLASHING"
+        exit 1
+      fi
+
+      echo "Pre-start check passed. Starting validator..."
+      exit 0
+    dest: /usr/local/bin/qrysm-validator-precheck
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Create qrysm-validator systemd service
+  template:
+    src: qrysm-validator.service.j2
+    dest: /etc/systemd/system/qrysm-validator.service
+    mode: '0644'
+  notify:
+    - reload systemd
+    - restart qrysm-validator
+
+# Only enable and start on primary nodes
+- name: Enable and start qrysm-validator (primary only)
+  systemd:
+    name: qrysm-validator
+    enabled: "{{ is_primary_validator }}"
+    state: "{{ 'started' if is_primary_validator else 'stopped' }}"
+    daemon_reload: yes
+
+- name: Display validator status message
+  debug:
+    msg: >
+      {% if is_primary_validator %}
+      Validator service ENABLED and RUNNING on primary node.
+      {% else %}
+      Validator service DISABLED on backup node (locked).
+      Lock file: {{ validator_lock_file }}
+      {% endif %}
+
+# Create slashing protection backup script
+- name: Create slashing protection backup script
+  copy:
+    content: |
+      #!/bin/bash
+      # Backup slashing protection database
+      # Run before any failover operation
+
+      BACKUP_DIR="/opt/quantapool/backups"
+      TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+      SLASHING_DB="{{ slashing_protection_db }}"
+
+      mkdir -p "$BACKUP_DIR"
+
+      echo "Backing up slashing protection database..."
+      tar -czf "$BACKUP_DIR/slashing-protection-$TIMESTAMP.tar.gz" -C "$(dirname $SLASHING_DB)" "$(basename $SLASHING_DB)"
+
+      echo "Backup created: $BACKUP_DIR/slashing-protection-$TIMESTAMP.tar.gz"
+
+      # Keep only last 10 backups
+      ls -t "$BACKUP_DIR"/slashing-protection-*.tar.gz | tail -n +11 | xargs -r rm
+
+      echo "Done."
+    dest: /usr/local/bin/backup-slashing-protection
+    owner: root
+    group: root
+    mode: '0755'

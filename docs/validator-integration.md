@@ -259,9 +259,10 @@ RewardsOracle needs to:
 3. [x] Generate test Dilithium validator keys
 4. [x] Study deposit contract interface
 5. [x] Create check/submit deposit scripts
-6. [ ] Modify DepositPool.sol to call deposit contract
-7. [ ] Deploy updated contract
-8. [ ] Test full staking flow (requires 40,000 QRL)
+6. [x] Modify DepositPool.sol to call deposit contract
+7. [x] Deploy updated contract (V2)
+8. [x] Test full staking flow - **BLOCKED** (beacon deposit contract issue)
+9. [ ] Resolve beacon deposit contract issue with QRL team
 
 ### Phase 2: Semi-Automated
 1. Create key generation workflow
@@ -355,30 +356,57 @@ Direct deposits to the beacon deposit contract (`Z424242424242424242424242424242
 Error: Error happened while trying to execute a function inside a smart contract
 ```
 
-**Likely causes:**
-1. `deposit_data_root` mismatch - the beacon deposit contract uses a `depositroot` precompile to verify the SSZ hash
-2. Possible GenesisValidatorsRoot mismatch between staking-deposit-cli config and testnet
-3. Testnet may require specific chain configuration
+**Failed Transaction Hash:**
+```
+0xa473cab5725a997f9bb84b16e6ff2eeed306792324fa77c492f22c200479bd60
+```
 
-**Verified correct:**
-- Fork version: 0x20000089 (matches)
-- Pubkey length: 2592 bytes (correct)
-- Signature length: 4595 bytes (correct)
-- Amount: 40,000 QRL (correct)
+**Test Matrix:**
 
-**Next steps to resolve:**
-1. Verify testnet GenesisValidatorsRoot against staking-deposit-cli config
-2. Test with a local node where beacon API is accessible
-3. Contact QRL team for testnet deposit verification
+| Test Method | Result |
+|-------------|--------|
+| Official `staking-deposit-cli submit` | **FAILED** |
+| Direct script to beacon deposit contract | **FAILED** |
+| Via DepositPool.fundValidator() | **FAILED** |
+| Precompile via `zond_call` (direct RPC) | **WORKS** |
 
-The V2 DepositPool contract is ready - the issue is with the testnet beacon chain configuration.
+**Key Finding:** The `depositroot` precompile at `Z0000000000000000000000000000000000000001` returns the correct hash when called directly via `zond_call`, but the beacon deposit contract fails when it calls the same precompile internally.
+
+**Verified Correct:**
+- Fork version: `0x20000089` (matches testnet config)
+- Pubkey length: 2592 bytes (Dilithium)
+- Signature length: 4595 bytes (Dilithium)
+- Withdrawal credentials: 32 bytes
+- Amount: 40,000 QRL (40000000000000 gwei)
+- `deposit_data_root`: Matches precompile output exactly
+
+**SSZ Input Format Verified:**
+```
+pubkey (2592 bytes) || credentials (32 bytes) || amount (8 bytes LE) || signature (4595 bytes)
+Total: 7227 bytes
+Amount encoding: 40000000000000 gwei = 0x0080ca3961240000 (little-endian)
+```
+
+**Root Cause Analysis:**
+The precompile works correctly when called externally. The issue appears to be how the beacon deposit contract invokes the precompile internally, possibly:
+1. Different call context or gas forwarding when called from contract
+2. Hyperion compiler's `depositroot()` built-in encoding differs from expected
+3. Testnet beacon deposit contract deployment issue
+
+**Next Steps to Resolve:**
+1. Report to QRL team with failed transaction hash and verification data
+2. Request testnet beacon deposit contract bytecode verification
+3. Test with a local testnet where we control the deployment
+4. Compare beacon deposit contract bytecode with reference implementation
+
+The V2 DepositPool contract is ready - the issue is with the testnet beacon deposit contract, not our implementation.
 
 ## Next Steps
 
 1. [x] Modify DepositPool.sol to accept deposit data and call deposit contract
-2. [x] Deploy updated contract to testnet
-3. [ ] Acquire 40,000 testnet QRL for real staking test
-4. [ ] Test full staking flow with real beacon chain deposit
-5. [ ] Set up validator binary with generated keys
+2. [x] Deploy updated contract to testnet (V2)
+3. [x] Test full staking flow - **BLOCKED** by beacon deposit contract issue
+4. [ ] **PRIORITY:** Report issue to QRL team with transaction hash and verification data
+5. [ ] Set up validator binary with generated keys (once deposits work)
 6. [ ] Implement oracle balance reporting
 7. [ ] Test reward distribution and exchange rate updates

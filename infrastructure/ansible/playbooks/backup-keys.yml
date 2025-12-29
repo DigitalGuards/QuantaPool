@@ -1,0 +1,115 @@
+---
+# Backup validator keys and slashing protection
+# Usage: ansible-playbook playbooks/backup-keys.yml -i inventory.ini
+
+- name: Backup Validator Keys and Slashing Protection
+  hosts: primary
+  become: yes
+  vars:
+    backup_dir: "/opt/quantapool/backups"
+    remote_backup_path: ""  # Set to rsync destination for off-site backup
+    encrypt_backup: true
+  vars_prompt:
+    - name: backup_passphrase
+      prompt: "Enter backup encryption passphrase (min 12 chars)"
+      private: yes
+      confirm: yes
+
+  pre_tasks:
+    - name: Create backup directory
+      file:
+        path: "{{ backup_dir }}"
+        state: directory
+        mode: '0700'
+
+    - name: Get current timestamp
+      set_fact:
+        backup_timestamp: "{{ ansible_date_time.iso8601_basic_short }}"
+
+  tasks:
+    - name: Stop validator for consistent backup
+      systemd:
+        name: qrysm-validator
+        state: stopped
+      register: validator_was_running
+
+    - name: Wait for validator to stop
+      pause:
+        seconds: 5
+
+    - name: Backup validator keys
+      archive:
+        path: "{{ validator_keys_dir }}"
+        dest: "{{ backup_dir }}/validator-keys-{{ backup_timestamp }}.tar.gz"
+        format: gz
+        mode: '0600'
+
+    - name: Backup slashing protection database
+      archive:
+        path: "{{ slashing_protection_db }}"
+        dest: "{{ backup_dir }}/slashing-protection-{{ backup_timestamp }}.tar.gz"
+        format: gz
+        mode: '0600'
+
+    - name: Backup wallet directory
+      archive:
+        path: "{{ validator_wallet_dir }}"
+        dest: "{{ backup_dir }}/validator-wallet-{{ backup_timestamp }}.tar.gz"
+        format: gz
+        mode: '0600'
+
+    - name: Encrypt backups with GPG (if enabled)
+      shell: |
+        echo "{{ backup_passphrase }}" | gpg --symmetric --cipher-algo AES256 \
+            --batch --passphrase-fd 0 \
+            --output "{{ item }}.gpg" \
+            "{{ item }}"
+        rm "{{ item }}"
+      loop:
+        - "{{ backup_dir }}/validator-keys-{{ backup_timestamp }}.tar.gz"
+        - "{{ backup_dir }}/slashing-protection-{{ backup_timestamp }}.tar.gz"
+        - "{{ backup_dir }}/validator-wallet-{{ backup_timestamp }}.tar.gz"
+      when: encrypt_backup
+      no_log: true  # Don't log passphrase
+
+    - name: Sync to remote backup location
+      synchronize:
+        src: "{{ backup_dir }}/"
+        dest: "{{ remote_backup_path }}"
+        mode: push
+      when: remote_backup_path != ""
+
+    - name: Restart validator
+      systemd:
+        name: qrysm-validator
+        state: started
+      when: validator_was_running.changed
+
+    - name: Clean old backups (keep last 10)
+      shell: |
+        ls -t {{ backup_dir }}/validator-keys-*.tar.gz* 2>/dev/null | tail -n +11 | xargs -r rm
+        ls -t {{ backup_dir }}/slashing-protection-*.tar.gz* 2>/dev/null | tail -n +11 | xargs -r rm
+        ls -t {{ backup_dir }}/validator-wallet-*.tar.gz* 2>/dev/null | tail -n +11 | xargs -r rm
+
+  post_tasks:
+    - name: Display backup summary
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          Backup Complete
+          ═══════════════════════════════════════════════════════════
+
+          Timestamp: {{ backup_timestamp }}
+          Location: {{ backup_dir }}
+
+          Files created:
+          - validator-keys-{{ backup_timestamp }}.tar.gz{{ '.gpg' if encrypt_backup else '' }}
+          - slashing-protection-{{ backup_timestamp }}.tar.gz{{ '.gpg' if encrypt_backup else '' }}
+          - validator-wallet-{{ backup_timestamp }}.tar.gz{{ '.gpg' if encrypt_backup else '' }}
+
+          {% if remote_backup_path != '' %}
+          Remote backup: {{ remote_backup_path }}
+          {% endif %}
+
+          IMPORTANT: Store backup passphrase securely!
+          ═══════════════════════════════════════════════════════════
