@@ -109,7 +109,6 @@ class ContractMonitor {
 
     getMinimalOperatorRegistryABI() {
         return [
-            { name: 'totalValidators', type: 'function', inputs: [], outputs: [{ type: 'uint256' }], stateMutability: 'view' },
             { name: 'commissionRate', type: 'function', inputs: [], outputs: [{ type: 'uint256' }], stateMutability: 'view' },
             { name: 'getOperatorCount', type: 'function', inputs: [], outputs: [{ type: 'uint256' }], stateMutability: 'view' }
         ];
