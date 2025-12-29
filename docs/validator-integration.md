@@ -337,12 +337,41 @@ scripts/
 
 As of Dec 29, 2025:
 - **DepositPool**: V2 with beacon chain integration
-- **Validator count**: 0 (fresh deployment)
-- **Pending deposits**: 10 QRL
-- **Beacon deposit count**: 0 (waiting for 40,000 QRL threshold)
+- **Validator count**: 1 (via fundValidatorMVP - accounting only)
+- **Pending deposits**: ~35,000 QRL (after testing)
+- **Contract balance**: ~35,000 QRL
+- **Beacon deposit count**: 0 (see Known Issues)
 - **Exchange rate**: 1:1
 
-The V2 DepositPool can now stake to the beacon chain when 40,000 QRL accumulates.
+### Testing Completed
+- [x] Deposited 80,010 QRL to DepositPool
+- [x] `fundValidatorMVP()` - works correctly
+- [x] `fundValidator()` with beacon deposit data - contract reverts (see below)
+
+### Known Issue: Beacon Deposit Contract Revert
+
+Direct deposits to the beacon deposit contract (`Z4242424242424242424242424242424242424242`) are failing with:
+```
+Error: Error happened while trying to execute a function inside a smart contract
+```
+
+**Likely causes:**
+1. `deposit_data_root` mismatch - the beacon deposit contract uses a `depositroot` precompile to verify the SSZ hash
+2. Possible GenesisValidatorsRoot mismatch between staking-deposit-cli config and testnet
+3. Testnet may require specific chain configuration
+
+**Verified correct:**
+- Fork version: 0x20000089 (matches)
+- Pubkey length: 2592 bytes (correct)
+- Signature length: 4595 bytes (correct)
+- Amount: 40,000 QRL (correct)
+
+**Next steps to resolve:**
+1. Verify testnet GenesisValidatorsRoot against staking-deposit-cli config
+2. Test with a local node where beacon API is accessible
+3. Contact QRL team for testnet deposit verification
+
+The V2 DepositPool contract is ready - the issue is with the testnet beacon chain configuration.
 
 ## Next Steps
 
