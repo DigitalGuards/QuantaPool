@@ -91,9 +91,11 @@ inhibit_rules:
       alertname: ContractExporterDown
     target_match_re:
       alertname: 'ExchangeRateAnomaly|OracleReportStale|LowLiquidReserve|DepositPoolPaused|ValidatorThresholdApproaching|ValidatorThresholdReached|TVLValidatorMismatch'
+    equal: ['instance']
 
   # If node exporter is down, don't alert about system metrics
   - source_match:
       alertname: NodeExporterDown
     target_match_re:
       alertname: 'HighCPUUsage|CriticalCPUUsage|HighMemoryUsage|CriticalMemoryUsage|DiskSpaceWarning|DiskSpaceCritical|HighDiskIOWait|HighSystemLoad'
+    equal: ['instance']
