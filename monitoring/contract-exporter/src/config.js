@@ -18,7 +18,7 @@ const config = {
     METRICS_PORT: parseInt(process.env.METRICS_PORT) || 9101,
 
     // How often to scrape contract state (milliseconds)
-    SCRAPE_INTERVAL_MS: parseInt(process.env.SCRAPE_INTERVAL_MS) || 30000,
+    SCRAPE_INTERVAL_MS: parseInt(process.env.CONTRACT_SCRAPE_INTERVAL) || 30000,
 
     // Event polling interval (milliseconds) - Zond has 60s block time
     EVENT_POLL_INTERVAL_MS: parseInt(process.env.EVENT_POLL_INTERVAL_MS) || 60000,
