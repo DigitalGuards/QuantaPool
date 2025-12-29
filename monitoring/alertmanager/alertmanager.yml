@@ -1,0 +1,101 @@
+global:
+  resolve_timeout: 5m
+
+# Notification templates
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# Route tree
+route:
+  group_by: ['alertname', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: 'default'
+  routes:
+    # Critical alerts go immediately with shorter repeat
+    - match:
+        severity: critical
+      receiver: 'critical'
+      group_wait: 10s
+      repeat_interval: 1h
+
+    # Warning alerts with normal timing
+    - match:
+        severity: warning
+      receiver: 'warning'
+      repeat_interval: 4h
+
+    # Info alerts (less frequent)
+    - match:
+        severity: info
+      receiver: 'info'
+      repeat_interval: 12h
+
+# Receivers
+receivers:
+  - name: 'default'
+    discord_configs:
+      - webhook_url: 'DISCORD_WEBHOOK_URL'
+        title: '{{ template "discord.default.title" . }}'
+        message: '{{ template "discord.default.message" . }}'
+
+  - name: 'critical'
+    discord_configs:
+      - webhook_url: 'DISCORD_WEBHOOK_URL'
+        title: '{{ template "discord.critical.title" . }}'
+        message: '{{ template "discord.critical.message" . }}'
+    # Uncomment to add Telegram for critical alerts
+    # telegram_configs:
+    #   - bot_token: 'TELEGRAM_BOT_TOKEN'
+    #     chat_id: TELEGRAM_CHAT_ID
+    #     message: '{{ template "telegram.default.message" . }}'
+
+  - name: 'warning'
+    discord_configs:
+      - webhook_url: 'DISCORD_WEBHOOK_URL'
+        title: '{{ template "discord.warning.title" . }}'
+        message: '{{ template "discord.warning.message" . }}'
+
+  - name: 'info'
+    discord_configs:
+      - webhook_url: 'DISCORD_WEBHOOK_URL'
+        title: '{{ template "discord.info.title" . }}'
+        message: '{{ template "discord.info.message" . }}'
+
+# Inhibition rules - suppress dependent alerts
+inhibit_rules:
+  # If gzond is down, don't alert about sync issues
+  - source_match:
+      alertname: GzondDown
+    target_match:
+      alertname: GzondSyncing
+    equal: ['instance']
+
+  # If beacon-chain is down, don't alert about sync or validator issues
+  - source_match:
+      alertname: BeaconChainDown
+    target_match_re:
+      alertname: 'BeaconChainNotSynced|ValidatorClientDown|MissedAttestations|BeaconChainStalled'
+    equal: ['instance']
+
+  # If validator is down, don't alert about missed attestations
+  - source_match:
+      alertname: ValidatorClientDown
+    target_match:
+      alertname: MissedAttestations
+    equal: ['instance']
+
+  # If contract exporter is down, don't alert about contract metrics
+  - source_match:
+      alertname: ContractExporterDown
+    target_match_re:
+      alertname: 'ExchangeRateAnomaly|OracleReportStale|LowLiquidReserve|DepositPoolPaused|ValidatorThresholdApproaching|ValidatorThresholdReached|TVLValidatorMismatch'
+    equal: ['instance']
+
+  # If node exporter is down, don't alert about system metrics
+  - source_match:
+      alertname: NodeExporterDown
+    target_match_re:
+      alertname: 'HighCPUUsage|CriticalCPUUsage|HighMemoryUsage|CriticalMemoryUsage|DiskSpaceWarning|DiskSpaceCritical|HighDiskIOWait|HighSystemLoad'
+    equal: ['instance']

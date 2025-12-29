@@ -1,0 +1,92 @@
+groups:
+  - name: validator_alerts
+    rules:
+      # Execution client offline
+      - alert: GzondDown
+        expr: up{job="gzond"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Go-zond execution client is down"
+          description: "The go-zond execution client has been unreachable for more than 2 minutes."
+
+      # Consensus client offline
+      - alert: BeaconChainDown
+        expr: up{job="beacon-chain"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Beacon chain client is down"
+          description: "The qrysm beacon chain has been unreachable for more than 2 minutes."
+
+      # Validator client offline
+      - alert: ValidatorClientDown
+        expr: up{job="validator"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Validator client is down"
+          description: "The qrysm validator client has been unreachable for more than 2 minutes."
+
+      # Low peer count - execution
+      - alert: GzondLowPeers
+        expr: p2p_peers{job="gzond"} < 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Go-zond has low peer count"
+          description: "Go-zond has only {{ $value }} peers. Minimum recommended is 3."
+
+      # Low peer count - consensus
+      - alert: BeaconChainLowPeers
+        expr: p2p_peer_count{job="beacon-chain"} < 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Beacon chain has low peer count"
+          description: "Beacon chain has only {{ $value }} peers."
+
+      # Execution client syncing for too long
+      - alert: GzondSyncing
+        expr: ethereum_blockchain_syncing{job="gzond"} == 1
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Go-zond is still syncing"
+          description: "Go-zond has been syncing for more than 30 minutes."
+
+      # Beacon chain not synced
+      - alert: BeaconChainNotSynced
+        expr: beacon_node_synced{job="beacon-chain"} == 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Beacon chain is not synced"
+          description: "Beacon chain has been out of sync for more than 30 minutes."
+
+      # Missed attestations (adjust metric based on actual qrysm metrics)
+      - alert: MissedAttestations
+        expr: rate(validator_attestation_not_included_total{job="validator"}[1h]) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Validator missing attestations"
+          description: "Validator is missing more than 10% of attestations in the last hour."
+
+      # Head slot not advancing (chain stalled)
+      - alert: BeaconChainStalled
+        expr: increase(beacon_head_slot{job="beacon-chain"}[10m]) == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Beacon chain head slot not advancing"
+          description: "The beacon chain head slot has not advanced in the last 10 minutes. The network may be stalled or your node is disconnected."

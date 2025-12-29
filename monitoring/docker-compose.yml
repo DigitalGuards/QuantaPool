@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  # Prometheus - Time-series database and monitoring
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: quantapool-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    networks:
+      - monitoring
+    depends_on:
+      - contract-exporter
+
+  # Alertmanager - Alert routing and notifications
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    container_name: quantapool-alertmanager
+    restart: unless-stopped
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    ports:
+      - "9093:9093"
+    networks:
+      - monitoring
+
+  # Grafana - Visualization and dashboards
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: quantapool-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-http://localhost:3000}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+
+  # Contract Exporter - Custom smart contract metrics
+  contract-exporter:
+    build:
+      context: ./contract-exporter
+      dockerfile: Dockerfile
+    container_name: quantapool-contract-exporter
+    restart: unless-stopped
+    environment:
+      - ZOND_RPC_URL=${ZOND_RPC_URL:-https://qrlwallet.com/api/zond-rpc/testnet}
+      - STQRL_ADDRESS=${STQRL_ADDRESS}
+      - DEPOSIT_POOL_ADDRESS=${DEPOSIT_POOL_ADDRESS}
+      - REWARDS_ORACLE_ADDRESS=${REWARDS_ORACLE_ADDRESS}
+      - OPERATOR_REGISTRY_ADDRESS=${OPERATOR_REGISTRY_ADDRESS}
+      - CONTRACT_SCRAPE_INTERVAL=${CONTRACT_SCRAPE_INTERVAL:-30000}
+      - EVENT_POLL_INTERVAL_MS=${EVENT_POLL_INTERVAL_MS:-60000}
+      - METRICS_PORT=9101
+    ports:
+      - "9101:9101"
+    networks:
+      - monitoring
+
+volumes:
+  prometheus_data:
+  alertmanager_data:
+  grafana_data:
+
+networks:
+  monitoring:
+    driver: bridge
