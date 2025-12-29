@@ -20,9 +20,9 @@ VALIDATOR_KEYS_DIR="${VALIDATOR_KEYS_DIR:-/opt/quantapool/validator-keys}"
 VALIDATOR_WALLET_DIR="${VALIDATOR_WALLET_DIR:-/var/lib/qrysm/validator/wallet}"
 SLASHING_DB_DIR="${SLASHING_DB_DIR:-/var/lib/qrysm/validator/slashing-protection}"
 BACKUP_DIR="${BACKUP_DIR:-/opt/quantapool/backups}"
-PASSPHRASE_FILE="${PASSPHRASE_FILE:-/etc/quantapool/backup-passphrase}"
 
 REMOTE_DEST=""
+PASSPHRASE=""
 
 log() {
     echo -e "${GREEN}[$(date '+%Y-%m-%d %H:%M:%S')]${NC} $1"
@@ -44,6 +44,10 @@ while [[ $# -gt 0 ]]; do
             REMOTE_DEST="$2"
             shift 2
             ;;
+        --passphrase)
+            PASSPHRASE="$2"
+            shift 2
+            ;;
         *)
             error "Unknown option: $1"
             ;;
@@ -60,15 +64,22 @@ log "Timestamp: $TIMESTAMP"
 mkdir -p "$BACKUP_SUBDIR"
 chmod 700 "$BACKUP_SUBDIR"
 
-# Check for passphrase file
-if [[ ! -f "$PASSPHRASE_FILE" ]]; then
-    warn "No passphrase file found at $PASSPHRASE_FILE"
-    echo "Creating new passphrase file..."
-    mkdir -p "$(dirname "$PASSPHRASE_FILE")"
-    head -c 32 /dev/urandom | base64 > "$PASSPHRASE_FILE"
-    chmod 600 "$PASSPHRASE_FILE"
-    log "Generated new backup passphrase"
-    echo -e "${YELLOW}SAVE THIS PASSPHRASE SECURELY: $(cat "$PASSPHRASE_FILE")${NC}"
+# Get passphrase securely at runtime (not stored on disk)
+if [[ -z "$PASSPHRASE" ]]; then
+    echo ""
+    echo -e "${YELLOW}Enter backup encryption passphrase (min 12 characters):${NC}"
+    read -s -p "Passphrase: " PASSPHRASE
+    echo ""
+    read -s -p "Confirm passphrase: " PASSPHRASE_CONFIRM
+    echo ""
+
+    if [[ "$PASSPHRASE" != "$PASSPHRASE_CONFIRM" ]]; then
+        error "Passphrases do not match"
+    fi
+
+    if [[ ${#PASSPHRASE} -lt 12 ]]; then
+        error "Passphrase must be at least 12 characters"
+    fi
 fi
 
 # Backup validator keys
@@ -119,7 +130,7 @@ log "Creating encrypted backup archive..."
 FINAL_ARCHIVE="$BACKUP_DIR/quantapool-backup-$TIMESTAMP.tar.gz.gpg"
 
 tar -czf - -C "$BACKUP_SUBDIR" . | \
-    gpg --batch --yes --passphrase-file "$PASSPHRASE_FILE" \
+    echo "$PASSPHRASE" | gpg --batch --yes --passphrase-fd 0 \
         --symmetric --cipher-algo AES256 \
         --output "$FINAL_ARCHIVE"
 
@@ -148,4 +159,5 @@ echo ""
 echo -e "${GREEN}Backup file: $FINAL_ARCHIVE${NC}"
 echo -e "${GREEN}Size: $(du -h "$FINAL_ARCHIVE" | cut -f1)${NC}"
 echo ""
-echo -e "${YELLOW}IMPORTANT: Store the passphrase from $PASSPHRASE_FILE securely!${NC}"
+echo -e "${YELLOW}IMPORTANT: Store your passphrase securely (password manager, offline storage)!${NC}"
+echo -e "${YELLOW}The passphrase is NOT stored on this machine for security.${NC}"

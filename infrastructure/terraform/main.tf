@@ -118,12 +118,12 @@ resource "hcloud_firewall" "validator" {
   name   = "quantapool-validator-${var.environment}"
   labels = var.labels
 
-  # SSH (restricted to specific IPs in production)
+  # SSH (restricted to specific IPs - configure allowed_ssh_ips variable)
   rule {
     direction  = "in"
     protocol   = "tcp"
     port       = "22"
-    source_ips = ["0.0.0.0/0", "::/0"]
+    source_ips = length(var.allowed_ssh_ips) > 0 ? var.allowed_ssh_ips : ["0.0.0.0/0", "::/0"]
   }
 
   # gzond P2P
@@ -176,20 +176,20 @@ resource "hcloud_firewall" "monitoring" {
   name   = "quantapool-monitoring-${var.environment}"
   labels = var.labels
 
-  # SSH
+  # SSH (restricted to specific IPs - configure allowed_ssh_ips variable)
   rule {
     direction  = "in"
     protocol   = "tcp"
     port       = "22"
-    source_ips = ["0.0.0.0/0", "::/0"]
+    source_ips = length(var.allowed_ssh_ips) > 0 ? var.allowed_ssh_ips : ["0.0.0.0/0", "::/0"]
   }
 
-  # Grafana (consider restricting in production)
+  # Grafana (restricted to specific IPs - configure allowed_grafana_ips variable)
   rule {
     direction  = "in"
     protocol   = "tcp"
     port       = "3000"
-    source_ips = ["0.0.0.0/0", "::/0"]
+    source_ips = length(var.allowed_grafana_ips) > 0 ? var.allowed_grafana_ips : ["0.0.0.0/0", "::/0"]
   }
 
   # Allow all outbound

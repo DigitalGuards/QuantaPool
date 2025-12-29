@@ -26,7 +26,8 @@ gzond_bootnodes: []
 # API settings
 gzond_http_api: "eth,net,web3,txpool"
 gzond_http_addr: "127.0.0.1"
-gzond_http_corsdomain: "*"
+# SECURITY: Restrict CORS to localhost only. Add specific domains if needed.
+gzond_http_corsdomain: "localhost"
 gzond_http_vhosts: "localhost"
 
 # Auth RPC (for beacon connection)
