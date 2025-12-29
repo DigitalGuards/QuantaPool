@@ -1,0 +1,96 @@
+groups:
+  - name: contract_alerts
+    rules:
+      # Contract exporter down
+      - alert: ContractExporterDown
+        expr: up{job="contract-exporter"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Contract exporter is down"
+          description: "Unable to collect smart contract metrics for more than 2 minutes."
+
+      # Deposit pool paused
+      - alert: DepositPoolPaused
+        expr: quantapool_deposit_pool_paused == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Deposit pool is paused"
+          description: "The QuantaPool deposit pool has been paused. Deposits and withdrawals are disabled."
+
+      # Exchange rate anomaly (sudden change > 5% in 1 hour)
+      - alert: ExchangeRateAnomaly
+        expr: |
+          abs(
+            (quantapool_exchange_rate_normalized - quantapool_exchange_rate_normalized offset 1h)
+            / quantapool_exchange_rate_normalized offset 1h
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Unusual exchange rate change"
+          description: "The stQRL exchange rate changed by more than 5% in the last hour. Current rate: {{ $value }}."
+
+      # Validator creation threshold approaching
+      - alert: ValidatorThresholdApproaching
+        expr: quantapool_pending_deposits_qrl > 35000
+        for: 5m
+        labels:
+          severity: info
+        annotations:
+          summary: "Validator creation threshold approaching"
+          description: "Pending deposits: {{ $value | printf \"%.0f\" }} QRL. Threshold: 40,000 QRL. Time to prepare validator keys."
+
+      # Validator threshold reached - action required
+      - alert: ValidatorThresholdReached
+        expr: quantapool_pending_deposits_qrl >= 40000
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Validator creation threshold reached!"
+          description: "Pending deposits: {{ $value | printf \"%.0f\" }} QRL. A new validator should be created now."
+
+      # Low liquid reserve with pending withdrawals
+      - alert: LowLiquidReserve
+        expr: quantapool_liquid_reserve_qrl < 1000 and quantapool_pending_withdrawals_qrl > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low liquid reserve for withdrawals"
+          description: "Liquid reserve: {{ $value | printf \"%.0f\" }} QRL but there are pending withdrawals."
+
+      # Oracle report stale (no report for > 48h)
+      - alert: OracleReportStale
+        expr: time() - quantapool_oracle_last_report_timestamp > 172800
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Oracle report is stale"
+          description: "No oracle report in over 48 hours. Last report was at {{ $value | humanizeTimestamp }}."
+
+      # High RPC error rate
+      - alert: HighRPCErrorRate
+        expr: rate(quantapool_rpc_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High RPC error rate"
+          description: "Contract exporter experiencing high RPC error rate. Check RPC endpoint availability."
+
+      # Large TVL without corresponding validators
+      - alert: TVLValidatorMismatch
+        expr: (quantapool_total_assets_qrl / 40000) - quantapool_validator_count > 1
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "TVL exceeds validator capacity"
+          description: "Total assets suggest {{ $value | printf \"%.0f\" }} more validators should exist than currently registered."

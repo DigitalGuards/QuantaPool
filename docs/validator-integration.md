@@ -43,13 +43,13 @@ Currently `fundValidator()`:
 | gzond | Execution client | `~/zond-testnetv1/gzond` |
 | beacon-chain (qrysm) | Consensus client | `~/zond-testnetv1/beacon-chain` |
 | validator | Validator client | `~/zond-testnetv1/validator` |
-| staking-deposit-cli | Key generation | `~/zond-testnetv1/qrysm/cmd/staking-deposit-cli/` |
+| staking-deposit-cli | Key generation | `~/zond-testnetv1/qrysm/staking-deposit-cli` |
 
 ### Staking Requirements (Native Zond)
 
 - **Minimum stake**: 40,000 QRL per validator
 - **Key type**: Dilithium/ML-DSA-87 (post-quantum)
-- **Epoch**: 100 blocks (~100 minutes with 60s blocks)
+- **Epoch**: 128 slots (~128 minutes with 60s blocks)
 - **Activation delay**: Up to 1 epoch after deposit
 
 ### QuantaPool Pooling Model
@@ -63,68 +63,188 @@ QuantaPool's threshold matches the native Zond validator requirement. The protoc
 
 > **Note**: The threshold is configured via the `VALIDATOR_THRESHOLD` constant in `DepositPool.sol`.
 
-## Integration Requirements
+## Beacon Deposit Contract (VERIFIED)
 
-### 1. Beacon Deposit Contract
+### Contract Details
 
-Zond has a deposit contract similar to Ethereum's. Need to find:
-- Deposit contract address on testnet
-- Required function signature
-- Deposit data format
+| Property | Value |
+|----------|-------|
+| Address | `Z4242424242424242424242424242424242424242` |
+| Code size | 12,578 bytes |
+| Current deposit count | 0 |
+| Status | Deployed and operational |
 
-Likely location: Check `~/zond-testnetv1/go-zond/core/vm/testdata/precompiles/depositroot.json`
-
-### 2. Validator Key Generation
-
-The staking-deposit-cli generates Dilithium keys:
-
-```go
-// Key functions in qrysm/cmd/staking-deposit-cli/stakingdeposit/
-GenerateKeys(validatorStartIndex, numValidators, seed, folder, chain, keystorePassword, executionAddress)
-ExportKeystores(password, folder)
-ExportDepositDataJSON(folder)
-```
-
-**To build the CLI:**
-```bash
-cd ~/zond-testnetv1/qrysm
-go build -o staking-deposit-cli ./cmd/staking-deposit-cli
-```
-
-### 3. Modify DepositPool Contract
-
-Update `fundValidator()` to:
+### Interface (IDepositContract)
 
 ```solidity
-// Pseudocode - needs actual implementation
-function fundValidator(bytes calldata validatorPubkey) external onlyOwner {
-    require(pendingDeposits >= VALIDATOR_THRESHOLD, "Below threshold");
-
-    pendingDeposits -= VALIDATOR_THRESHOLD;
-    validatorCount++;
-
-    // Call beacon deposit contract
-    IDepositContract(DEPOSIT_CONTRACT).deposit{value: VALIDATOR_THRESHOLD}(
-        validatorPubkey,
-        withdrawalCredentials,
-        signature,
-        depositDataRoot
+interface IDepositContract {
+    event DepositEvent(
+        bytes pubkey,
+        bytes withdrawal_credentials,
+        bytes amount,
+        bytes signature,
+        bytes index
     );
 
-    emit ValidatorFunded(validatorCount, VALIDATOR_THRESHOLD);
+    function deposit(
+        bytes calldata pubkey,           // 2592 bytes - Dilithium public key
+        bytes calldata withdrawal_credentials, // 32 bytes
+        bytes calldata signature,        // 4595 bytes - Dilithium signature
+        bytes32 deposit_data_root        // SHA-256 hash of SSZ-encoded DepositData
+    ) external payable;
+
+    function get_deposit_root() external view returns (bytes32);
+    function get_deposit_count() external view returns (bytes memory);
 }
 ```
 
-### 4. Operator Key Management
+### Deposit Constraints
+
+- `pubkey.length == 2592` bytes (Dilithium public key)
+- `withdrawal_credentials.length == 32` bytes
+- `signature.length == 4595` bytes (Dilithium signature)
+- `msg.value >= 1 ether` (minimum 1 QRL)
+- `msg.value % 1 gwei == 0` (must be multiple of gwei)
+
+### ABI Location
+
+The deposit contract ABI is available at:
+- `artifacts/DepositContract.json`
+- Source: `~/zond-testnetv1/qrysm/contracts/deposit/contract.go`
+
+## Validator Key Generation (VERIFIED)
+
+### Building the CLI
+
+```bash
+cd ~/zond-testnetv1/qrysm
+go build -o staking-deposit-cli ./cmd/staking-deposit-cli/deposit/
+```
+
+Binary size: ~23MB (includes Dilithium cryptography)
+
+### CLI Commands
+
+```bash
+# Generate new validator keys with new seed
+staking-deposit-cli new-seed \
+  --num-validators 1 \
+  --folder validator_keys \
+  --chain-name testnet \
+  --execution-address Z3C6927FDD1b9C81eb73a60AbE73DeDfFC65c8943 \
+  --keystore-password-file keystore_password.txt
+
+# Use existing seed
+staking-deposit-cli existing-seed --seed <hex-seed> ...
+
+# Submit deposit (uses CLI internally)
+staking-deposit-cli submit \
+  --validator-keys-dir validator_keys \
+  --zond-seed-file seed.txt \
+  --deposit-contract Z4242424242424242424242424242424242424242 \
+  --http-web3provider https://qrlwallet.com/api/zond-rpc/testnet
+```
+
+### Generated Files
+
+```
+validator_keys/
+├── deposit_data-<timestamp>.json    # Deposit data for beacon chain
+└── keystore-m_12381_238_0_0_0-<timestamp>.json  # Encrypted validator keystore
+```
+
+### Deposit Data Format
+
+```json
+{
+  "pubkey": "0x019a424c...",           // 2592 bytes hex
+  "amount": 40000000000000,             // 40,000 QRL in gwei
+  "withdrawal_credentials": "0x0087...", // 32 bytes
+  "deposit_data_root": "0x599e358a...", // SHA-256 hash
+  "signature": "0x4041546d...",         // 4595 bytes hex
+  "fork_version": "0x20000089",         // Testnet fork version
+  "network_name": "testnet"
+}
+```
+
+## Integration Scripts
+
+### Check Deposit Contract
+
+```bash
+node scripts/check-deposit-contract.js
+```
+
+Verifies the deposit contract exists and shows current state.
+
+### Submit Deposit (Manual Testing)
+
+```bash
+# Preview only (no actual deposit)
+node scripts/submit-deposit.js
+
+# Actually submit (requires 40,000 QRL)
+node scripts/submit-deposit.js --confirm
+```
+
+## Modify DepositPool Contract
+
+### Required Changes
+
+Update `fundValidator()` to accept deposit data and call the beacon deposit contract:
+
+```solidity
+// Updated interface
+interface IDepositContract {
+    function deposit(
+        bytes calldata pubkey,
+        bytes calldata withdrawal_credentials,
+        bytes calldata signature,
+        bytes32 deposit_data_root
+    ) external payable;
+}
+
+// Contract storage
+address public constant DEPOSIT_CONTRACT = 0x4242424242424242424242424242424242424242;
+
+// Updated function
+function fundValidator(
+    bytes calldata pubkey,
+    bytes calldata withdrawal_credentials,
+    bytes calldata signature,
+    bytes32 deposit_data_root
+) external onlyOwner nonReentrant returns (uint256 validatorId) {
+    require(pendingDeposits >= VALIDATOR_THRESHOLD, "DepositPool: below threshold");
+    require(pubkey.length == 2592, "DepositPool: invalid pubkey length");
+    require(withdrawal_credentials.length == 32, "DepositPool: invalid credentials length");
+    require(signature.length == 4595, "DepositPool: invalid signature length");
+
+    pendingDeposits -= VALIDATOR_THRESHOLD;
+    validatorId = validatorCount++;
+
+    // Call beacon deposit contract
+    IDepositContract(DEPOSIT_CONTRACT).deposit{value: VALIDATOR_THRESHOLD}(
+        pubkey,
+        withdrawal_credentials,
+        signature,
+        deposit_data_root
+    );
+
+    emit ValidatorFunded(validatorId, VALIDATOR_THRESHOLD);
+    return validatorId;
+}
+```
+
+### Operator Key Management
 
 Options:
-1. **Pre-registered keys**: Operator adds keys to registry before needed
+1. **Pre-registered keys**: Operator adds deposit data to registry before needed
 2. **On-demand generation**: Generate keys when threshold reached (centralization risk)
 3. **Distributed operators**: Multiple operators with their own keys (Rocket Pool model)
 
 Current OperatorRegistry has `addValidator(bytes pubkey)` but no keys registered.
 
-### 5. Oracle Integration
+### Oracle Integration
 
 RewardsOracle needs to:
 1. Query beacon chain for validator balances
@@ -133,15 +253,18 @@ RewardsOracle needs to:
 
 ## Implementation Roadmap
 
-### Phase 1: Manual Staking (Testnet)
-1. Build staking-deposit-cli
-2. Generate test validator keys manually
-3. Register keys in OperatorRegistry
-4. Modify `fundValidator()` to use keys
-5. Run validator binary with generated keys
+### Phase 1: Manual Staking (Testnet) ← Current
+1. [x] Build staking-deposit-cli from qrysm source
+2. [x] Find Zond testnet deposit contract address
+3. [x] Generate test Dilithium validator keys
+4. [x] Study deposit contract interface
+5. [x] Create check/submit deposit scripts
+6. [ ] Modify DepositPool.sol to call deposit contract
+7. [ ] Deploy updated contract
+8. [ ] Test full staking flow (requires 40,000 QRL)
 
 ### Phase 2: Semi-Automated
-1. Create key generation script
+1. Create key generation workflow
 2. Automate deposit contract calls
 3. Set up oracle to report balances
 4. Test full cycle: deposit → validator → rewards
@@ -160,26 +283,7 @@ RewardsOracle needs to:
 - Qrysm repo: https://github.com/theQRL/qrysm
 - Go-zond repo: https://github.com/theQRL/go-zond
 
-### Staking Deposit CLI Package
-- Go docs: https://pkg.go.dev/github.com/theQRL/qrysm/v4/cmd/staking-deposit-cli/stakingdeposit
-
-### Key Functions
-```go
-// Generate validator keys from seed
-NewCredentialsFromSeed(seed, numKeys, amounts, chainSettings, startIndex, withdrawalAddress)
-
-// Export encrypted keystores
-ExportKeystores(password, folder)
-
-// Generate deposit data JSON
-ExportDepositDataJSON(folder)
-
-// Verify generated files
-VerifyDepositDataJSON(folder, credentials)
-VerifyKeystores(folders, password)
-```
-
-## Files on This Machine
+### Local Files
 
 ```
 ~/zond-testnetv1/
@@ -188,35 +292,93 @@ VerifyKeystores(folders, password)
 ├── validator             # Validator client binary
 ├── qrysmctl              # Qrysm control utility
 ├── qrysm/                # Qrysm source code
-│   └── cmd/
-│       └── staking-deposit-cli/  # Key generation CLI source
+│   ├── staking-deposit-cli  # Built CLI binary (23MB)
+│   ├── cmd/staking-deposit-cli/  # CLI source
+│   └── contracts/deposit/   # Deposit contract ABI & source
 ├── go-zond/              # Go-zond source code
 ├── gzonddata/            # Execution layer data
 ├── beacondata/           # Consensus layer data
 ├── genesis.ssz           # Genesis state
-└── config.yml            # Network config
+└── config.yml            # Network config (DEPOSIT_CONTRACT_ADDRESS)
 ```
+
+### QuantaPool Scripts
+
+```
+scripts/
+├── check-deposit-contract.js   # Verify beacon deposit contract status
+├── submit-deposit.js           # Submit deposit to beacon chain (direct)
+├── fund-validator.js           # Fund validator via DepositPool
+├── upgrade-deposit-pool.js     # Upgrade DepositPool contract
+└── integration-test.js         # Full integration test suite
+```
+
+## Deployment History
+
+### V2 - Beacon Chain Integration (Dec 29, 2025)
+
+| Contract | Address |
+|----------|---------|
+| DepositPool (v2) | `Z9E800e8271df4Ac91334C65641405b04584B57DC` |
+| stQRL | `Z844A6eB87927780E938908743eA24a56A220Efe8` |
+| RewardsOracle | `Z541b1f2c501956BCd7a4a6913180b2Fc27BdE17E` |
+| OperatorRegistry | `ZD370e9505D265381e839f8289f46D02815d0FF95` |
+
+**Changes in V2:**
+- Added `fundValidator(pubkey, withdrawal_credentials, signature, deposit_data_root)` for real beacon deposits
+- Added `fundValidatorMVP()` for accounting-only testing
+- Added `DEPOSIT_CONTRACT` constant pointing to beacon deposit contract
+- Added input validation for Dilithium key lengths (2592 bytes pubkey, 4595 bytes signature)
+
+### V1 - MVP (Dec 28, 2025)
+- DepositPool (v1): `Z3C6927FDD1b9C81eb73a60AbE73DeDfFC65c8943` (deprecated)
 
 ## Current Testnet State
 
-As of last test run:
-- **Validator count**: 1 (accounting only, not real)
-- **Total stQRL**: 40,000
-- **Total assets**: 40,000 QRL
+As of Dec 29, 2025:
+- **DepositPool**: V2 with beacon chain integration
+- **Validator count**: 1 (via fundValidatorMVP - accounting only)
+- **Pending deposits**: ~35,000 QRL (after testing)
+- **Contract balance**: ~35,000 QRL
+- **Beacon deposit count**: 0 (see Known Issues)
 - **Exchange rate**: 1:1
-- **Pending deposits**: 0
-- **Liquid reserve**: 0
 
-The 40,000 QRL is in the DepositPool contract but not actually staked on beacon chain.
+### Testing Completed
+- [x] Deposited 80,010 QRL to DepositPool
+- [x] `fundValidatorMVP()` - works correctly
+- [x] `fundValidator()` with beacon deposit data - contract reverts (see below)
+
+### Known Issue: Beacon Deposit Contract Revert
+
+Direct deposits to the beacon deposit contract (`Z4242424242424242424242424242424242424242`) are failing with:
+```
+Error: Error happened while trying to execute a function inside a smart contract
+```
+
+**Likely causes:**
+1. `deposit_data_root` mismatch - the beacon deposit contract uses a `depositroot` precompile to verify the SSZ hash
+2. Possible GenesisValidatorsRoot mismatch between staking-deposit-cli config and testnet
+3. Testnet may require specific chain configuration
+
+**Verified correct:**
+- Fork version: 0x20000089 (matches)
+- Pubkey length: 2592 bytes (correct)
+- Signature length: 4595 bytes (correct)
+- Amount: 40,000 QRL (correct)
+
+**Next steps to resolve:**
+1. Verify testnet GenesisValidatorsRoot against staking-deposit-cli config
+2. Test with a local node where beacon API is accessible
+3. Contact QRL team for testnet deposit verification
+
+The V2 DepositPool contract is ready - the issue is with the testnet beacon chain configuration.
 
 ## Next Steps
 
-1. [ ] Build staking-deposit-cli from qrysm source
-2. [ ] Find Zond testnet deposit contract address
-3. [ ] Generate test Dilithium validator keys
-4. [ ] Study deposit contract interface
-5. [ ] Modify DepositPool.sol to call deposit contract
-6. [ ] Deploy updated contract
-7. [ ] Test full staking flow
-8. [ ] Set up validator binary with generated keys
-9. [ ] Implement oracle balance reporting
+1. [x] Modify DepositPool.sol to accept deposit data and call deposit contract
+2. [x] Deploy updated contract to testnet
+3. [ ] Acquire 40,000 testnet QRL for real staking test
+4. [ ] Test full staking flow with real beacon chain deposit
+5. [ ] Set up validator binary with generated keys
+6. [ ] Implement oracle balance reporting
+7. [ ] Test reward distribution and exchange rate updates
