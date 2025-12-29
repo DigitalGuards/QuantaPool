@@ -47,7 +47,7 @@ Currently `fundValidator()`:
 
 ### Staking Requirements (Native Zond)
 
-- **Minimum stake**: 10,000 QRL per validator
+- **Minimum stake**: 40,000 QRL per validator
 - **Key type**: Dilithium/ML-DSA-87 (post-quantum)
 - **Epoch**: 100 blocks (~100 minutes with 60s blocks)
 - **Activation delay**: Up to 1 epoch after deposit
@@ -55,9 +55,13 @@ Currently `fundValidator()`:
 ### QuantaPool Pooling Model
 
 QuantaPool pools user deposits to create validators:
-- **Threshold**: 40,000 QRL (aggregated from multiple users)
+- **Threshold**: 40,000 QRL (matches native Zond requirement)
 - **User gets**: stQRL tokens representing their share
 - **Protocol handles**: Validator creation, key management, rewards
+
+QuantaPool's threshold matches the native Zond validator requirement. The protocol aggregates deposits from multiple users until the 40,000 QRL threshold is reached, then creates a validator on behalf of all depositors.
+
+> **Note**: The threshold is configured via the `VALIDATOR_THRESHOLD` constant in `DepositPool.sol`.
 
 ## Integration Requirements
 
