@@ -5,3 +5,8 @@ node_modules/
 artifacts/
 ccagent
 webapp/node_modules
+
+# Validator keys and secrets (never commit!)
+validator_keys/
+keystore_password.txt
+*.swp

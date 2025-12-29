@@ -18,6 +18,16 @@ interface IstQRL {
     function totalAssets() external view returns (uint256);
 }
 
+/// @notice Zond beacon chain deposit contract interface
+interface IDepositContract {
+    function deposit(
+        bytes calldata pubkey,
+        bytes calldata withdrawal_credentials,
+        bytes calldata signature,
+        bytes32 deposit_data_root
+    ) external payable;
+}
+
 contract DepositPool {
     // =============================================================
     //                          CONSTANTS
@@ -25,6 +35,15 @@ contract DepositPool {
 
     /// @notice Amount of QRL needed to create one validator
     uint256 public constant VALIDATOR_THRESHOLD = 40_000 ether;
+
+    /// @notice Zond beacon chain deposit contract address
+    address public constant DEPOSIT_CONTRACT = 0x4242424242424242424242424242424242424242;
+
+    /// @notice Expected Dilithium pubkey length (bytes)
+    uint256 private constant PUBKEY_LENGTH = 2592;
+
+    /// @notice Expected Dilithium signature length (bytes)
+    uint256 private constant SIGNATURE_LENGTH = 4595;
 
     // =============================================================
     //                          STORAGE
@@ -75,6 +94,7 @@ contract DepositPool {
     event WithdrawalRequested(address indexed user, uint256 shares, uint256 assets);
     event WithdrawalClaimed(address indexed user, uint256 assets);
     event ValidatorFunded(uint256 indexed validatorId, uint256 amount);
+    event ValidatorStaked(uint256 indexed validatorId, bytes pubkey);
     event LiquidityAdded(uint256 amount);
     event MinDepositUpdated(uint256 newMinDeposit);
     event Paused(address account);
@@ -256,17 +276,48 @@ contract DepositPool {
     //                     OPERATOR FUNCTIONS
     // =============================================================
 
-    /// @notice Fund a validator (called when threshold reached)
-    /// @dev In MVP, this is called manually by owner. Later, automated.
-    function fundValidator() external onlyOwner nonReentrant returns (uint256 validatorId) {
+    /// @notice Fund a validator with beacon chain deposit
+    /// @dev Calls the Zond beacon deposit contract with validator keys
+    /// @param pubkey Dilithium public key (2592 bytes)
+    /// @param withdrawal_credentials Withdrawal credentials (32 bytes)
+    /// @param signature Dilithium signature (4595 bytes)
+    /// @param deposit_data_root SHA-256 hash of SSZ-encoded deposit data
+    function fundValidator(
+        bytes calldata pubkey,
+        bytes calldata withdrawal_credentials,
+        bytes calldata signature,
+        bytes32 deposit_data_root
+    ) external onlyOwner nonReentrant returns (uint256 validatorId) {
+        require(pendingDeposits >= VALIDATOR_THRESHOLD, "DepositPool: below threshold");
+        require(pubkey.length == PUBKEY_LENGTH, "DepositPool: invalid pubkey length");
+        require(withdrawal_credentials.length == 32, "DepositPool: invalid credentials length");
+        require(signature.length == SIGNATURE_LENGTH, "DepositPool: invalid signature length");
+
+        pendingDeposits -= VALIDATOR_THRESHOLD;
+        validatorId = validatorCount++;
+
+        // Call beacon deposit contract
+        IDepositContract(DEPOSIT_CONTRACT).deposit{value: VALIDATOR_THRESHOLD}(
+            pubkey,
+            withdrawal_credentials,
+            signature,
+            deposit_data_root
+        );
+
+        emit ValidatorStaked(validatorId, pubkey);
+
+        return validatorId;
+    }
+
+    /// @notice Fund a validator (accounting only, no beacon deposit)
+    /// @dev For MVP testing - funds stay in contract
+    function fundValidatorMVP() external onlyOwner nonReentrant returns (uint256 validatorId) {
         require(pendingDeposits >= VALIDATOR_THRESHOLD, "DepositPool: below threshold");
 
         pendingDeposits -= VALIDATOR_THRESHOLD;
         validatorId = validatorCount++;
 
-        // In production, this would transfer to validator deposit contract
-        // For MVP, funds stay in this contract
-
+        // Funds stay in this contract for MVP testing
         emit ValidatorFunded(validatorId, VALIDATOR_THRESHOLD);
 
         return validatorId;
