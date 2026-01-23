@@ -366,9 +366,8 @@ contract DepositPoolV2 {
         requestBlock = request.requestBlock;
 
         uint256 unlockBlock = request.requestBlock + WITHDRAWAL_DELAY;
-        canClaim =
-            !request.claimed && request.shares > 0 && block.number >= unlockBlock
-                && withdrawalReserve >= currentQRLValue;
+        canClaim = !request.claimed && request.shares > 0 && block.number >= unlockBlock
+            && withdrawalReserve >= currentQRLValue;
 
         blocksRemaining = block.number >= unlockBlock ? 0 : unlockBlock - block.number;
     }
