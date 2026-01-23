@@ -334,31 +334,31 @@ contract DepositPoolV2Test is Test {
 
     function test_CanFundValidator() public {
         // Fund users with enough ETH for this test
-        vm.deal(user1, 5000 ether);
-        vm.deal(user2, 5000 ether);
+        vm.deal(user1, 20000 ether);
+        vm.deal(user2, 20000 ether);
 
         // Deposit less than threshold
         vm.prank(user1);
-        pool.deposit{value: 5000 ether}();
+        pool.deposit{value: 20000 ether}();
 
         (bool possible, uint256 buffered) = pool.canFundValidator();
         assertFalse(possible);
-        assertEq(buffered, 5000 ether);
+        assertEq(buffered, 20000 ether);
 
         // Deposit more to reach threshold
         vm.prank(user2);
-        pool.deposit{value: 5000 ether}();
+        pool.deposit{value: 20000 ether}();
 
         (possible, buffered) = pool.canFundValidator();
         assertTrue(possible);
-        assertEq(buffered, 10000 ether);
+        assertEq(buffered, 40000 ether);
     }
 
     function test_FundValidatorMVP() public {
-        // Deposit enough for validator
-        vm.deal(user1, 10000 ether);
+        // Deposit enough for validator (40,000 QRL per Zond mainnet config)
+        vm.deal(user1, 40000 ether);
         vm.prank(user1);
-        pool.deposit{value: 10000 ether}();
+        pool.deposit{value: 40000 ether}();
 
         uint256 validatorId = pool.fundValidatorMVP();
 
@@ -415,9 +415,9 @@ contract DepositPoolV2Test is Test {
     // =========================================================================
 
     function test_OnlyOwnerCanFundValidator() public {
-        vm.deal(user1, 10000 ether);
+        vm.deal(user1, 40000 ether);
         vm.prank(user1);
-        pool.deposit{value: 10000 ether}();
+        pool.deposit{value: 40000 ether}();
 
         vm.prank(user1);
         vm.expectRevert(DepositPoolV2.NotOwner.selector);
@@ -603,12 +603,12 @@ contract DepositPoolV2Test is Test {
     }
 
     function test_FundValidatorMVP_EmitsEvent() public {
-        vm.deal(user1, 10000 ether);
+        vm.deal(user1, 40000 ether);
         vm.prank(user1);
-        pool.deposit{value: 10000 ether}();
+        pool.deposit{value: 40000 ether}();
 
         vm.expectEmit(true, false, false, true);
-        emit ValidatorFunded(0, "", 10000 ether);
+        emit ValidatorFunded(0, "", 40000 ether);
         pool.fundValidatorMVP();
     }
 
