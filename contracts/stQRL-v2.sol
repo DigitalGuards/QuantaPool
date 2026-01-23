@@ -38,6 +38,13 @@ contract stQRLv2 {
     /// @notice Initial shares per QRL (1:1 at launch)
     uint256 private constant INITIAL_SHARES_PER_QRL = 1;
 
+    /// @notice Virtual shares offset to prevent first depositor attack (donation attack)
+    /// @dev Adding virtual shares/assets creates a floor that makes share inflation attacks
+    ///      economically unviable. With 1e3 virtual offset, an attacker would need to
+    ///      donate ~1000x more than they could steal. See OpenZeppelin ERC4626 for details.
+    uint256 private constant VIRTUAL_SHARES = 1e3;
+    uint256 private constant VIRTUAL_ASSETS = 1e3;
+
     // =============================================================
     //                       SHARE STORAGE
     // =============================================================
@@ -251,33 +258,28 @@ contract stQRLv2 {
 
     /**
      * @notice Convert a QRL amount to shares
-     * @dev shares = qrlAmount * totalShares / totalPooledQRL
+     * @dev shares = qrlAmount * (totalShares + VIRTUAL_SHARES) / (totalPooledQRL + VIRTUAL_ASSETS)
+     *      Virtual offsets prevent first depositor inflation attacks.
      * @param qrlAmount The QRL amount to convert
      * @return The equivalent number of shares
      */
     function getSharesByPooledQRL(uint256 qrlAmount) public view returns (uint256) {
-        // If no shares exist yet, 1:1 ratio
-        if (_totalShares == 0) {
-            return qrlAmount * INITIAL_SHARES_PER_QRL;
-        }
-        // If no pooled QRL (shouldn't happen with shares > 0, but be safe)
-        if (_totalPooledQRL == 0) {
-            return qrlAmount * INITIAL_SHARES_PER_QRL;
-        }
-        return (qrlAmount * _totalShares) / _totalPooledQRL;
+        // Use virtual shares/assets to prevent donation attacks
+        // Even with 0 real shares/assets, the virtual offset ensures fair pricing
+        return (qrlAmount * (_totalShares + VIRTUAL_SHARES)) / (_totalPooledQRL + VIRTUAL_ASSETS);
     }
 
     /**
      * @notice Convert shares to QRL amount
-     * @dev qrlAmount = shares * totalPooledQRL / totalShares
+     * @dev qrlAmount = shares * (totalPooledQRL + VIRTUAL_ASSETS) / (totalShares + VIRTUAL_SHARES)
+     *      Virtual offsets prevent first depositor inflation attacks.
      * @param sharesAmount The shares to convert
      * @return The equivalent QRL amount
      */
     function getPooledQRLByShares(uint256 sharesAmount) public view returns (uint256) {
-        if (_totalShares == 0) {
-            return 0;
-        }
-        return (sharesAmount * _totalPooledQRL) / _totalShares;
+        // Use virtual shares/assets to prevent donation attacks
+        // This ensures consistent pricing with getSharesByPooledQRL
+        return (sharesAmount * (_totalPooledQRL + VIRTUAL_ASSETS)) / (_totalShares + VIRTUAL_SHARES);
     }
 
     /**
@@ -291,14 +293,12 @@ contract stQRLv2 {
 
     /**
      * @notice Returns the current exchange rate (QRL per share, scaled by 1e18)
-     * @dev Useful for UI display and calculations
+     * @dev Useful for UI display and calculations. Uses virtual offsets for consistency.
      * @return Exchange rate (1e18 = 1:1)
      */
     function getExchangeRate() external view returns (uint256) {
-        if (_totalShares == 0) {
-            return 1e18;
-        }
-        return (_totalPooledQRL * 1e18) / _totalShares;
+        // Use virtual offsets for consistency with share conversion functions
+        return ((_totalPooledQRL + VIRTUAL_ASSETS) * 1e18) / (_totalShares + VIRTUAL_SHARES);
     }
 
     // =============================================================
