@@ -162,16 +162,18 @@ contract DepositPoolV2Test is Test {
 
         // Request withdrawal
         vm.prank(user1);
-        uint256 qrlAmount = pool.requestWithdrawal(50 ether);
+        (uint256 requestId, uint256 qrlAmount) = pool.requestWithdrawal(50 ether);
 
+        assertEq(requestId, 0);
         assertEq(qrlAmount, 50 ether);
 
-        (uint256 shares, uint256 qrl, uint256 requestBlock, bool canClaim,) = pool.getWithdrawalRequest(user1);
+        (uint256 shares, uint256 qrl, uint256 requestBlock, bool canClaim,, bool claimed) = pool.getWithdrawalRequest(user1, 0);
 
         assertEq(shares, 50 ether);
         assertEq(qrl, 50 ether);
         assertEq(requestBlock, block.number);
         assertFalse(canClaim); // Not enough time passed
+        assertFalse(claimed);
     }
 
     function test_ClaimWithdrawal() public {
@@ -235,12 +237,12 @@ contract DepositPoolV2Test is Test {
         pool.deposit{value: 100 ether}();
 
         vm.prank(user1);
-        pool.requestWithdrawal(50 ether);
+        (uint256 requestId,) = pool.requestWithdrawal(50 ether);
 
         assertEq(pool.totalWithdrawalShares(), 50 ether);
 
         vm.prank(user1);
-        pool.cancelWithdrawal();
+        pool.cancelWithdrawal(requestId);
 
         assertEq(pool.totalWithdrawalShares(), 0);
     }
@@ -264,7 +266,7 @@ contract DepositPoolV2Test is Test {
 
         // Request withdrawal of all shares (100 shares = ~110 QRL now)
         vm.prank(user1);
-        uint256 qrlAmount = pool.requestWithdrawal(100 ether);
+        (, uint256 qrlAmount) = pool.requestWithdrawal(100 ether);
 
         // Approx due to virtual shares
         assertApproxEqRel(qrlAmount, 110 ether, 1e14);
@@ -295,9 +297,9 @@ contract DepositPoolV2Test is Test {
         // Fund withdrawal reserve
         pool.fundWithdrawalReserve{value: 100 ether}();
 
-        // Simulate slashing: reduce balance by sending QRL out via emergencyWithdraw
-        // This reduces the pool's actual balance, which syncRewards will detect
-        pool.emergencyWithdraw(address(0xdead), 10 ether);
+        // Simulate slashing by directly reducing the contract balance
+        // In real scenarios, this happens through validator slashing on the beacon chain
+        vm.deal(address(pool), 190 ether); // Was 200 (100 pooled + 100 reserve), now 190 (90 pooled + 100 reserve)
 
         // Sync to detect the "slashing"
         pool.syncRewards();
@@ -307,7 +309,7 @@ contract DepositPoolV2Test is Test {
 
         // Request withdrawal of all shares
         vm.prank(user1);
-        uint256 qrlAmount = pool.requestWithdrawal(100 ether);
+        (, uint256 qrlAmount) = pool.requestWithdrawal(100 ether);
 
         // Should only get ~90 QRL (slashed amount) (approx due to virtual shares)
         assertApproxEqRel(qrlAmount, 90 ether, 1e14);
@@ -317,8 +319,8 @@ contract DepositPoolV2Test is Test {
         vm.prank(user1);
         pool.deposit{value: 100 ether}();
 
-        // Simulate slashing by removing QRL
-        pool.emergencyWithdraw(address(0xdead), 10 ether);
+        // Simulate slashing by directly reducing the contract balance
+        vm.deal(address(pool), 90 ether); // Was 100, now 90
 
         vm.expectEmit(true, true, true, true);
         emit SlashingDetected(10 ether, 90 ether, block.number);
@@ -514,16 +516,25 @@ contract DepositPoolV2Test is Test {
         pool.requestWithdrawal(150 ether);
     }
 
-    function test_RequestWithdrawal_AlreadyPending_Reverts() public {
+    function test_MultipleWithdrawalRequests() public {
+        // Multiple withdrawal requests are now allowed
         vm.prank(user1);
         pool.deposit{value: 100 ether}();
 
         vm.prank(user1);
-        pool.requestWithdrawal(50 ether);
+        (uint256 requestId1,) = pool.requestWithdrawal(50 ether);
 
         vm.prank(user1);
-        vm.expectRevert(DepositPoolV2.WithdrawalPending.selector);
-        pool.requestWithdrawal(25 ether);
+        (uint256 requestId2,) = pool.requestWithdrawal(25 ether);
+
+        assertEq(requestId1, 0);
+        assertEq(requestId2, 1);
+        assertEq(pool.totalWithdrawalShares(), 75 ether);
+
+        // Verify both requests exist
+        (uint256 total, uint256 pending) = pool.getWithdrawalRequestCount(user1);
+        assertEq(total, 2);
+        assertEq(pending, 2);
     }
 
     function test_RequestWithdrawal_WhenPaused_Reverts() public {
@@ -572,8 +583,8 @@ contract DepositPoolV2Test is Test {
 
     function test_CancelWithdrawal_NoRequest_Reverts() public {
         vm.prank(user1);
-        vm.expectRevert(DepositPoolV2.NoWithdrawalPending.selector);
-        pool.cancelWithdrawal();
+        vm.expectRevert(DepositPoolV2.InvalidWithdrawalIndex.selector);
+        pool.cancelWithdrawal(0);
     }
 
     // =========================================================================
@@ -623,6 +634,12 @@ contract DepositPoolV2Test is Test {
     function test_SetStQRL_NotOwner_Reverts() public {
         vm.prank(user1);
         vm.expectRevert(DepositPoolV2.NotOwner.selector);
+        pool.setStQRL(address(0x123));
+    }
+
+    function test_SetStQRL_AlreadySet_Reverts() public {
+        // stQRL is already set in setUp()
+        vm.expectRevert(DepositPoolV2.StQRLAlreadySet.selector);
         pool.setStQRL(address(0x123));
     }
 
@@ -691,25 +708,53 @@ contract DepositPoolV2Test is Test {
         vm.prank(user1);
         pool.deposit{value: 100 ether}();
 
+        // Send some excess funds to the contract (stuck tokens)
+        vm.deal(address(pool), 110 ether); // 100 pooled + 10 excess
+
         address recipient = address(0x999);
         uint256 balanceBefore = recipient.balance;
 
+        // Can only withdraw excess (10 ether)
         pool.emergencyWithdraw(recipient, 10 ether);
 
         assertEq(recipient.balance - balanceBefore, 10 ether);
+    }
+
+    function test_EmergencyWithdraw_ExceedsRecoverable_Reverts() public {
+        vm.prank(user1);
+        pool.deposit{value: 100 ether}();
+
+        // No excess funds - balance equals pooled QRL
+        // Try to withdraw pool funds
+        vm.expectRevert(DepositPoolV2.ExceedsRecoverableAmount.selector);
+        pool.emergencyWithdraw(address(0x999), 10 ether);
     }
 
     function test_EmergencyWithdraw_ZeroAddress_Reverts() public {
         vm.prank(user1);
         pool.deposit{value: 100 ether}();
 
+        // Add excess funds
+        vm.deal(address(pool), 110 ether);
+
         vm.expectRevert(DepositPoolV2.ZeroAddress.selector);
         pool.emergencyWithdraw(address(0), 10 ether);
+    }
+
+    function test_EmergencyWithdraw_ZeroAmount_Reverts() public {
+        vm.prank(user1);
+        pool.deposit{value: 100 ether}();
+
+        vm.expectRevert(DepositPoolV2.ZeroAmount.selector);
+        pool.emergencyWithdraw(address(0x999), 0);
     }
 
     function test_EmergencyWithdraw_NotOwner_Reverts() public {
         vm.prank(user1);
         pool.deposit{value: 100 ether}();
+
+        // Add excess funds
+        vm.deal(address(pool), 110 ether);
 
         vm.prank(user1);
         vm.expectRevert(DepositPoolV2.NotOwner.selector);

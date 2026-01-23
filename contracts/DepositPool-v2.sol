@@ -115,8 +115,11 @@ contract DepositPoolV2 {
         bool claimed; // Whether claimed
     }
 
-    /// @notice Withdrawal requests by user
-    mapping(address => WithdrawalRequest) public withdrawalRequests;
+    /// @notice Withdrawal requests by user (supports multiple requests via array)
+    mapping(address => WithdrawalRequest[]) public withdrawalRequests;
+
+    /// @notice Next withdrawal request ID to process for each user
+    mapping(address => uint256) public nextWithdrawalIndex;
 
     /// @notice Total shares locked in withdrawal queue
     uint256 public totalWithdrawalShares;
@@ -154,10 +157,13 @@ contract DepositPoolV2 {
     event ValidatorFunded(uint256 indexed validatorId, bytes pubkey, uint256 amount);
 
     event WithdrawalReserveFunded(uint256 amount);
+    event WithdrawalCancelled(address indexed user, uint256 indexed requestId, uint256 shares);
     event MinDepositUpdated(uint256 newMinDeposit);
     event Paused(address account);
     event Unpaused(address account);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event StQRLSet(address indexed stQRL);
+    event EmergencyWithdrawal(address indexed to, uint256 amount);
 
     // =============================================================
     //                          ERRORS
@@ -170,7 +176,6 @@ contract DepositPoolV2 {
     error ZeroAmount();
     error BelowMinDeposit();
     error InsufficientShares();
-    error WithdrawalPending();
     error NoWithdrawalPending();
     error WithdrawalNotReady();
     error InsufficientReserve();
@@ -181,6 +186,9 @@ contract DepositPoolV2 {
     error InvalidWithdrawalCredentials();
     error TransferFailed();
     error StQRLNotSet();
+    error StQRLAlreadySet();
+    error InvalidWithdrawalIndex();
+    error ExceedsRecoverableAmount();
 
     // =============================================================
     //                         MODIFIERS
@@ -265,14 +273,14 @@ contract DepositPoolV2 {
 
     /**
      * @notice Request withdrawal of stQRL
-     * @dev Locks shares until claim is processed
+     * @dev Users can have multiple pending withdrawal requests
      * @param shares Amount of shares to withdraw
+     * @return requestId The ID of this withdrawal request
      * @return qrlAmount Current QRL value of shares (may change before claim)
      */
-    function requestWithdrawal(uint256 shares) external nonReentrant whenNotPaused returns (uint256 qrlAmount) {
+    function requestWithdrawal(uint256 shares) external nonReentrant whenNotPaused returns (uint256 requestId, uint256 qrlAmount) {
         if (shares == 0) revert ZeroAmount();
         if (stQRL.sharesOf(msg.sender) < shares) revert InsufficientShares();
-        if (withdrawalRequests[msg.sender].shares > 0) revert WithdrawalPending();
 
         // Sync rewards first
         _syncRewards();
@@ -280,24 +288,29 @@ contract DepositPoolV2 {
         // Calculate current QRL value
         qrlAmount = stQRL.getPooledQRLByShares(shares);
 
-        // Create withdrawal request
-        withdrawalRequests[msg.sender] =
-            WithdrawalRequest({shares: shares, qrlAmount: qrlAmount, requestBlock: block.number, claimed: false});
+        // Create withdrawal request (push to array for multiple requests support)
+        requestId = withdrawalRequests[msg.sender].length;
+        withdrawalRequests[msg.sender].push(
+            WithdrawalRequest({shares: shares, qrlAmount: qrlAmount, requestBlock: block.number, claimed: false})
+        );
 
         totalWithdrawalShares += shares;
 
         emit WithdrawalRequested(msg.sender, shares, qrlAmount, block.number);
-        return qrlAmount;
+        return (requestId, qrlAmount);
     }
 
     /**
-     * @notice Claim a pending withdrawal
+     * @notice Claim the next pending withdrawal (FIFO order)
      * @dev Burns shares and transfers QRL to user
      *      Uses actual burned QRL value for all accounting to prevent discrepancies.
      * @return qrlAmount Amount of QRL received
      */
     function claimWithdrawal() external nonReentrant returns (uint256 qrlAmount) {
-        WithdrawalRequest storage request = withdrawalRequests[msg.sender];
+        uint256 requestIndex = nextWithdrawalIndex[msg.sender];
+        if (requestIndex >= withdrawalRequests[msg.sender].length) revert NoWithdrawalPending();
+
+        WithdrawalRequest storage request = withdrawalRequests[msg.sender][requestIndex];
 
         // === CHECKS ===
         if (request.shares == 0) revert NoWithdrawalPending();
@@ -319,7 +332,8 @@ contract DepositPoolV2 {
         if (withdrawalReserve < qrlAmount) revert InsufficientReserve();
 
         // === EFFECTS (state changes using actual burned amount) ===
-        delete withdrawalRequests[msg.sender];
+        request.claimed = true;
+        nextWithdrawalIndex[msg.sender] = requestIndex + 1;
         totalWithdrawalShares -= sharesToBurn;
         withdrawalReserve -= qrlAmount;
 
@@ -336,38 +350,64 @@ contract DepositPoolV2 {
     }
 
     /**
-     * @notice Cancel a pending withdrawal request
-     * @dev Returns shares to normal circulating state
+     * @notice Cancel a specific pending withdrawal request
+     * @dev Returns shares to normal circulating state. Only unclaimed requests can be cancelled.
+     * @param requestId The index of the withdrawal request to cancel
      */
-    function cancelWithdrawal() external nonReentrant {
-        WithdrawalRequest storage request = withdrawalRequests[msg.sender];
+    function cancelWithdrawal(uint256 requestId) external nonReentrant {
+        if (requestId >= withdrawalRequests[msg.sender].length) revert InvalidWithdrawalIndex();
+        if (requestId < nextWithdrawalIndex[msg.sender]) revert InvalidWithdrawalIndex(); // Already processed
+
+        WithdrawalRequest storage request = withdrawalRequests[msg.sender][requestId];
 
         if (request.shares == 0) revert NoWithdrawalPending();
         if (request.claimed) revert NoWithdrawalPending();
 
-        totalWithdrawalShares -= request.shares;
-        delete withdrawalRequests[msg.sender];
+        uint256 shares = request.shares;
+        totalWithdrawalShares -= shares;
+        request.shares = 0;
+        request.claimed = true; // Mark as processed
+
+        emit WithdrawalCancelled(msg.sender, requestId, shares);
     }
 
     /**
-     * @notice Get withdrawal request details
+     * @notice Get withdrawal request details by index
      * @param user Address to query
+     * @param requestId Index of the withdrawal request
      */
-    function getWithdrawalRequest(address user)
+    function getWithdrawalRequest(address user, uint256 requestId)
         external
         view
-        returns (uint256 shares, uint256 currentQRLValue, uint256 requestBlock, bool canClaim, uint256 blocksRemaining)
+        returns (uint256 shares, uint256 currentQRLValue, uint256 requestBlock, bool canClaim, uint256 blocksRemaining, bool claimed)
     {
-        WithdrawalRequest storage request = withdrawalRequests[user];
+        if (requestId >= withdrawalRequests[user].length) {
+            return (0, 0, 0, false, 0, false);
+        }
+
+        WithdrawalRequest storage request = withdrawalRequests[user][requestId];
         shares = request.shares;
         currentQRLValue = stQRL.getPooledQRLByShares(shares);
         requestBlock = request.requestBlock;
+        claimed = request.claimed;
 
         uint256 unlockBlock = request.requestBlock + WITHDRAWAL_DELAY;
         canClaim = !request.claimed && request.shares > 0 && block.number >= unlockBlock
             && withdrawalReserve >= currentQRLValue;
 
         blocksRemaining = block.number >= unlockBlock ? 0 : unlockBlock - block.number;
+    }
+
+    /**
+     * @notice Get the number of withdrawal requests for a user
+     * @param user Address to query
+     * @return total Total number of requests
+     * @return pending Number of pending (unprocessed) requests
+     */
+    function getWithdrawalRequestCount(address user) external view returns (uint256 total, uint256 pending) {
+        total = withdrawalRequests[user].length;
+        uint256 nextIndex = nextWithdrawalIndex[user];
+        pending = total > nextIndex ? total - nextIndex : 0;
     }
 
     // =============================================================
@@ -445,7 +485,7 @@ contract DepositPoolV2 {
      * @notice Fund a validator with beacon chain deposit
      * @dev Only owner can call. Sends VALIDATOR_STAKE to beacon deposit contract.
      * @param pubkey Dilithium public key (2592 bytes)
-     * @param withdrawal_credentials Must point to this contract (0x01 prefix)
+     * @param withdrawal_credentials Must point to this contract (0x01 + 11 zero bytes + address)
      * @param signature Dilithium signature (4595 bytes)
      * @param deposit_data_root SSZ hash of deposit data
      * @return validatorId The new validator's ID
@@ -461,9 +501,15 @@ contract DepositPoolV2 {
         if (signature.length != SIGNATURE_LENGTH) revert InvalidSignatureLength();
         if (withdrawal_credentials.length != CREDENTIALS_LENGTH) revert InvalidCredentialsLength();
 
-        // Verify withdrawal credentials point to this contract (0x01 prefix)
-        // First byte should be 0x01, remaining 31 bytes should be this contract's address
-        if (withdrawal_credentials[0] != 0x01) revert InvalidWithdrawalCredentials();
+        // Verify withdrawal credentials point to this contract
+        // Format: 0x01 (1 byte) + 11 zero bytes + contract address (20 bytes) = 32 bytes
+        // This ensures validator withdrawals come to this contract
+        bytes32 expectedCredentials = bytes32(abi.encodePacked(bytes1(0x01), bytes11(0), address(this)));
+        bytes32 actualCredentials;
+        assembly {
+            actualCredentials := calldataload(withdrawal_credentials.offset)
+        }
+        if (actualCredentials != expectedCredentials) revert InvalidWithdrawalCredentials();
 
         bufferedQRL -= VALIDATOR_STAKE;
         validatorId = validatorCount++;
@@ -558,12 +604,14 @@ contract DepositPoolV2 {
     // =============================================================
 
     /**
-     * @notice Set the stQRL token contract
+     * @notice Set the stQRL token contract (one-time only)
      * @param _stQRL Address of stQRL contract
      */
     function setStQRL(address _stQRL) external onlyOwner {
         if (_stQRL == address(0)) revert ZeroAddress();
+        if (address(stQRL) != address(0)) revert StQRLAlreadySet();
         stQRL = IstQRL(_stQRL);
+        emit StQRLSet(_stQRL);
     }
 
     /**
@@ -603,14 +651,26 @@ contract DepositPoolV2 {
 
     /**
      * @notice Emergency withdrawal of stuck funds
-     * @dev Only for recovery of accidentally sent tokens, not pool funds
+     * @dev Only for recovery of accidentally sent tokens, not pool funds.
+     *      Can only withdraw excess balance that's not part of pooled QRL or withdrawal reserve.
      * @param to Recipient address
      * @param amount Amount to withdraw
      */
     function emergencyWithdraw(address to, uint256 amount) external onlyOwner {
         if (to == address(0)) revert ZeroAddress();
+        if (amount == 0) revert ZeroAmount();
+
+        // Calculate recoverable amount: balance - pooled funds - withdrawal reserve
+        uint256 totalProtocolFunds = (address(stQRL) != address(0) ? stQRL.totalPooledQRL() : 0) + withdrawalReserve;
+        uint256 currentBalance = address(this).balance;
+        uint256 recoverableAmount = currentBalance > totalProtocolFunds ? currentBalance - totalProtocolFunds : 0;
+
+        if (amount > recoverableAmount) revert ExceedsRecoverableAmount();
+
         (bool success,) = to.call{value: amount}("");
         if (!success) revert TransferFailed();
+
+        emit EmergencyWithdrawal(to, amount);
     }
 
     // =============================================================
