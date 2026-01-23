@@ -192,7 +192,7 @@ contract OperatorRegistry {
 
         op.pendingRewards = 0;
 
-        (bool success, ) = msg.sender.call{value: rewards}("");
+        (bool success,) = msg.sender.call{value: rewards}("");
         require(success, "OperatorRegistry: transfer failed");
 
         emit RewardsClaimed(msg.sender, rewards);
@@ -203,23 +203,20 @@ contract OperatorRegistry {
     // =============================================================
 
     /// @notice Get operator info
-    function getOperator(address operator) external view returns (
-        bool registered,
-        bool active,
-        uint256 bondAmount,
-        uint256 collateral,
-        uint256 validatorCount,
-        uint256 pendingRewards
-    ) {
+    function getOperator(address operator)
+        external
+        view
+        returns (
+            bool registered,
+            bool active,
+            uint256 bondAmount,
+            uint256 collateral,
+            uint256 validatorCount,
+            uint256 pendingRewards
+        )
+    {
         Operator storage op = operators[operator];
-        return (
-            op.registered,
-            op.active,
-            op.bondAmount,
-            op.collateral,
-            op.validatorCount,
-            op.pendingRewards
-        );
+        return (op.registered, op.active, op.bondAmount, op.collateral, op.validatorCount, op.pendingRewards);
     }
 
     /// @notice Get all validator pubkeys
@@ -270,7 +267,7 @@ contract OperatorRegistry {
     /// @notice Emergency withdraw (for stuck funds)
     function emergencyWithdraw(address to, uint256 amount) external onlyOwner {
         require(to != address(0), "OperatorRegistry: zero address");
-        (bool success, ) = to.call{value: amount}("");
+        (bool success,) = to.call{value: amount}("");
         require(success, "OperatorRegistry: transfer failed");
     }
 
