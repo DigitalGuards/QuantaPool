@@ -278,7 +278,12 @@ contract DepositPoolV2 {
      * @return requestId The ID of this withdrawal request
      * @return qrlAmount Current QRL value of shares (may change before claim)
      */
-    function requestWithdrawal(uint256 shares) external nonReentrant whenNotPaused returns (uint256 requestId, uint256 qrlAmount) {
+    function requestWithdrawal(uint256 shares)
+        external
+        nonReentrant
+        whenNotPaused
+        returns (uint256 requestId, uint256 qrlAmount)
+    {
         if (shares == 0) revert ZeroAmount();
         if (stQRL.sharesOf(msg.sender) < shares) revert InsufficientShares();
 
@@ -379,7 +384,14 @@ contract DepositPoolV2 {
     function getWithdrawalRequest(address user, uint256 requestId)
         external
         view
-        returns (uint256 shares, uint256 currentQRLValue, uint256 requestBlock, bool canClaim, uint256 blocksRemaining, bool claimed)
+        returns (
+            uint256 shares,
+            uint256 currentQRLValue,
+            uint256 requestBlock,
+            bool canClaim,
+            uint256 blocksRemaining,
+            bool claimed
+        )
     {
         if (requestId >= withdrawalRequests[user].length) {
             return (0, 0, 0, false, 0, false);
