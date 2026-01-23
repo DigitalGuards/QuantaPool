@@ -32,12 +32,12 @@ contract ValidatorManager {
 
     /// @notice Validator lifecycle states
     enum ValidatorStatus {
-        None,       // Not registered
-        Pending,    // Registered, awaiting activation
-        Active,     // Currently validating
-        Exiting,    // Exit requested
-        Exited,     // Fully exited, funds returned
-        Slashed     // Slashed (for record keeping)
+        None, // Not registered
+        Pending, // Registered, awaiting activation
+        Active, // Currently validating
+        Exiting, // Exit requested
+        Exited, // Fully exited, funds returned
+        Slashed // Slashed (for record keeping)
     }
 
     // =============================================================
@@ -46,10 +46,10 @@ contract ValidatorManager {
 
     /// @notice Validator data
     struct Validator {
-        bytes pubkey;           // Dilithium public key (2592 bytes)
+        bytes pubkey; // Dilithium public key (2592 bytes)
         ValidatorStatus status; // Current status
         uint256 activatedBlock; // Block when activated
-        uint256 exitedBlock;    // Block when exited (0 if not exited)
+        uint256 exitedBlock; // Block when exited (0 if not exited)
     }
 
     // =============================================================
@@ -81,31 +81,15 @@ contract ValidatorManager {
     //                          EVENTS
     // =============================================================
 
-    event ValidatorRegistered(
-        uint256 indexed validatorId,
-        bytes pubkey,
-        ValidatorStatus status
-    );
+    event ValidatorRegistered(uint256 indexed validatorId, bytes pubkey, ValidatorStatus status);
 
-    event ValidatorActivated(
-        uint256 indexed validatorId,
-        uint256 activatedBlock
-    );
+    event ValidatorActivated(uint256 indexed validatorId, uint256 activatedBlock);
 
-    event ValidatorExitRequested(
-        uint256 indexed validatorId,
-        uint256 requestBlock
-    );
+    event ValidatorExitRequested(uint256 indexed validatorId, uint256 requestBlock);
 
-    event ValidatorExited(
-        uint256 indexed validatorId,
-        uint256 exitedBlock
-    );
+    event ValidatorExited(uint256 indexed validatorId, uint256 exitedBlock);
 
-    event ValidatorSlashed(
-        uint256 indexed validatorId,
-        uint256 slashedBlock
-    );
+    event ValidatorSlashed(uint256 indexed validatorId, uint256 slashedBlock);
 
     event DepositPoolSet(address indexed depositPool);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
@@ -160,11 +144,7 @@ contract ValidatorManager {
      * @param pubkey Dilithium public key (2592 bytes)
      * @return validatorId The new validator's index
      */
-    function registerValidator(bytes calldata pubkey)
-        external
-        onlyAuthorized
-        returns (uint256 validatorId)
-    {
+    function registerValidator(bytes calldata pubkey) external onlyAuthorized returns (uint256 validatorId) {
         if (pubkey.length != PUBKEY_LENGTH) revert InvalidPubkeyLength();
 
         bytes32 pubkeyHash = keccak256(pubkey);
@@ -173,12 +153,8 @@ contract ValidatorManager {
         // Validator IDs start at 1 (0 means not found)
         validatorId = ++totalValidators;
 
-        validators[validatorId] = Validator({
-            pubkey: pubkey,
-            status: ValidatorStatus.Pending,
-            activatedBlock: 0,
-            exitedBlock: 0
-        });
+        validators[validatorId] =
+            Validator({pubkey: pubkey, status: ValidatorStatus.Pending, activatedBlock: 0, exitedBlock: 0});
 
         pubkeyToIndex[pubkeyHash] = validatorId;
         pendingValidatorCount++;
@@ -282,12 +258,11 @@ contract ValidatorManager {
      * @notice Get validator details
      * @param validatorId The validator to query
      */
-    function getValidator(uint256 validatorId) external view returns (
-        bytes memory pubkey,
-        ValidatorStatus status,
-        uint256 activatedBlock,
-        uint256 exitedBlock
-    ) {
+    function getValidator(uint256 validatorId)
+        external
+        view
+        returns (bytes memory pubkey, ValidatorStatus status, uint256 activatedBlock, uint256 exitedBlock)
+    {
         Validator storage v = validators[validatorId];
         return (v.pubkey, v.status, v.activatedBlock, v.exitedBlock);
     }
@@ -314,12 +289,7 @@ contract ValidatorManager {
     /**
      * @notice Get summary statistics
      */
-    function getStats() external view returns (
-        uint256 total,
-        uint256 pending,
-        uint256 active,
-        uint256 totalStaked
-    ) {
+    function getStats() external view returns (uint256 total, uint256 pending, uint256 active, uint256 totalStaked) {
         total = totalValidators;
         pending = pendingValidatorCount;
         active = activeValidatorCount;
@@ -331,11 +301,7 @@ contract ValidatorManager {
      * @param status The status to filter by
      * @return validatorIds Array of matching validator IDs
      */
-    function getValidatorsByStatus(ValidatorStatus status)
-        external
-        view
-        returns (uint256[] memory validatorIds)
-    {
+    function getValidatorsByStatus(ValidatorStatus status) external view returns (uint256[] memory validatorIds) {
         // First pass: count matches
         uint256 count = 0;
         for (uint256 i = 1; i <= totalValidators; i++) {
