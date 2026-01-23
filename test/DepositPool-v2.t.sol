@@ -82,8 +82,10 @@ contract DepositPoolV2Test is Test {
         vm.deal(address(pool), 150 ether); // 50 QRL rewards
         pool.syncRewards();
 
-        // User1's balance should have increased
-        assertEq(token.balanceOf(user1), 150 ether);
+        // User1's shares unchanged (fixed-balance)
+        assertEq(token.balanceOf(user1), 100 ether);
+        // But QRL value increased
+        assertEq(token.getQRLValue(user1), 150 ether);
 
         // User2 deposits 150 QRL (should get 100 shares at new rate)
         vm.prank(user2);
@@ -119,7 +121,10 @@ contract DepositPoolV2Test is Test {
 
         assertEq(token.totalPooledQRL(), 110 ether);
         assertEq(pool.totalRewardsReceived(), 10 ether);
-        assertEq(token.balanceOf(user1), 110 ether);
+        // Shares unchanged (fixed-balance)
+        assertEq(token.balanceOf(user1), 100 ether);
+        // QRL value reflects rewards
+        assertEq(token.getQRLValue(user1), 110 ether);
     }
 
     function test_SyncRewards_DetectsSlashing() public {
@@ -249,8 +254,10 @@ contract DepositPoolV2Test is Test {
         vm.deal(address(pool), 110 ether);
         pool.syncRewards();
 
-        // User now has 110 QRL worth
-        assertEq(token.balanceOf(user1), 110 ether);
+        // Shares unchanged (fixed-balance)
+        assertEq(token.balanceOf(user1), 100 ether);
+        // User's shares now worth 110 QRL
+        assertEq(token.getQRLValue(user1), 110 ether);
 
         // Fund withdrawal reserve
         pool.fundWithdrawalReserve{value: 110 ether}();
