@@ -219,14 +219,18 @@ contract ValidatorManager {
      */
     function markValidatorSlashed(uint256 validatorId) external onlyOwner {
         Validator storage v = validators[validatorId];
-        if (v.status != ValidatorStatus.Active && v.status != ValidatorStatus.Exiting) {
+        ValidatorStatus previousStatus = v.status;
+
+        if (previousStatus != ValidatorStatus.Active && previousStatus != ValidatorStatus.Exiting) {
             revert InvalidStatusTransition();
         }
 
         v.status = ValidatorStatus.Slashed;
         v.exitedBlock = block.number;
 
-        if (v.status == ValidatorStatus.Active) {
+        // Decrement counter if slashed from Active state
+        // (Exiting validators were already counted as active until fully exited)
+        if (previousStatus == ValidatorStatus.Active) {
             activeValidatorCount--;
         }
 
