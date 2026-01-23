@@ -1,142 +1,126 @@
-# QuantaPool - Decentralized QRL Liquid Staking Protocol
+# QuantaPool
 
-QuantaPool is the world's first post-quantum secure liquid staking protocol, built on QRL Zond. It democratizes QRL staking by lowering the barrier to entry while leveraging NIST-approved quantum-resistant cryptography.
+Decentralized liquid staking protocol for QRL Zond. Deposit QRL, receive stQRL, earn validator rewards automatically.
 
 ## Overview
 
-QuantaPool is a next-generation liquid staking solution for QRL that:
+QuantaPool enables QRL holders to participate in Proof-of-Stake validation without running their own validator nodes. Users deposit QRL and receive stQRL, a rebasing token whose balance automatically adjusts as validators earn rewards or experience slashing.
 
-- **For Stakers**: Stake any amount of QRL without running validator infrastructure. Receive stQRL tokens that accrue staking rewards and remain liquid for use across DeFi.
+### Key Features
 
-- **For Node Operators**: Run validators with reduced capital requirements. Operators provide a bond (e.g., 10,000-20,000 QRL) and borrow the remainder from the pool to create full 40,000 QRL validators, earning commission on pooled rewards.
+- **Liquid Staking**: Receive stQRL tokens that can be transferred while underlying QRL earns rewards
+- **Rebasing Token**: Balance increases automatically as validators earn rewards (Lido-style)
+- **Slashing-Safe**: Rebasing design handles slashing events by proportionally reducing all holders' balances
+- **Trustless Sync**: No oracle needed - rewards detected via EIP-4895 balance increases
+- **Post-Quantum Secure**: Built on QRL's Dilithium signature scheme
 
-## Key Features
+## Architecture
 
-- **Post-Quantum Security**: Built on QRL Zond using ML-DSA-87 (Dilithium) signatures - the same NIST-approved cryptography protecting against quantum computer attacks
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         User                                │
+└───────────────────────────┬─────────────────────────────────┘
+                            │ deposit() / requestWithdrawal()
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    DepositPool-v2.sol                       │
+│  - Accepts deposits, mints stQRL shares                     │
+│  - Queues and processes withdrawals                         │
+│  - Trustless reward sync via balance checking               │
+│  - Funds validators (MVP: stays in contract)                │
+└───────────────────────────┬─────────────────────────────────┘
+                            │ mintShares() / burnShares()
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      stQRL-v2.sol                           │
+│  - Rebasing ERC-20 token                                    │
+│  - Shares-based accounting (Lido-style)                     │
+│  - balanceOf = shares × totalPooledQRL / totalShares        │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  ValidatorManager.sol                       │
+│  - Tracks validator states (pending → active → exited)      │
+│  - MVP: single trusted operator model                       │
+└─────────────────────────────────────────────────────────────┘
+```
 
-- **Lower Entry Barrier**: Traditional QRL staking requires 40,000 QRL per validator. QuantaPool enables participation with any amount
+## Contracts
 
-- **Liquid Staking Token (stQRL)**: Receive stQRL representing your stake. Use it across DeFi while continuing to earn staking rewards
-
-- **Decentralized**: Permissionless node operator participation with on-chain governance
-
-- **Exchange Rate Model**: stQRL uses an exchange rate model (not rebasing) for seamless DeFi integration and simpler tax treatment
-
-## How It Works
-
-### For Stakers
-
-1. Deposit QRL into QuantaPool smart contracts
-2. Receive stQRL tokens at the current exchange rate
-3. stQRL value increases over time as validators earn rewards
-4. Withdraw anytime by burning stQRL for underlying QRL
-
-### For Node Operators
-
-1. Deposit your operator bond (portion of 40,000 QRL stake)
-2. Protocol matches with pooled deposits to create validators
-3. Run validator infrastructure (go-zond + qrysm)
-4. Earn commission (10-15%) on rewards from pooled deposits
-
-## Technical Specifications
-
-| Parameter | Value |
-|-----------|-------|
-| Validator stake | 40,000 QRL |
-| Block time | 60 seconds |
-| Epoch size | 128 slots (~128 min) |
-| Withdrawal unlock | End of current epoch |
-| Cryptography | ML-DSA-87 (Dilithium) |
-| EVM Compatibility | ~95-98% via Hyperion compiler |
-
-## Testnet Deployment (Live)
-
-QuantaPool MVP is deployed on Zond Testnet (Chain ID: 32382):
-
-| Contract | Address |
+| Contract | Purpose |
 |----------|---------|
-| stQRL | `Z844A6eB87927780E938908743eA24a56A220Efe8` |
-| DepositPool | `Z3C6927FDD1b9C81eb73a60AbE73DeDfFC65c8943` |
-| RewardsOracle | `Z541b1f2c501956BCd7a4a6913180b2Fc27BdE17E` |
-| OperatorRegistry | `ZD370e9505D265381e839f8289f46D02815d0FF95` |
+| `stQRL-v2.sol` | Rebasing liquid staking token |
+| `DepositPool-v2.sol` | User entry point, deposits/withdrawals, reward sync |
+| `ValidatorManager.sol` | Validator lifecycle tracking |
+| `contracts/v1-deprecated/` | Original ERC-4626 design (replaced by v2) |
 
-## Smart Contracts
+## How Rebasing Works
 
-```
-contracts/
-├── stQRL.sol           # ERC-4626 liquid staking token
-├── DepositPool.sol     # User deposit/withdrawal entry point
-├── RewardsOracle.sol   # Validator rewards reporting
-└── OperatorRegistry.sol # Node operator management
-```
+1. User deposits 100 QRL when pool has 1000 QRL and 1000 shares
+2. User receives 100 shares, balance shows 100 QRL
+3. Validators earn 50 QRL rewards (pool now has 1050 QRL)
+4. User's balance = 100 × 1050 / 1000 = **105 QRL**
+5. User's shares unchanged, but balance "rebased" upward
+
+If slashing occurs (pool drops to 950 QRL):
+- User's balance = 100 × 950 / 1000 = **95 QRL**
+- Loss distributed proportionally to all holders
 
 ## Development
 
 ### Prerequisites
 
-- Node.js 18+
-- Local Zond node (go-zond + qrysm)
-- @theqrl/web3 package
+- [Foundry](https://book.getfoundry.sh/getting-started/installation)
 
-### Getting Started
+### Build
 
 ```bash
-# Clone the repository
-git clone git@github.com:DigitalGuards/QuantaPool.git
-cd QuantaPool
-
-# Install dependencies
-npm install
-
-# Compile contracts
-npm run compile
-
-# Deploy to testnet
-npm run deploy
-
-# Test deposit functionality
-node scripts/test-deposit.js
+forge build
 ```
 
-### Check Local Node Status
+### Test
 
 ```bash
-systemctl --user status gzond.service beacon-chain.service
+forge test
 ```
 
-## Roadmap
+### Test with verbosity
 
-**Phase 1: Testnet Foundation** (Current)
-- Core smart contract development
-- stQRL token implementation (ERC-4626)
-- Basic deposit pool and withdrawal functionality
-- Testnet deployment
+```bash
+forge test -vvv
+```
 
-**Phase 2: Pre-Mainnet**
-- Security audits
-- Multi-operator support
-- Oracle decentralization
-- QRL Foundation grant application
+## Test Coverage
 
-**Phase 3: Mainnet Launch**
-- Controlled launch with TVL caps
-- Progressive decentralization
-- DeFi integrations
+- **46 tests passing** (stQRL-v2 + DepositPool-v2)
+- Rebasing math, multi-user rewards, slashing scenarios
+- Withdrawal flow with delay enforcement
+- Access control and pause functionality
+- Fuzz testing for edge cases
 
-## Wallet Integration
+## Deployment Status
 
-**Primary**: Zond Chrome Extension Wallet supports EIP-6963 standard—users connect like MetaMask on Ethereum.
+| Network | Status | Contracts |
+|---------|--------|-----------|
+| Zond Testnet v1 | ✅ Deployed (v1) | stQRL, DepositPool, RewardsOracle, OperatorRegistry |
+| Zond Testnet v2 | 🔜 Pending | v2 contracts ready, awaiting testnet |
 
-**Secondary**: [myqrlwallet.com](https://myqrlwallet.com) integration with a dedicated staking tab, allowing users to interact with QuantaPool contracts directly in a self-custodial flow.
+### Testnet v1 Addresses (Deprecated)
 
-## Community
+- stQRL: `Z844A6eB87927780E938908743eA24a56A220Efe8`
+- DepositPool: `Z3C6927FDD1b9C81eb73a60AbE73DeDfFC65c8943`
+- RewardsOracle: `Z541b1f2c501956BCd7a4a6913180b2Fc27BdE17E`
+- OperatorRegistry: `ZD370e9505D265381e839f8289f46D02815d0FF95`
 
-Join the QRL Discord for support, feature suggestions, and research discussions.
+## Design Documentation
+
+See [plans/quantapool-redesign.md](/home/waterfall/myqrlwallet/plans/quantapool-redesign.md) for:
+- Full architecture decisions
+- Slashing parameters (from qrysm codebase)
+- Audit findings (Slither static analysis)
+- Test results and bugs fixed
 
 ## License
 
-GPL-3.0 - see [LICENSE](LICENSE)
-
----
-
-*QuantaPool is not affiliated with the QRL Foundation. Always do your own research before staking.*
+GPL-3.0
