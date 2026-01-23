@@ -93,9 +93,10 @@ forge test -vvv
 
 ## Test Coverage
 
-- **115 tests passing** (55 stQRL-v2 + 60 DepositPool-v2)
+- **173 tests passing** (55 stQRL-v2 + 63 DepositPool-v2 + 55 ValidatorManager)
 - Share/QRL conversion math, multi-user rewards, slashing scenarios
 - Withdrawal flow with delay enforcement
+- Validator lifecycle (registration, activation, exit, slashing)
 - Access control and pause functionality
 - All error paths and revert conditions
 - Event emission verification
