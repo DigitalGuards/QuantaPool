@@ -113,6 +113,12 @@ forge test -vvv
 - Slither static analysis completed (0 critical/high findings)
 - See `slither-report.txt` for full audit results
 
+## Acknowledgments
+
+- [Lido](https://lido.fi/) and [Rocket Pool](https://rocketpool.net/) for pioneering liquid staking designs
+- [The QRL Core Team](https://www.theqrl.org/) for building post-quantum secure blockchain infrastructure
+- [Robyer](https://github.com/robyer) for community feedback on the fixed-balance token model (tax implications of rebasing)
+
 ## License
 
 GPL-3.0
