@@ -180,17 +180,14 @@ contract DepositPool {
             stQRL.burn(msg.sender, shares);
 
             // Transfer QRL
-            (bool success, ) = msg.sender.call{value: assets}("");
+            (bool success,) = msg.sender.call{value: assets}("");
             require(success, "DepositPool: transfer failed");
 
             emit WithdrawalClaimed(msg.sender, assets);
         } else {
             // Queue for later
-            withdrawalRequests[msg.sender] = WithdrawalRequest({
-                shares: shares,
-                requestBlock: block.number,
-                processed: false
-            });
+            withdrawalRequests[msg.sender] =
+                WithdrawalRequest({shares: shares, requestBlock: block.number, processed: false});
             pendingWithdrawals += assets;
 
             emit WithdrawalRequested(msg.sender, shares, assets);
@@ -219,7 +216,7 @@ contract DepositPool {
         stQRL.burn(msg.sender, request.shares);
 
         // Transfer QRL
-        (bool success, ) = msg.sender.call{value: assets}("");
+        (bool success,) = msg.sender.call{value: assets}("");
         require(success, "DepositPool: transfer failed");
 
         // Clean up
@@ -238,12 +235,11 @@ contract DepositPool {
     // =============================================================
 
     /// @notice Get deposit queue status
-    function getQueueStatus() external view returns (
-        uint256 pending,
-        uint256 threshold,
-        uint256 remaining,
-        uint256 validatorsReady
-    ) {
+    function getQueueStatus()
+        external
+        view
+        returns (uint256 pending, uint256 threshold, uint256 remaining, uint256 validatorsReady)
+    {
         pending = pendingDeposits;
         threshold = VALIDATOR_THRESHOLD;
         remaining = pending >= threshold ? 0 : threshold - pending;
@@ -251,20 +247,17 @@ contract DepositPool {
     }
 
     /// @notice Get user's withdrawal request
-    function getWithdrawalRequest(address user) external view returns (
-        uint256 shares,
-        uint256 assets,
-        uint256 requestBlock,
-        bool canClaim
-    ) {
+    function getWithdrawalRequest(address user)
+        external
+        view
+        returns (uint256 shares, uint256 assets, uint256 requestBlock, bool canClaim)
+    {
         WithdrawalRequest storage request = withdrawalRequests[user];
         shares = request.shares;
         assets = stQRL.convertToAssets(shares);
         requestBlock = request.requestBlock;
-        canClaim = !request.processed &&
-                   request.shares > 0 &&
-                   block.number >= request.requestBlock + 128 &&
-                   liquidReserve >= assets;
+        canClaim = !request.processed && request.shares > 0 && block.number >= request.requestBlock + 128
+            && liquidReserve >= assets;
     }
 
     /// @notice Get total value locked
@@ -298,10 +291,7 @@ contract DepositPool {
 
         // Call beacon deposit contract
         IDepositContract(DEPOSIT_CONTRACT).deposit{value: VALIDATOR_THRESHOLD}(
-            pubkey,
-            withdrawal_credentials,
-            signature,
-            deposit_data_root
+            pubkey, withdrawal_credentials, signature, deposit_data_root
         );
 
         emit ValidatorStaked(validatorId, pubkey);
@@ -361,7 +351,7 @@ contract DepositPool {
     /// @notice Emergency withdrawal of stuck funds
     function emergencyWithdraw(address to, uint256 amount) external onlyOwner {
         require(to != address(0), "DepositPool: zero address");
-        (bool success, ) = to.call{value: amount}("");
+        (bool success,) = to.call{value: amount}("");
         require(success, "DepositPool: transfer failed");
     }
 

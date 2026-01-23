@@ -47,12 +47,7 @@ contract RewardsOracle {
     //                          EVENTS
     // =============================================================
 
-    event ReportSubmitted(
-        address indexed oracle,
-        uint256 previousBalance,
-        uint256 newBalance,
-        uint256 rewards
-    );
+    event ReportSubmitted(address indexed oracle, uint256 previousBalance, uint256 newBalance, uint256 rewards);
     event OracleAdded(address indexed oracle);
     event OracleRemoved(address indexed oracle);
     event CooldownUpdated(uint256 newCooldown);
@@ -99,10 +94,7 @@ contract RewardsOracle {
     /// @notice Submit validator balance report
     /// @param newTotalBalance Total QRL across all validators
     function submitReport(uint256 newTotalBalance) external onlyOracle {
-        require(
-            block.timestamp >= lastReportTimestamp + reportCooldown,
-            "RewardsOracle: cooldown not elapsed"
-        );
+        require(block.timestamp >= lastReportTimestamp + reportCooldown, "RewardsOracle: cooldown not elapsed");
 
         uint256 previousBalance = lastReportedBalance;
 
@@ -140,10 +132,7 @@ contract RewardsOracle {
     /// @notice Force update in case of emergency (e.g., slashing)
     /// @dev Only owner, bypasses rate change limit
     function emergencyUpdate(uint256 newTotalBalance) external onlyOwner {
-        require(
-            block.timestamp >= lastReportTimestamp + 1 hours,
-            "RewardsOracle: min 1 hour between updates"
-        );
+        require(block.timestamp >= lastReportTimestamp + 1 hours, "RewardsOracle: min 1 hour between updates");
 
         uint256 previousBalance = lastReportedBalance;
         uint256 currentAssets = stQRL.totalAssets();
@@ -169,12 +158,11 @@ contract RewardsOracle {
     // =============================================================
 
     /// @notice Get oracle status
-    function getStatus() external view returns (
-        uint256 lastReport,
-        uint256 cooldownRemaining,
-        uint256 lastBalance,
-        bool canReport
-    ) {
+    function getStatus()
+        external
+        view
+        returns (uint256 lastReport, uint256 cooldownRemaining, uint256 lastBalance, bool canReport)
+    {
         lastReport = lastReportTimestamp;
 
         if (block.timestamp < lastReportTimestamp + reportCooldown) {
