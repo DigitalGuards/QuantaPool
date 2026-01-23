@@ -228,11 +228,8 @@ contract ValidatorManager {
         v.status = ValidatorStatus.Slashed;
         v.exitedBlock = block.number;
 
-        // Decrement counter if slashed from Active state
-        // (Exiting validators were already counted as active until fully exited)
-        if (previousStatus == ValidatorStatus.Active) {
-            activeValidatorCount--;
-        }
+        // Decrement counter - both Active and Exiting validators count toward activeValidatorCount
+        activeValidatorCount--;
 
         emit ValidatorSlashed(validatorId, block.number);
     }

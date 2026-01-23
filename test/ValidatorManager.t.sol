@@ -398,8 +398,8 @@ contract ValidatorManagerTest is Test {
         (, ValidatorManager.ValidatorStatus status,,) = manager.getValidator(validatorId);
         assertEq(uint256(status), uint256(ValidatorManager.ValidatorStatus.Slashed));
 
-        // Counter should NOT decrement when slashing from Exiting (only on markValidatorExited)
-        assertEq(manager.activeValidatorCount(), 1);
+        // Counter should decrement - Exiting validators still count as active
+        assertEq(manager.activeValidatorCount(), 0);
     }
 
     function test_MarkValidatorSlashed_MultipleActiveValidators() public {
