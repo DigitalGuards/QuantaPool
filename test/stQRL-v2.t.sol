@@ -6,7 +6,7 @@ import "../contracts/stQRL-v2.sol";
 
 /**
  * @title stQRL v2 Tests
- * @notice Unit tests for the rebasing stQRL token
+ * @notice Unit tests for the fixed-balance stQRL token
  */
 contract stQRLv2Test is Test {
     stQRLv2 public token;
@@ -16,7 +16,6 @@ contract stQRLv2Test is Test {
     address public user2;
 
     event Transfer(address indexed from, address indexed to, uint256 value);
-    event TransferShares(address indexed from, address indexed to, uint256 sharesValue);
     event SharesMinted(address indexed to, uint256 sharesAmount, uint256 qrlAmount);
     event SharesBurned(address indexed from, uint256 sharesAmount, uint256 qrlAmount);
     event TotalPooledQRLUpdated(uint256 previousAmount, uint256 newAmount);
@@ -52,7 +51,7 @@ contract stQRLv2Test is Test {
     }
 
     // =========================================================================
-    //                           REBASING MATH TESTS
+    //                           SHARE & VALUE MATH TESTS
     // =========================================================================
 
     function test_FirstDeposit_OneToOneRatio() public {
@@ -65,12 +64,13 @@ contract stQRLv2Test is Test {
 
         // First deposit should be 1:1
         assertEq(shares, amount);
-        assertEq(token.balanceOf(user1), amount);
+        assertEq(token.balanceOf(user1), amount); // balanceOf returns shares
         assertEq(token.sharesOf(user1), amount);
-        assertEq(token.totalSupply(), amount);
+        assertEq(token.totalSupply(), amount); // totalSupply returns total shares
+        assertEq(token.getQRLValue(user1), amount); // QRL value equals shares at 1:1
     }
 
-    function test_RewardsIncreaseBalance() public {
+    function test_RewardsIncreaseQRLValue() public {
         // Initial deposit of 100 QRL
         uint256 initialDeposit = 100 ether;
 
@@ -79,19 +79,21 @@ contract stQRLv2Test is Test {
         token.mintShares(user1, initialDeposit);
         vm.stopPrank();
 
-        assertEq(token.balanceOf(user1), 100 ether);
+        assertEq(token.balanceOf(user1), 100 ether); // shares
+        assertEq(token.getQRLValue(user1), 100 ether); // QRL value
 
         // Simulate 10 QRL rewards (10% increase)
         vm.prank(depositPool);
         token.updateTotalPooledQRL(110 ether);
 
-        // User's balance should now reflect rewards
-        assertEq(token.balanceOf(user1), 110 ether);
-        // But shares remain the same
+        // User's shares remain the same (fixed-balance)
+        assertEq(token.balanceOf(user1), 100 ether);
+        // But QRL value increases
+        assertEq(token.getQRLValue(user1), 110 ether);
         assertEq(token.sharesOf(user1), 100 ether);
     }
 
-    function test_SlashingDecreasesBalance() public {
+    function test_SlashingDecreasesQRLValue() public {
         // Initial deposit of 100 QRL
         uint256 initialDeposit = 100 ether;
 
@@ -100,15 +102,17 @@ contract stQRLv2Test is Test {
         token.mintShares(user1, initialDeposit);
         vm.stopPrank();
 
-        assertEq(token.balanceOf(user1), 100 ether);
+        assertEq(token.balanceOf(user1), 100 ether); // shares
+        assertEq(token.getQRLValue(user1), 100 ether); // QRL value
 
         // Simulate 5% slashing (pool drops to 95 QRL)
         vm.prank(depositPool);
         token.updateTotalPooledQRL(95 ether);
 
-        // User's balance should reflect slashing
-        assertEq(token.balanceOf(user1), 95 ether);
-        // Shares remain the same
+        // User's shares remain the same (fixed-balance)
+        assertEq(token.balanceOf(user1), 100 ether);
+        // But QRL value decreases
+        assertEq(token.getQRLValue(user1), 95 ether);
         assertEq(token.sharesOf(user1), 100 ether);
     }
 
@@ -127,19 +131,27 @@ contract stQRLv2Test is Test {
         token.updateTotalPooledQRL(150 ether);
         vm.stopPrank();
 
-        // Check balances before rewards
+        // Check shares (fixed-balance: balanceOf returns shares)
         assertEq(token.balanceOf(user1), 100 ether);
         assertEq(token.balanceOf(user2), 50 ether);
+
+        // Check QRL values before rewards
+        assertEq(token.getQRLValue(user1), 100 ether);
+        assertEq(token.getQRLValue(user2), 50 ether);
 
         // Add 30 QRL rewards (20% increase, total now 180 QRL)
         vm.prank(depositPool);
         token.updateTotalPooledQRL(180 ether);
 
-        // Rewards should be distributed proportionally
+        // Shares remain the same (fixed-balance)
+        assertEq(token.balanceOf(user1), 100 ether);
+        assertEq(token.balanceOf(user2), 50 ether);
+
+        // QRL values should be distributed proportionally
         // User1 has 100/150 = 66.67% of shares -> gets 66.67% of 180 = 120 QRL
         // User2 has 50/150 = 33.33% of shares -> gets 33.33% of 180 = 60 QRL
-        assertEq(token.balanceOf(user1), 120 ether);
-        assertEq(token.balanceOf(user2), 60 ether);
+        assertEq(token.getQRLValue(user1), 120 ether);
+        assertEq(token.getQRLValue(user2), 60 ether);
     }
 
     function test_ShareConversion_AfterRewards() public {
@@ -190,14 +202,18 @@ contract stQRLv2Test is Test {
         token.mintShares(user1, largeAmount);
         vm.stopPrank();
 
-        assertEq(token.balanceOf(user1), largeAmount);
+        assertEq(token.balanceOf(user1), largeAmount); // shares
+        assertEq(token.getQRLValue(user1), largeAmount); // QRL value
 
         // Add 10% rewards
         uint256 newTotal = largeAmount + (largeAmount / 10);
         vm.prank(depositPool);
         token.updateTotalPooledQRL(newTotal);
 
-        assertEq(token.balanceOf(user1), newTotal);
+        // Shares unchanged (fixed-balance)
+        assertEq(token.balanceOf(user1), largeAmount);
+        // QRL value reflects rewards
+        assertEq(token.getQRLValue(user1), newTotal);
     }
 
     function test_SmallNumbers() public {
@@ -212,7 +228,7 @@ contract stQRLv2Test is Test {
         assertEq(token.sharesOf(user1), smallAmount);
     }
 
-    function testFuzz_RebasingMath(uint256 deposit, uint256 rewardPercent) public {
+    function testFuzz_ExchangeRateMath(uint256 deposit, uint256 rewardPercent) public {
         // Bound inputs to reasonable ranges
         deposit = bound(deposit, 1 ether, 1_000_000_000 ether);
         rewardPercent = bound(rewardPercent, 0, 100); // 0-100% rewards
@@ -228,8 +244,10 @@ contract stQRLv2Test is Test {
         vm.prank(depositPool);
         token.updateTotalPooledQRL(newTotal);
 
-        // Balance should equal new total (user owns all shares)
-        assertEq(token.balanceOf(user1), newTotal);
+        // Shares unchanged (fixed-balance)
+        assertEq(token.balanceOf(user1), deposit);
+        // QRL value should equal new total (user owns all shares)
+        assertEq(token.getQRLValue(user1), newTotal);
     }
 
     // =========================================================================
@@ -252,22 +270,29 @@ contract stQRLv2Test is Test {
     }
 
     function test_TransferAfterRewards() public {
-        // Setup: user1 has 100 QRL
+        // Setup: user1 has 100 shares
         vm.startPrank(depositPool);
         token.updateTotalPooledQRL(100 ether);
         token.mintShares(user1, 100 ether);
         vm.stopPrank();
 
-        // Add 50% rewards (user1 now has 150 QRL worth)
+        // Add 50% rewards (user1's shares now worth 150 QRL)
         vm.prank(depositPool);
         token.updateTotalPooledQRL(150 ether);
 
-        // Transfer 75 QRL (half) to user2
-        vm.prank(user1);
-        token.transfer(user2, 75 ether);
+        assertEq(token.balanceOf(user1), 100 ether); // still 100 shares
+        assertEq(token.getQRLValue(user1), 150 ether); // worth 150 QRL
 
-        assertEq(token.balanceOf(user1), 75 ether);
-        assertEq(token.balanceOf(user2), 75 ether);
+        // Transfer 50 shares (half) to user2
+        vm.prank(user1);
+        token.transfer(user2, 50 ether);
+
+        // Each user has 50 shares
+        assertEq(token.balanceOf(user1), 50 ether);
+        assertEq(token.balanceOf(user2), 50 ether);
+        // Each user's shares worth 75 QRL (half of 150 total)
+        assertEq(token.getQRLValue(user1), 75 ether);
+        assertEq(token.getQRLValue(user2), 75 ether);
     }
 
     function test_TransferFrom() public {
