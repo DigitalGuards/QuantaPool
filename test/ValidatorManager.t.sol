@@ -17,7 +17,7 @@ contract ValidatorManagerTest is Test {
 
     // Dilithium pubkey is 2592 bytes
     uint256 constant PUBKEY_LENGTH = 2592;
-    uint256 constant VALIDATOR_STAKE = 10_000 ether;
+    uint256 constant VALIDATOR_STAKE = 40_000 ether;
 
     // Events to test
     event ValidatorRegistered(uint256 indexed validatorId, bytes pubkey, ValidatorManager.ValidatorStatus status);

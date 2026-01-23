@@ -20,8 +20,8 @@ contract ValidatorManager {
     //                          CONSTANTS
     // =============================================================
 
-    /// @notice Zond validator stake amount
-    uint256 public constant VALIDATOR_STAKE = 10_000 ether;
+    /// @notice Zond validator stake amount (MaxEffectiveBalance from Zond config)
+    uint256 public constant VALIDATOR_STAKE = 40_000 ether;
 
     /// @notice Dilithium pubkey length
     uint256 private constant PUBKEY_LENGTH = 2592;

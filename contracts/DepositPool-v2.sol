@@ -60,8 +60,8 @@ contract DepositPoolV2 {
     //                          CONSTANTS
     // =============================================================
 
-    /// @notice Minimum stake for a Zond validator
-    uint256 public constant VALIDATOR_STAKE = 10_000 ether;
+    /// @notice Minimum stake for a Zond validator (MaxEffectiveBalance from Zond config)
+    uint256 public constant VALIDATOR_STAKE = 40_000 ether;
 
     /// @notice Zond beacon chain deposit contract
     address public constant DEPOSIT_CONTRACT = 0x4242424242424242424242424242424242424242;

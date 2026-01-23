@@ -40,7 +40,7 @@ QuantaPool is a decentralized liquid staking protocol for QRL Zond. Users deposi
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │               Zond Beacon Deposit Contract                  │
-│  - 10,000 QRL per validator                                 │
+│  - 40,000 QRL per validator                                 │
 │  - Withdrawal credentials → DepositPool                     │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -153,7 +153,7 @@ When slashing occurs:
 
 | Parameter | Ethereum | QRL Zond |
 |-----------|----------|----------|
-| Validator stake | 32 ETH | 10,000 QRL |
+| Validator stake | 32 ETH | 40,000 QRL |
 | Block time | ~12s | ~60s |
 | Signature scheme | ECDSA | Dilithium (ML-DSA-87) |
 | Pubkey size | 48 bytes | 2,592 bytes |
