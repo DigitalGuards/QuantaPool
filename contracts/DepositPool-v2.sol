@@ -178,6 +178,7 @@ contract DepositPoolV2 {
     error InvalidPubkeyLength();
     error InvalidSignatureLength();
     error InvalidCredentialsLength();
+    error InvalidWithdrawalCredentials();
     error TransferFailed();
     error StQRLNotSet();
 
@@ -465,7 +466,7 @@ contract DepositPoolV2 {
 
         // Verify withdrawal credentials point to this contract (0x01 prefix)
         // First byte should be 0x01, remaining 31 bytes should be this contract's address
-        require(withdrawal_credentials[0] == 0x01, "DepositPool: must use 0x01 credentials");
+        if (withdrawal_credentials[0] != 0x01) revert InvalidWithdrawalCredentials();
 
         bufferedQRL -= VALIDATOR_STAKE;
         validatorId = validatorCount++;
