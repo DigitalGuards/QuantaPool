@@ -167,7 +167,8 @@ contract DepositPoolV2Test is Test {
         assertEq(requestId, 0);
         assertEq(qrlAmount, 50 ether);
 
-        (uint256 shares, uint256 qrl, uint256 requestBlock, bool canClaim,, bool claimed) = pool.getWithdrawalRequest(user1, 0);
+        (uint256 shares, uint256 qrl, uint256 requestBlock, bool canClaim,, bool claimed) =
+            pool.getWithdrawalRequest(user1, 0);
 
         assertEq(shares, 50 ether);
         assertEq(qrl, 50 ether);
