@@ -10,3 +10,7 @@ webapp/node_modules
 validator_keys/
 keystore_password.txt
 *.swp
+
+# Foundry build artifacts
+cache/
+out/
