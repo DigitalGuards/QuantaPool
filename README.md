@@ -93,10 +93,13 @@ forge test -vvv
 
 ## Test Coverage
 
-- **44 tests passing** (stQRL-v2 + DepositPool-v2)
+- **115 tests passing** (55 stQRL-v2 + 60 DepositPool-v2)
 - Share/QRL conversion math, multi-user rewards, slashing scenarios
 - Withdrawal flow with delay enforcement
 - Access control and pause functionality
+- All error paths and revert conditions
+- Event emission verification
+- Admin functions (ownership, pause, emergency)
 - Fuzz testing for edge cases
 
 ## Status

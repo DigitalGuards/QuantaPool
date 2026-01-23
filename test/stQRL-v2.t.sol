@@ -390,4 +390,373 @@ contract stQRLv2Test is Test {
         token.transfer(user2, 50 ether);
         assertEq(token.balanceOf(user2), 50 ether);
     }
+
+    // =========================================================================
+    //                      APPROVE TESTS
+    // =========================================================================
+
+    function test_Approve() public {
+        // Setup
+        vm.startPrank(depositPool);
+        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 ether);
+        vm.stopPrank();
+
+        // Approve
+        vm.prank(user1);
+        bool success = token.approve(user2, 50 ether);
+
+        assertTrue(success);
+        assertEq(token.allowance(user1, user2), 50 ether);
+    }
+
+    function test_Approve_ZeroAddress_Reverts() public {
+        vm.startPrank(depositPool);
+        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 ether);
+        vm.stopPrank();
+
+        vm.prank(user1);
+        vm.expectRevert(stQRLv2.ZeroAddress.selector);
+        token.approve(address(0), 50 ether);
+    }
+
+    function test_Approve_EmitsEvent() public {
+        vm.startPrank(depositPool);
+        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 ether);
+        vm.stopPrank();
+
+        vm.prank(user1);
+        vm.expectEmit(true, true, false, true);
+        emit Approval(user1, user2, 50 ether);
+        token.approve(user2, 50 ether);
+    }
+
+    // =========================================================================
+    //                      TRANSFER ERROR TESTS
+    // =========================================================================
+
+    function test_Transfer_ToZeroAddress_Reverts() public {
+        vm.startPrank(depositPool);
+        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 ether);
+        vm.stopPrank();
+
+        vm.prank(user1);
+        vm.expectRevert(stQRLv2.ZeroAddress.selector);
+        token.transfer(address(0), 50 ether);
+    }
+
+    function test_Transfer_ZeroAmount_Reverts() public {
+        vm.startPrank(depositPool);
+        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 ether);
+        vm.stopPrank();
+
+        vm.prank(user1);
+        vm.expectRevert(stQRLv2.ZeroAmount.selector);
+        token.transfer(user2, 0);
+    }
+
+    function test_Transfer_InsufficientBalance_Reverts() public {
+        vm.startPrank(depositPool);
+        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 ether);
+        vm.stopPrank();
+
+        vm.prank(user1);
+        vm.expectRevert(stQRLv2.InsufficientBalance.selector);
+        token.transfer(user2, 150 ether);
+    }
+
+    function test_Transfer_EmitsEvent() public {
+        vm.startPrank(depositPool);
+        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 ether);
+        vm.stopPrank();
+
+        vm.prank(user1);
+        vm.expectEmit(true, true, false, true);
+        emit Transfer(user1, user2, 50 ether);
+        token.transfer(user2, 50 ether);
+    }
+
+    // =========================================================================
+    //                      TRANSFERFROM ERROR TESTS
+    // =========================================================================
+
+    function test_TransferFrom_ZeroAmount_Reverts() public {
+        vm.startPrank(depositPool);
+        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 ether);
+        vm.stopPrank();
+
+        vm.prank(user1);
+        token.approve(user2, 50 ether);
+
+        vm.prank(user2);
+        vm.expectRevert(stQRLv2.ZeroAmount.selector);
+        token.transferFrom(user1, user2, 0);
+    }
+
+    function test_TransferFrom_InsufficientAllowance_Reverts() public {
+        vm.startPrank(depositPool);
+        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 ether);
+        vm.stopPrank();
+
+        vm.prank(user1);
+        token.approve(user2, 30 ether);
+
+        vm.prank(user2);
+        vm.expectRevert(stQRLv2.InsufficientAllowance.selector);
+        token.transferFrom(user1, user2, 50 ether);
+    }
+
+    function test_TransferFrom_UnlimitedAllowance() public {
+        vm.startPrank(depositPool);
+        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 ether);
+        vm.stopPrank();
+
+        // Approve unlimited
+        vm.prank(user1);
+        token.approve(user2, type(uint256).max);
+
+        // Transfer
+        vm.prank(user2);
+        token.transferFrom(user1, user2, 50 ether);
+
+        // Allowance should remain unlimited
+        assertEq(token.allowance(user1, user2), type(uint256).max);
+    }
+
+    function test_TransferFrom_WhenPaused_Reverts() public {
+        vm.startPrank(depositPool);
+        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 ether);
+        vm.stopPrank();
+
+        vm.prank(user1);
+        token.approve(user2, 50 ether);
+
+        token.pause();
+
+        vm.prank(user2);
+        vm.expectRevert(stQRLv2.ContractPaused.selector);
+        token.transferFrom(user1, user2, 50 ether);
+    }
+
+    // =========================================================================
+    //                      MINT/BURN ERROR TESTS
+    // =========================================================================
+
+    function test_MintShares_ToZeroAddress_Reverts() public {
+        vm.prank(depositPool);
+        vm.expectRevert(stQRLv2.ZeroAddress.selector);
+        token.mintShares(address(0), 100 ether);
+    }
+
+    function test_MintShares_ZeroAmount_Reverts() public {
+        vm.prank(depositPool);
+        vm.expectRevert(stQRLv2.ZeroAmount.selector);
+        token.mintShares(user1, 0);
+    }
+
+    function test_MintShares_WhenPaused_Reverts() public {
+        token.pause();
+
+        vm.prank(depositPool);
+        vm.expectRevert(stQRLv2.ContractPaused.selector);
+        token.mintShares(user1, 100 ether);
+    }
+
+    function test_MintShares_EmitsEvents() public {
+        vm.prank(depositPool);
+        token.updateTotalPooledQRL(100 ether);
+
+        vm.prank(depositPool);
+        vm.expectEmit(true, false, false, true);
+        emit SharesMinted(user1, 100 ether, 100 ether);
+        vm.expectEmit(true, true, false, true);
+        emit Transfer(address(0), user1, 100 ether);
+        token.mintShares(user1, 100 ether);
+    }
+
+    function test_BurnShares_FromZeroAddress_Reverts() public {
+        vm.startPrank(depositPool);
+        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 ether);
+        vm.stopPrank();
+
+        vm.prank(depositPool);
+        vm.expectRevert(stQRLv2.ZeroAddress.selector);
+        token.burnShares(address(0), 50 ether);
+    }
+
+    function test_BurnShares_ZeroAmount_Reverts() public {
+        vm.startPrank(depositPool);
+        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 ether);
+        vm.stopPrank();
+
+        vm.prank(depositPool);
+        vm.expectRevert(stQRLv2.ZeroAmount.selector);
+        token.burnShares(user1, 0);
+    }
+
+    function test_BurnShares_InsufficientBalance_Reverts() public {
+        vm.startPrank(depositPool);
+        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 ether);
+        vm.stopPrank();
+
+        vm.prank(depositPool);
+        vm.expectRevert(stQRLv2.InsufficientBalance.selector);
+        token.burnShares(user1, 150 ether);
+    }
+
+    function test_BurnShares_WhenPaused_Reverts() public {
+        vm.startPrank(depositPool);
+        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 ether);
+        vm.stopPrank();
+
+        token.pause();
+
+        vm.prank(depositPool);
+        vm.expectRevert(stQRLv2.ContractPaused.selector);
+        token.burnShares(user1, 50 ether);
+    }
+
+    function test_BurnShares_EmitsEvents() public {
+        vm.startPrank(depositPool);
+        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 ether);
+        vm.stopPrank();
+
+        vm.prank(depositPool);
+        vm.expectEmit(true, false, false, true);
+        emit SharesBurned(user1, 50 ether, 50 ether);
+        vm.expectEmit(true, true, false, true);
+        emit Transfer(user1, address(0), 50 ether);
+        token.burnShares(user1, 50 ether);
+    }
+
+    function test_BurnShares_ReturnsCorrectQRLAmount() public {
+        vm.startPrank(depositPool);
+        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 ether);
+        // Add 50% rewards
+        token.updateTotalPooledQRL(150 ether);
+        vm.stopPrank();
+
+        vm.prank(depositPool);
+        uint256 qrlAmount = token.burnShares(user1, 50 ether);
+
+        // 50 shares at 1.5 QRL/share = 75 QRL
+        assertEq(qrlAmount, 75 ether);
+    }
+
+    // =========================================================================
+    //                      ADMIN FUNCTION TESTS
+    // =========================================================================
+
+    function test_SetDepositPool_ZeroAddress_Reverts() public {
+        // Deploy fresh token without depositPool set
+        stQRLv2 freshToken = new stQRLv2();
+
+        vm.expectRevert(stQRLv2.ZeroAddress.selector);
+        freshToken.setDepositPool(address(0));
+    }
+
+    function test_TransferOwnership() public {
+        address newOwner = address(0x999);
+
+        token.transferOwnership(newOwner);
+
+        assertEq(token.owner(), newOwner);
+    }
+
+    function test_TransferOwnership_ZeroAddress_Reverts() public {
+        vm.expectRevert(stQRLv2.ZeroAddress.selector);
+        token.transferOwnership(address(0));
+    }
+
+    function test_TransferOwnership_NotOwner_Reverts() public {
+        vm.prank(user1);
+        vm.expectRevert(stQRLv2.NotOwner.selector);
+        token.transferOwnership(user1);
+    }
+
+    function test_TransferOwnership_EmitsEvent() public {
+        address newOwner = address(0x999);
+
+        vm.expectEmit(true, true, false, false);
+        emit OwnershipTransferred(owner, newOwner);
+        token.transferOwnership(newOwner);
+    }
+
+    function test_RenounceOwnership() public {
+        token.renounceOwnership();
+
+        assertEq(token.owner(), address(0));
+    }
+
+    function test_RenounceOwnership_NotOwner_Reverts() public {
+        vm.prank(user1);
+        vm.expectRevert(stQRLv2.NotOwner.selector);
+        token.renounceOwnership();
+    }
+
+    function test_RenounceOwnership_EmitsEvent() public {
+        vm.expectEmit(true, true, false, false);
+        emit OwnershipTransferred(owner, address(0));
+        token.renounceOwnership();
+    }
+
+    function test_OnlyOwnerCanPause() public {
+        vm.prank(user1);
+        vm.expectRevert(stQRLv2.NotOwner.selector);
+        token.pause();
+    }
+
+    function test_OnlyOwnerCanUnpause() public {
+        token.pause();
+
+        vm.prank(user1);
+        vm.expectRevert(stQRLv2.NotOwner.selector);
+        token.unpause();
+    }
+
+    // =========================================================================
+    //                      GETQRLVALUE TESTS
+    // =========================================================================
+
+    function test_GetQRLValue_ReturnsCorrectValue() public {
+        vm.startPrank(depositPool);
+        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 ether);
+        vm.stopPrank();
+
+        assertEq(token.getQRLValue(user1), 100 ether);
+
+        // Add rewards
+        vm.prank(depositPool);
+        token.updateTotalPooledQRL(150 ether);
+
+        assertEq(token.getQRLValue(user1), 150 ether);
+    }
+
+    function test_GetQRLValue_ZeroShares() public view {
+        assertEq(token.getQRLValue(user1), 0);
+    }
+
+    // =========================================================================
+    //                      EVENT DECLARATIONS
+    // =========================================================================
+
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 }
