@@ -53,7 +53,6 @@ QuantaPool enables QRL holders to participate in Proof-of-Stake validation witho
 | `stQRL-v2.sol` | Rebasing liquid staking token |
 | `DepositPool-v2.sol` | User entry point, deposits/withdrawals, reward sync |
 | `ValidatorManager.sol` | Validator lifecycle tracking |
-| `contracts/v1-deprecated/` | Original ERC-4626 design (replaced by v2) |
 
 ## How Rebasing Works
 
@@ -99,27 +98,20 @@ forge test -vvv
 - Access control and pause functionality
 - Fuzz testing for edge cases
 
-## Deployment Status
+## Status
 
-| Network | Status | Contracts |
-|---------|--------|-----------|
-| Zond Testnet v1 | ✅ Deployed (v1) | stQRL, DepositPool, RewardsOracle, OperatorRegistry |
-| Zond Testnet v2 | 🔜 Pending | v2 contracts ready, awaiting testnet |
+**v2 contracts ready** - awaiting Zond testnet deployment.
 
-### Testnet v1 Addresses (Deprecated)
+### Roadmap
 
-- stQRL: `Z844A6eB87927780E938908743eA24a56A220Efe8`
-- DepositPool: `Z3C6927FDD1b9C81eb73a60AbE73DeDfFC65c8943`
-- RewardsOracle: `Z541b1f2c501956BCd7a4a6913180b2Fc27BdE17E`
-- OperatorRegistry: `ZD370e9505D265381e839f8289f46D02815d0FF95`
+- [ ] Deploy v2 contracts to Zond testnet
+- [ ] Integrate staking UI into [qrlwallet.com](https://qrlwallet.com)
+- [ ] Add wstQRL wrapper (non-rebasing, for DeFi compatibility)
 
-## Design Documentation
+## Security
 
-See [plans/quantapool-redesign.md](/home/waterfall/myqrlwallet/plans/quantapool-redesign.md) for:
-- Full architecture decisions
-- Slashing parameters (from qrysm codebase)
-- Audit findings (Slither static analysis)
-- Test results and bugs fixed
+- Slither static analysis completed (0 critical/high findings)
+- See `slither-report.txt` for full audit results
 
 ## License
 
