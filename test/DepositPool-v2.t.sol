@@ -84,18 +84,18 @@ contract DepositPoolV2Test is Test {
 
         // User1's shares unchanged (fixed-balance)
         assertEq(token.balanceOf(user1), 100 ether);
-        // But QRL value increased
-        assertEq(token.getQRLValue(user1), 150 ether);
+        // But QRL value increased (approx due to virtual shares)
+        assertApproxEqRel(token.getQRLValue(user1), 150 ether, 1e14);
 
-        // User2 deposits 150 QRL (should get 100 shares at new rate)
+        // User2 deposits 150 QRL (should get ~100 shares at new rate)
         vm.prank(user2);
         uint256 shares = pool.deposit{value: 150 ether}();
 
         // User2 gets shares based on current rate
         // Rate: 150 QRL / 100 shares = 1.5 QRL per share
-        // For 150 QRL: 150 / 1.5 = 100 shares
-        assertEq(shares, 100 ether);
-        assertEq(token.sharesOf(user2), 100 ether);
+        // For 150 QRL: 150 / 1.5 ≈ 100 shares (approx due to virtual shares)
+        assertApproxEqRel(shares, 100 ether, 1e14);
+        assertApproxEqRel(token.sharesOf(user2), 100 ether, 1e14);
     }
 
     // =========================================================================
@@ -123,8 +123,8 @@ contract DepositPoolV2Test is Test {
         assertEq(pool.totalRewardsReceived(), 10 ether);
         // Shares unchanged (fixed-balance)
         assertEq(token.balanceOf(user1), 100 ether);
-        // QRL value reflects rewards
-        assertEq(token.getQRLValue(user1), 110 ether);
+        // QRL value reflects rewards (approx due to virtual shares)
+        assertApproxEqRel(token.getQRLValue(user1), 110 ether, 1e14);
     }
 
     function test_SyncRewards_DetectsSlashing() public {
@@ -256,26 +256,28 @@ contract DepositPoolV2Test is Test {
 
         // Shares unchanged (fixed-balance)
         assertEq(token.balanceOf(user1), 100 ether);
-        // User's shares now worth 110 QRL
-        assertEq(token.getQRLValue(user1), 110 ether);
+        // User's shares now worth 110 QRL (approx due to virtual shares)
+        assertApproxEqRel(token.getQRLValue(user1), 110 ether, 1e14);
 
         // Fund withdrawal reserve
         pool.fundWithdrawalReserve{value: 110 ether}();
 
-        // Request withdrawal of all shares (100 shares = 110 QRL now)
+        // Request withdrawal of all shares (100 shares = ~110 QRL now)
         vm.prank(user1);
         uint256 qrlAmount = pool.requestWithdrawal(100 ether);
 
-        assertEq(qrlAmount, 110 ether);
+        // Approx due to virtual shares
+        assertApproxEqRel(qrlAmount, 110 ether, 1e14);
 
         vm.roll(block.number + 129);
 
         uint256 balanceBefore = user1.balance;
         vm.prank(user1);
-        pool.claimWithdrawal();
+        uint256 claimed = pool.claimWithdrawal();
 
-        // Should receive 110 QRL (original + rewards)
-        assertEq(user1.balance - balanceBefore, 110 ether);
+        // Should receive ~110 QRL (original + rewards)
+        assertApproxEqRel(user1.balance - balanceBefore, 110 ether, 1e14);
+        assertEq(user1.balance - balanceBefore, claimed);
     }
 
     // =========================================================================
@@ -287,8 +289,8 @@ contract DepositPoolV2Test is Test {
         vm.prank(user1);
         pool.deposit{value: 100 ether}();
 
-        // User's shares are worth 100 QRL initially
-        assertEq(token.getQRLValue(user1), 100 ether);
+        // User's shares are worth 100 QRL initially (approx due to virtual shares)
+        assertApproxEqRel(token.getQRLValue(user1), 100 ether, 1e14);
 
         // Fund withdrawal reserve
         pool.fundWithdrawalReserve{value: 100 ether}();
@@ -300,15 +302,15 @@ contract DepositPoolV2Test is Test {
         // Sync to detect the "slashing"
         pool.syncRewards();
 
-        // User's shares now worth less (90 QRL instead of 100)
-        assertEq(token.getQRLValue(user1), 90 ether);
+        // User's shares now worth less (90 QRL instead of 100) (approx)
+        assertApproxEqRel(token.getQRLValue(user1), 90 ether, 1e14);
 
         // Request withdrawal of all shares
         vm.prank(user1);
         uint256 qrlAmount = pool.requestWithdrawal(100 ether);
 
-        // Should only get 90 QRL (slashed amount)
-        assertEq(qrlAmount, 90 ether);
+        // Should only get ~90 QRL (slashed amount) (approx due to virtual shares)
+        assertApproxEqRel(qrlAmount, 90 ether, 1e14);
     }
 
     function test_SlashingDetected_EmitsEvent() public {
@@ -849,11 +851,11 @@ contract DepositPoolV2Test is Test {
         vm.deal(address(pool), 330 ether);
         pool.syncRewards();
 
-        // User1 has 100/300 = 33.33% of shares -> 33.33% of 330 = 110 QRL
-        assertEq(token.getQRLValue(user1), 110 ether);
+        // User1 has 100/300 = 33.33% of shares -> 33.33% of 330 = 110 QRL (approx)
+        assertApproxEqRel(token.getQRLValue(user1), 110 ether, 1e14);
 
-        // User2 has 200/300 = 66.67% of shares -> 66.67% of 330 = 220 QRL
-        assertEq(token.getQRLValue(user2), 220 ether);
+        // User2 has 200/300 = 66.67% of shares -> 66.67% of 330 = 220 QRL (approx)
+        assertApproxEqRel(token.getQRLValue(user2), 220 ether, 1e14);
     }
 
     // =========================================================================

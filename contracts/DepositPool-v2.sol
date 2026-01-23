@@ -293,7 +293,7 @@ contract DepositPoolV2 {
     /**
      * @notice Claim a pending withdrawal
      * @dev Burns shares and transfers QRL to user
-     *      Follows CEI pattern: Checks → Effects → Interactions
+     *      Uses actual burned QRL value for all accounting to prevent discrepancies.
      * @return qrlAmount Amount of QRL received
      */
     function claimWithdrawal() external nonReentrant returns (uint256 qrlAmount) {
@@ -307,30 +307,27 @@ contract DepositPoolV2 {
         // Sync rewards first (external call, but to trusted stQRL contract)
         _syncRewards();
 
-        // Cache values before state changes
+        // Cache shares before state changes
         uint256 sharesToBurn = request.shares;
 
-        // Recalculate QRL amount (may have changed due to rewards/slashing)
-        qrlAmount = stQRL.getPooledQRLByShares(sharesToBurn);
+        // === BURN SHARES FIRST to get exact QRL amount ===
+        // This ensures we use the same value for reserve check, accounting, and transfer
+        // stQRL is a trusted contract, and we're protected by nonReentrant
+        qrlAmount = stQRL.burnShares(msg.sender, sharesToBurn);
 
-        // Check if we have enough in reserve
+        // Check if we have enough in reserve (using actual burned amount)
         if (withdrawalReserve < qrlAmount) revert InsufficientReserve();
 
-        // === EFFECTS (all state changes before external calls) ===
-        // Mark as claimed and clean up request
+        // === EFFECTS (state changes using actual burned amount) ===
         delete withdrawalRequests[msg.sender];
         totalWithdrawalShares -= sharesToBurn;
         withdrawalReserve -= qrlAmount;
 
-        // === INTERACTIONS ===
-        // Burn shares (uses cached sharesToBurn, returns actual QRL value)
-        uint256 burnedQRL = stQRL.burnShares(msg.sender, sharesToBurn);
-
-        // Update total pooled QRL using the actual burned amount
-        uint256 newTotalPooled = stQRL.totalPooledQRL() - burnedQRL;
+        // Update total pooled QRL (using same qrlAmount for consistency)
+        uint256 newTotalPooled = stQRL.totalPooledQRL() - qrlAmount;
         stQRL.updateTotalPooledQRL(newTotalPooled);
 
-        // Transfer QRL to user (last external call)
+        // === INTERACTION (ETH transfer last) ===
         (bool success,) = msg.sender.call{value: qrlAmount}("");
         if (!success) revert TransferFailed();
 
