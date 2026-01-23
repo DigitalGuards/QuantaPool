@@ -109,10 +109,10 @@ contract DepositPoolV2 {
 
     /// @notice Withdrawal request data
     struct WithdrawalRequest {
-        uint256 shares;          // Shares to burn
-        uint256 qrlAmount;       // QRL amount at request time (may change with rebase)
-        uint256 requestBlock;    // Block when requested
-        bool claimed;            // Whether claimed
+        uint256 shares; // Shares to burn
+        uint256 qrlAmount; // QRL amount at request time (may change with rebase)
+        uint256 requestBlock; // Block when requested
+        bool claimed; // Whether claimed
     }
 
     /// @notice Withdrawal requests by user
@@ -141,42 +141,17 @@ contract DepositPoolV2 {
     //                          EVENTS
     // =============================================================
 
-    event Deposited(
-        address indexed user,
-        uint256 qrlAmount,
-        uint256 sharesReceived
-    );
+    event Deposited(address indexed user, uint256 qrlAmount, uint256 sharesReceived);
 
-    event WithdrawalRequested(
-        address indexed user,
-        uint256 shares,
-        uint256 qrlAmount,
-        uint256 requestBlock
-    );
+    event WithdrawalRequested(address indexed user, uint256 shares, uint256 qrlAmount, uint256 requestBlock);
 
-    event WithdrawalClaimed(
-        address indexed user,
-        uint256 shares,
-        uint256 qrlAmount
-    );
+    event WithdrawalClaimed(address indexed user, uint256 shares, uint256 qrlAmount);
 
-    event RewardsSynced(
-        uint256 rewardsAmount,
-        uint256 newTotalPooled,
-        uint256 blockNumber
-    );
+    event RewardsSynced(uint256 rewardsAmount, uint256 newTotalPooled, uint256 blockNumber);
 
-    event SlashingDetected(
-        uint256 lossAmount,
-        uint256 newTotalPooled,
-        uint256 blockNumber
-    );
+    event SlashingDetected(uint256 lossAmount, uint256 newTotalPooled, uint256 blockNumber);
 
-    event ValidatorFunded(
-        uint256 indexed validatorId,
-        bytes pubkey,
-        uint256 amount
-    );
+    event ValidatorFunded(uint256 indexed validatorId, bytes pubkey, uint256 amount);
 
     event WithdrawalReserveFunded(uint256 amount);
     event MinDepositUpdated(uint256 newMinDeposit);
@@ -293,12 +268,7 @@ contract DepositPoolV2 {
      * @param shares Amount of shares to withdraw
      * @return qrlAmount Current QRL value of shares (may change before claim)
      */
-    function requestWithdrawal(uint256 shares)
-        external
-        nonReentrant
-        whenNotPaused
-        returns (uint256 qrlAmount)
-    {
+    function requestWithdrawal(uint256 shares) external nonReentrant whenNotPaused returns (uint256 qrlAmount) {
         if (shares == 0) revert ZeroAmount();
         if (stQRL.sharesOf(msg.sender) < shares) revert InsufficientShares();
         if (withdrawalRequests[msg.sender].shares > 0) revert WithdrawalPending();
@@ -310,12 +280,8 @@ contract DepositPoolV2 {
         qrlAmount = stQRL.getPooledQRLByShares(shares);
 
         // Create withdrawal request
-        withdrawalRequests[msg.sender] = WithdrawalRequest({
-            shares: shares,
-            qrlAmount: qrlAmount,
-            requestBlock: block.number,
-            claimed: false
-        });
+        withdrawalRequests[msg.sender] =
+            WithdrawalRequest({shares: shares, qrlAmount: qrlAmount, requestBlock: block.number, claimed: false});
 
         totalWithdrawalShares += shares;
 
@@ -364,7 +330,7 @@ contract DepositPoolV2 {
         stQRL.updateTotalPooledQRL(newTotalPooled);
 
         // Transfer QRL to user (last external call)
-        (bool success, ) = msg.sender.call{value: qrlAmount}("");
+        (bool success,) = msg.sender.call{value: qrlAmount}("");
         if (!success) revert TransferFailed();
 
         emit WithdrawalClaimed(msg.sender, sharesToBurn, qrlAmount);
@@ -389,23 +355,20 @@ contract DepositPoolV2 {
      * @notice Get withdrawal request details
      * @param user Address to query
      */
-    function getWithdrawalRequest(address user) external view returns (
-        uint256 shares,
-        uint256 currentQRLValue,
-        uint256 requestBlock,
-        bool canClaim,
-        uint256 blocksRemaining
-    ) {
+    function getWithdrawalRequest(address user)
+        external
+        view
+        returns (uint256 shares, uint256 currentQRLValue, uint256 requestBlock, bool canClaim, uint256 blocksRemaining)
+    {
         WithdrawalRequest storage request = withdrawalRequests[user];
         shares = request.shares;
         currentQRLValue = stQRL.getPooledQRLByShares(shares);
         requestBlock = request.requestBlock;
 
         uint256 unlockBlock = request.requestBlock + WITHDRAWAL_DELAY;
-        canClaim = !request.claimed &&
-                   request.shares > 0 &&
-                   block.number >= unlockBlock &&
-                   withdrawalReserve >= currentQRLValue;
+        canClaim =
+            !request.claimed && request.shares > 0 && block.number >= unlockBlock
+                && withdrawalReserve >= currentQRLValue;
 
         blocksRemaining = block.number >= unlockBlock ? 0 : unlockBlock - block.number;
     }
@@ -465,7 +428,6 @@ contract DepositPoolV2 {
             lastSyncBlock = block.number;
 
             emit RewardsSynced(rewards, actualTotalPooled, block.number);
-
         } else if (actualTotalPooled < previousPooled) {
             // Slashing detected (or funds removed somehow)
             uint256 loss = previousPooled - actualTotalPooled;
@@ -504,20 +466,14 @@ contract DepositPoolV2 {
 
         // Verify withdrawal credentials point to this contract (0x01 prefix)
         // First byte should be 0x01, remaining 31 bytes should be this contract's address
-        require(
-            withdrawal_credentials[0] == 0x01,
-            "DepositPool: must use 0x01 credentials"
-        );
+        require(withdrawal_credentials[0] == 0x01, "DepositPool: must use 0x01 credentials");
 
         bufferedQRL -= VALIDATOR_STAKE;
         validatorId = validatorCount++;
 
         // Call beacon deposit contract
         IDepositContract(DEPOSIT_CONTRACT).deposit{value: VALIDATOR_STAKE}(
-            pubkey,
-            withdrawal_credentials,
-            signature,
-            deposit_data_root
+            pubkey, withdrawal_credentials, signature, deposit_data_root
         );
 
         emit ValidatorFunded(validatorId, pubkey, VALIDATOR_STAKE);
@@ -556,15 +512,19 @@ contract DepositPoolV2 {
     /**
      * @notice Get pool status
      */
-    function getPoolStatus() external view returns (
-        uint256 totalPooled,
-        uint256 totalShares,
-        uint256 buffered,
-        uint256 validators,
-        uint256 pendingWithdrawalShares,
-        uint256 reserveBalance,
-        uint256 exchangeRate
-    ) {
+    function getPoolStatus()
+        external
+        view
+        returns (
+            uint256 totalPooled,
+            uint256 totalShares,
+            uint256 buffered,
+            uint256 validators,
+            uint256 pendingWithdrawalShares,
+            uint256 reserveBalance,
+            uint256 exchangeRate
+        )
+    {
         totalPooled = address(stQRL) != address(0) ? stQRL.totalPooledQRL() : 0;
         totalShares = address(stQRL) != address(0) ? stQRL.totalShares() : 0;
         buffered = bufferedQRL;
@@ -577,17 +537,14 @@ contract DepositPoolV2 {
     /**
      * @notice Get reward/slashing stats
      */
-    function getRewardStats() external view returns (
-        uint256 totalRewards,
-        uint256 totalSlashing,
-        uint256 netRewards,
-        uint256 lastSync
-    ) {
+    function getRewardStats()
+        external
+        view
+        returns (uint256 totalRewards, uint256 totalSlashing, uint256 netRewards, uint256 lastSync)
+    {
         totalRewards = totalRewardsReceived;
         totalSlashing = totalSlashingLosses;
-        netRewards = totalRewardsReceived > totalSlashingLosses
-            ? totalRewardsReceived - totalSlashingLosses
-            : 0;
+        netRewards = totalRewardsReceived > totalSlashingLosses ? totalRewardsReceived - totalSlashingLosses : 0;
         lastSync = lastSyncBlock;
     }
 
@@ -655,7 +612,7 @@ contract DepositPoolV2 {
      */
     function emergencyWithdraw(address to, uint256 amount) external onlyOwner {
         if (to == address(0)) revert ZeroAddress();
-        (bool success, ) = to.call{value: amount}("");
+        (bool success,) = to.call{value: amount}("");
         if (!success) revert TransferFailed();
     }
 

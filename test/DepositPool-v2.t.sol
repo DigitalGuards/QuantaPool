@@ -161,8 +161,7 @@ contract DepositPoolV2Test is Test {
 
         assertEq(qrlAmount, 50 ether);
 
-        (uint256 shares, uint256 qrl, uint256 requestBlock, bool canClaim, ) =
-            pool.getWithdrawalRequest(user1);
+        (uint256 shares, uint256 qrl, uint256 requestBlock, bool canClaim,) = pool.getWithdrawalRequest(user1);
 
         assertEq(shares, 50 ether);
         assertEq(qrl, 50 ether);
@@ -369,12 +368,7 @@ contract DepositPoolV2Test is Test {
         vm.deal(address(pool), 110 ether);
         pool.syncRewards();
 
-        (
-            uint256 totalRewards,
-            uint256 totalSlashing,
-            uint256 netRewards,
-            uint256 lastSync
-        ) = pool.getRewardStats();
+        (uint256 totalRewards, uint256 totalSlashing, uint256 netRewards, uint256 lastSync) = pool.getRewardStats();
 
         assertEq(totalRewards, 10 ether);
         assertEq(totalSlashing, 0);

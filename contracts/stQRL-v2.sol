@@ -82,11 +82,7 @@ contract stQRLv2 {
     event Approval(address indexed owner, address indexed spender, uint256 value);
 
     // Share-specific events (for off-chain tracking)
-    event TransferShares(
-        address indexed from,
-        address indexed to,
-        uint256 sharesValue
-    );
+    event TransferShares(address indexed from, address indexed to, uint256 sharesValue);
 
     // Pool events
     event TotalPooledQRLUpdated(uint256 previousAmount, uint256 newAmount);
@@ -208,11 +204,7 @@ contract stQRLv2 {
      * @param amount Amount of stQRL (in QRL terms) to transfer
      * @return success True if transfer succeeded
      */
-    function transferFrom(
-        address from,
-        address to,
-        uint256 amount
-    ) external whenNotPaused returns (bool) {
+    function transferFrom(address from, address to, uint256 amount) external whenNotPaused returns (bool) {
         uint256 sharesToTransfer = getSharesByPooledQRL(amount);
         uint256 currentAllowanceShares = _allowances[from][msg.sender];
 
@@ -314,12 +306,7 @@ contract stQRLv2 {
      * @param qrlAmount Amount of QRL being deposited
      * @return shares Number of shares minted
      */
-    function mintShares(address to, uint256 qrlAmount)
-        external
-        onlyDepositPool
-        whenNotPaused
-        returns (uint256 shares)
-    {
+    function mintShares(address to, uint256 qrlAmount) external onlyDepositPool whenNotPaused returns (uint256 shares) {
         if (to == address(0)) revert ZeroAddress();
         if (qrlAmount == 0) revert ZeroAmount();
 

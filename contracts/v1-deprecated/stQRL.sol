@@ -54,7 +54,9 @@ contract stQRL {
 
     // ERC-4626 events
     event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares);
-    event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares);
+    event Withdraw(
+        address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares
+    );
 
     // Admin events
     event DepositPoolUpdated(address indexed oldPool, address indexed newPool);
