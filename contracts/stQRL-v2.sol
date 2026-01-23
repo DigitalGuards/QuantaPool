@@ -2,28 +2,29 @@
 pragma solidity ^0.8.24;
 
 /**
- * @title stQRL v2 - Rebasing Staked QRL Token
+ * @title stQRL v2 - Fixed-Balance Staked QRL Token
  * @author QuantaPool
- * @notice Liquid staking token for QRL Zond. Balance automatically adjusts
- *         as validators earn rewards or experience slashing.
+ * @notice Liquid staking token for QRL Zond. Balance represents shares (fixed),
+ *         use getQRLValue() to see current QRL equivalent.
  *
  * @dev Key concepts:
- *   - Internally tracks "shares" (fixed after deposit)
- *   - Externally exposes "balance" in QRL (changes with rewards/slashing)
- *   - balanceOf(user) = shares[user] * totalPooledQRL / totalShares
+ *   - balanceOf() returns raw shares (stable, tax-friendly)
+ *   - getQRLValue() returns QRL equivalent (changes with rewards/slashing)
+ *   - Exchange rate: totalPooledQRL / totalShares
  *
- * This is similar to Lido's stETH rebasing model.
+ * This is a fixed-balance model (like wstETH) rather than rebasing (like stETH).
+ * Chosen for cleaner tax implications - balance only changes on deposit/withdraw.
  *
  * Example:
  *   1. User deposits 100 QRL when pool has 1000 QRL and 1000 shares
- *   2. User receives 100 shares
+ *   2. User receives 100 shares, balanceOf() = 100
  *   3. Validators earn 50 QRL rewards (pool now has 1050 QRL)
- *   4. User's balance = 100 * 1050 / 1000 = 105 QRL
- *   5. User's shares unchanged, but balance "rebased" upward
+ *   4. User's balanceOf() still = 100 shares (unchanged)
+ *   5. User's getQRLValue() = 100 * 1050 / 1000 = 105 QRL
  *
  * If slashing occurs (pool drops to 950 QRL):
- *   - User's balance = 100 * 950 / 1000 = 95 QRL
- *   - Loss distributed proportionally to all holders
+ *   - User's balanceOf() still = 100 shares
+ *   - User's getQRLValue() = 100 * 950 / 1000 = 95 QRL
  */
 contract stQRLv2 {
     // =============================================================
@@ -37,6 +38,13 @@ contract stQRLv2 {
     /// @notice Initial shares per QRL (1:1 at launch)
     uint256 private constant INITIAL_SHARES_PER_QRL = 1;
 
+    /// @notice Virtual shares offset to prevent first depositor attack (donation attack)
+    /// @dev Adding virtual shares/assets creates a floor that makes share inflation attacks
+    ///      economically unviable. With 1e3 virtual offset, an attacker would need to
+    ///      donate ~1000x more than they could steal. See OpenZeppelin ERC4626 for details.
+    uint256 private constant VIRTUAL_SHARES = 1e3;
+    uint256 private constant VIRTUAL_ASSETS = 1e3;
+
     // =============================================================
     //                       SHARE STORAGE
     // =============================================================
@@ -47,9 +55,8 @@ contract stQRLv2 {
     /// @notice Shares held by each account
     mapping(address => uint256) private _shares;
 
-    /// @notice Allowances for transferFrom (in shares, not QRL)
-    /// @dev We store allowances in shares for consistency, but approve/allowance
-    ///      functions work in QRL amounts for ERC-20 compatibility
+    /// @notice Allowances for transferFrom (in shares)
+    /// @dev All amounts in this contract are shares, not QRL
     mapping(address => mapping(address => uint256)) private _allowances;
 
     // =============================================================
@@ -77,12 +84,9 @@ contract stQRLv2 {
     //                          EVENTS
     // =============================================================
 
-    // ERC-20 standard events
+    // ERC-20 standard events (values are in shares)
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
-
-    // Share-specific events (for off-chain tracking)
-    event TransferShares(address indexed from, address indexed to, uint256 sharesValue);
 
     // Pool events
     event TotalPooledQRLUpdated(uint256 previousAmount, uint256 newAmount);
@@ -140,34 +144,33 @@ contract stQRLv2 {
     // =============================================================
 
     /**
-     * @notice Returns the total supply of stQRL tokens
-     * @dev This equals totalPooledQRL (the QRL value, not shares)
-     * @return Total stQRL in circulation (in QRL terms)
+     * @notice Returns the total supply of stQRL tokens (in shares)
+     * @dev Use totalPooledQRL() for the QRL value
+     * @return Total stQRL shares in circulation
      */
     function totalSupply() external view returns (uint256) {
-        return _totalPooledQRL;
+        return _totalShares;
     }
 
     /**
-     * @notice Returns the stQRL balance of an account
-     * @dev Calculated as: shares * totalPooledQRL / totalShares
-     *      This value changes as rewards accrue or slashing occurs
+     * @notice Returns the stQRL balance of an account (in shares)
+     * @dev Returns raw shares - stable value that only changes on deposit/withdraw
+     *      Use getQRLValue() for the current QRL equivalent
      * @param account The address to query
-     * @return The account's stQRL balance in QRL terms
+     * @return The account's share balance
      */
     function balanceOf(address account) public view returns (uint256) {
-        return getPooledQRLByShares(_shares[account]);
+        return _shares[account];
     }
 
     /**
-     * @notice Returns the allowance for a spender
-     * @dev Stored internally as shares, converted to QRL for compatibility
+     * @notice Returns the allowance for a spender (in shares)
      * @param _owner The token owner
      * @param spender The approved spender
-     * @return The allowance in QRL terms
+     * @return The allowance in shares
      */
     function allowance(address _owner, address spender) public view returns (uint256) {
-        return getPooledQRLByShares(_allowances[_owner][spender]);
+        return _allowances[_owner][spender];
     }
 
     // =============================================================
@@ -175,10 +178,9 @@ contract stQRLv2 {
     // =============================================================
 
     /**
-     * @notice Transfer stQRL to another address
-     * @dev Transfers the equivalent shares, not a fixed QRL amount
+     * @notice Transfer stQRL shares to another address
      * @param to Recipient address
-     * @param amount Amount of stQRL (in QRL terms) to transfer
+     * @param amount Amount of shares to transfer
      * @return success True if transfer succeeded
      */
     function transfer(address to, uint256 amount) external whenNotPaused returns (bool) {
@@ -187,9 +189,9 @@ contract stQRLv2 {
     }
 
     /**
-     * @notice Approve a spender to transfer stQRL on your behalf
+     * @notice Approve a spender to transfer stQRL shares on your behalf
      * @param spender The address to approve
-     * @param amount The amount of stQRL (in QRL terms) to approve
+     * @param amount The amount of shares to approve
      * @return success True if approval succeeded
      */
     function approve(address spender, uint256 amount) external returns (bool) {
@@ -198,23 +200,22 @@ contract stQRLv2 {
     }
 
     /**
-     * @notice Transfer stQRL from one address to another (with approval)
+     * @notice Transfer stQRL shares from one address to another (with approval)
      * @param from Source address
      * @param to Destination address
-     * @param amount Amount of stQRL (in QRL terms) to transfer
+     * @param amount Amount of shares to transfer
      * @return success True if transfer succeeded
      */
     function transferFrom(address from, address to, uint256 amount) external whenNotPaused returns (bool) {
-        uint256 sharesToTransfer = getSharesByPooledQRL(amount);
-        if (sharesToTransfer == 0) revert ZeroAmount();
+        if (amount == 0) revert ZeroAmount();
 
-        uint256 currentAllowanceShares = _allowances[from][msg.sender];
-        if (currentAllowanceShares < sharesToTransfer) revert InsufficientAllowance();
+        uint256 currentAllowance = _allowances[from][msg.sender];
+        if (currentAllowance < amount) revert InsufficientAllowance();
 
         // Decrease allowance (unless unlimited)
-        if (currentAllowanceShares != type(uint256).max) {
-            _allowances[from][msg.sender] = currentAllowanceShares - sharesToTransfer;
-            emit Approval(from, msg.sender, getPooledQRLByShares(_allowances[from][msg.sender]));
+        if (currentAllowance != type(uint256).max) {
+            _allowances[from][msg.sender] = currentAllowance - amount;
+            emit Approval(from, msg.sender, _allowances[from][msg.sender]);
         }
 
         _transfer(from, to, amount);
@@ -227,7 +228,7 @@ contract stQRLv2 {
 
     /**
      * @notice Returns the total shares in existence
-     * @dev Shares are the internal accounting unit, not exposed as balanceOf
+     * @dev Same as totalSupply() in fixed-balance model
      * @return Total shares
      */
     function totalShares() external view returns (uint256) {
@@ -236,7 +237,7 @@ contract stQRLv2 {
 
     /**
      * @notice Returns the shares held by an account
-     * @dev Shares don't change with rewards - only balanceOf does
+     * @dev Same as balanceOf() in fixed-balance model
      * @param account The address to query
      * @return The account's share balance
      */
@@ -245,34 +246,40 @@ contract stQRLv2 {
     }
 
     /**
+     * @notice Returns the current QRL value of an account's shares
+     * @dev This is what would have been balanceOf() in a rebasing model
+     *      Value changes as rewards accrue or slashing occurs
+     * @param account The address to query
+     * @return The account's stQRL value in QRL terms
+     */
+    function getQRLValue(address account) public view returns (uint256) {
+        return getPooledQRLByShares(_shares[account]);
+    }
+
+    /**
      * @notice Convert a QRL amount to shares
-     * @dev shares = qrlAmount * totalShares / totalPooledQRL
+     * @dev shares = qrlAmount * (totalShares + VIRTUAL_SHARES) / (totalPooledQRL + VIRTUAL_ASSETS)
+     *      Virtual offsets prevent first depositor inflation attacks.
      * @param qrlAmount The QRL amount to convert
      * @return The equivalent number of shares
      */
     function getSharesByPooledQRL(uint256 qrlAmount) public view returns (uint256) {
-        // If no shares exist yet, 1:1 ratio
-        if (_totalShares == 0) {
-            return qrlAmount * INITIAL_SHARES_PER_QRL;
-        }
-        // If no pooled QRL (shouldn't happen with shares > 0, but be safe)
-        if (_totalPooledQRL == 0) {
-            return qrlAmount * INITIAL_SHARES_PER_QRL;
-        }
-        return (qrlAmount * _totalShares) / _totalPooledQRL;
+        // Use virtual shares/assets to prevent donation attacks
+        // Even with 0 real shares/assets, the virtual offset ensures fair pricing
+        return (qrlAmount * (_totalShares + VIRTUAL_SHARES)) / (_totalPooledQRL + VIRTUAL_ASSETS);
     }
 
     /**
      * @notice Convert shares to QRL amount
-     * @dev qrlAmount = shares * totalPooledQRL / totalShares
+     * @dev qrlAmount = shares * (totalPooledQRL + VIRTUAL_ASSETS) / (totalShares + VIRTUAL_SHARES)
+     *      Virtual offsets prevent first depositor inflation attacks.
      * @param sharesAmount The shares to convert
      * @return The equivalent QRL amount
      */
     function getPooledQRLByShares(uint256 sharesAmount) public view returns (uint256) {
-        if (_totalShares == 0) {
-            return 0;
-        }
-        return (sharesAmount * _totalPooledQRL) / _totalShares;
+        // Use virtual shares/assets to prevent donation attacks
+        // This ensures consistent pricing with getSharesByPooledQRL
+        return (sharesAmount * (_totalPooledQRL + VIRTUAL_ASSETS)) / (_totalShares + VIRTUAL_SHARES);
     }
 
     /**
@@ -286,14 +293,12 @@ contract stQRLv2 {
 
     /**
      * @notice Returns the current exchange rate (QRL per share, scaled by 1e18)
-     * @dev Useful for UI display and calculations
+     * @dev Useful for UI display and calculations. Uses virtual offsets for consistency.
      * @return Exchange rate (1e18 = 1:1)
      */
     function getExchangeRate() external view returns (uint256) {
-        if (_totalShares == 0) {
-            return 1e18;
-        }
-        return (_totalPooledQRL * 1e18) / _totalShares;
+        // Use virtual offsets for consistency with share conversion functions
+        return ((_totalPooledQRL + VIRTUAL_ASSETS) * 1e18) / (_totalShares + VIRTUAL_SHARES);
     }
 
     // =============================================================
@@ -321,8 +326,7 @@ contract stQRLv2 {
         // This allows DepositPool to batch updates
 
         emit SharesMinted(to, shares, qrlAmount);
-        emit Transfer(address(0), to, qrlAmount);
-        emit TransferShares(address(0), to, shares);
+        emit Transfer(address(0), to, shares);
 
         return shares;
     }
@@ -352,8 +356,7 @@ contract stQRLv2 {
         // Note: totalPooledQRL is updated separately via updateTotalPooledQRL
 
         emit SharesBurned(from, sharesAmount, qrlAmount);
-        emit Transfer(from, address(0), qrlAmount);
-        emit TransferShares(from, address(0), sharesAmount);
+        emit Transfer(from, address(0), sharesAmount);
 
         return qrlAmount;
     }
@@ -361,7 +364,7 @@ contract stQRLv2 {
     /**
      * @notice Update the total pooled QRL
      * @dev Called by DepositPool after syncing rewards/slashing
-     *      This is what causes balanceOf to change for all holders
+     *      This changes the exchange rate (affects getQRLValue, not balanceOf)
      * @param newTotalPooledQRL The new total pooled QRL amount
      */
     function updateTotalPooledQRL(uint256 newTotalPooledQRL) external onlyDepositPool {
@@ -375,37 +378,28 @@ contract stQRLv2 {
     // =============================================================
 
     /**
-     * @dev Internal transfer logic
+     * @dev Internal transfer logic - amount is in shares
      */
     function _transfer(address from, address to, uint256 amount) internal {
         if (from == address(0)) revert ZeroAddress();
         if (to == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
+        if (_shares[from] < amount) revert InsufficientBalance();
 
-        uint256 sharesToTransfer = getSharesByPooledQRL(amount);
-        if (_shares[from] < sharesToTransfer) revert InsufficientBalance();
-
-        _shares[from] -= sharesToTransfer;
-        _shares[to] += sharesToTransfer;
+        _shares[from] -= amount;
+        _shares[to] += amount;
 
         emit Transfer(from, to, amount);
-        emit TransferShares(from, to, sharesToTransfer);
     }
 
     /**
-     * @dev Internal approve logic
+     * @dev Internal approve logic - amount is in shares
      */
     function _approve(address _owner, address spender, uint256 amount) internal {
         if (_owner == address(0)) revert ZeroAddress();
         if (spender == address(0)) revert ZeroAddress();
 
-        uint256 sharesToApprove = getSharesByPooledQRL(amount);
-        // Handle max approval
-        if (amount == type(uint256).max) {
-            sharesToApprove = type(uint256).max;
-        }
-
-        _allowances[_owner][spender] = sharesToApprove;
+        _allowances[_owner][spender] = amount;
         emit Approval(_owner, spender, amount);
     }
 

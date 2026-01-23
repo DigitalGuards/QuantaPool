@@ -20,8 +20,8 @@ contract ValidatorManager {
     //                          CONSTANTS
     // =============================================================
 
-    /// @notice Zond validator stake amount
-    uint256 public constant VALIDATOR_STAKE = 10_000 ether;
+    /// @notice Zond validator stake amount (MaxEffectiveBalance from Zond config)
+    uint256 public constant VALIDATOR_STAKE = 40_000 ether;
 
     /// @notice Dilithium pubkey length
     uint256 private constant PUBKEY_LENGTH = 2592;
@@ -219,16 +219,17 @@ contract ValidatorManager {
      */
     function markValidatorSlashed(uint256 validatorId) external onlyOwner {
         Validator storage v = validators[validatorId];
-        if (v.status != ValidatorStatus.Active && v.status != ValidatorStatus.Exiting) {
+        ValidatorStatus previousStatus = v.status;
+
+        if (previousStatus != ValidatorStatus.Active && previousStatus != ValidatorStatus.Exiting) {
             revert InvalidStatusTransition();
         }
 
         v.status = ValidatorStatus.Slashed;
         v.exitedBlock = block.number;
 
-        if (v.status == ValidatorStatus.Active) {
-            activeValidatorCount--;
-        }
+        // Decrement counter - both Active and Exiting validators count toward activeValidatorCount
+        activeValidatorCount--;
 
         emit ValidatorSlashed(validatorId, block.number);
     }
