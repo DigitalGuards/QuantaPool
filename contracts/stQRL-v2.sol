@@ -206,8 +206,9 @@ contract stQRLv2 {
      */
     function transferFrom(address from, address to, uint256 amount) external whenNotPaused returns (bool) {
         uint256 sharesToTransfer = getSharesByPooledQRL(amount);
-        uint256 currentAllowanceShares = _allowances[from][msg.sender];
+        if (sharesToTransfer == 0) revert ZeroAmount();
 
+        uint256 currentAllowanceShares = _allowances[from][msg.sender];
         if (currentAllowanceShares < sharesToTransfer) revert InsufficientAllowance();
 
         // Decrease allowance (unless unlimited)
