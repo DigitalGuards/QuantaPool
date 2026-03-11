@@ -14,3 +14,4 @@ keystore_password.txt
 # Foundry build artifacts
 cache/
 out/
+findings/*
