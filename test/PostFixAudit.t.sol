@@ -113,11 +113,7 @@ contract PostFixAudit is Test {
         console.log("Bob's QRL value:", bobValue);
 
         // Verify invariant: balance == totalPooledQRL + withdrawalReserve
-        assertEq(
-            address(pool).balance,
-            token.totalPooledQRL() + pool.withdrawalReserve(),
-            "Invariant holds"
-        );
+        assertEq(address(pool).balance, token.totalPooledQRL() + pool.withdrawalReserve(), "Invariant holds");
 
         // Check: does syncRewards detect phantom rewards?
         uint256 rewardsBefore = pool.totalRewardsReceived();
@@ -693,11 +689,7 @@ contract PostFixAudit is Test {
         _log("After Alice claims");
 
         // Verify invariant
-        assertEq(
-            address(pool).balance,
-            token.totalPooledQRL() + pool.withdrawalReserve(),
-            "Invariant holds"
-        );
+        assertEq(address(pool).balance, token.totalPooledQRL() + pool.withdrawalReserve(), "Invariant holds");
 
         // Bob's remaining 100 shares are worth: 100 * (100+1000)/(100+1000) ~= 100
         // This is CORRECT! Bob deposited 100 and his shares are worth 100.

@@ -54,6 +54,8 @@ QuantaPool enables QRL holders to participate in Proof-of-Stake validation witho
 | `DepositPool-v2.sol` | User entry point, deposits/withdrawals, reward sync |
 | `ValidatorManager.sol` | Validator lifecycle tracking |
 
+Solidity sources are maintained under `contracts/solidity/`. Hyperion mirrors live separately under `hyperion/contracts/` so the `.hyp` port does not get mixed into the Foundry tree.
+
 ## How Fixed-Balance Model Works
 
 1. User deposits 100 QRL when pool has 1000 QRL and 1000 shares
@@ -72,6 +74,7 @@ If slashing occurs (pool drops to 950 QRL):
 ### Prerequisites
 
 - [Foundry](https://book.getfoundry.sh/getting-started/installation)
+- `hypc` for Hyperion compilation/deployment
 
 ### Build
 
@@ -90,6 +93,16 @@ forge test
 ```bash
 forge test -vvv
 ```
+
+### Hyperion workflow
+
+```bash
+npm run sync:hyperion
+npm run compile:hyperion
+npm run deploy:hyperion
+```
+
+See `hyperion/README.md` for the dedicated Hyperion layout and deploy config.
 
 ## Test Coverage
 

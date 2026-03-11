@@ -5,8 +5,12 @@
   "main": "index.js",
   "scripts": {
     "compile": "node scripts/compile.js",
+    "compile:solidity": "node scripts/compile.js",
+    "sync:hyperion": "node scripts/sync-hyperion.js",
+    "compile:hyperion": "node scripts/compile-hyperion.js",
     "deploy:test": "node scripts/deploy-test-token.js",
     "deploy": "node scripts/deploy.js",
+    "deploy:hyperion": "node scripts/deploy-hyperion.js",
     "test": "node scripts/test.js"
   },
   "keywords": [
