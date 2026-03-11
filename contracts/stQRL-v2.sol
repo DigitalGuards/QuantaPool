@@ -59,6 +59,9 @@ contract stQRLv2 {
     /// @dev All amounts in this contract are shares, not QRL
     mapping(address => mapping(address => uint256)) private _allowances;
 
+    /// @notice Shares locked for pending withdrawals (cannot be transferred)
+    mapping(address => uint256) private _lockedShares;
+
     // =============================================================
     //                       POOL STORAGE
     // =============================================================
@@ -111,6 +114,7 @@ contract stQRLv2 {
     error InsufficientBalance();
     error InsufficientAllowance();
     error DepositPoolAlreadySet();
+    error InsufficientUnlockedShares();
 
     // =============================================================
     //                         MODIFIERS
@@ -374,6 +378,39 @@ contract stQRLv2 {
     }
 
     // =============================================================
+    //                   SHARE LOCKING FUNCTIONS
+    // =============================================================
+
+    /**
+     * @notice Lock shares for a pending withdrawal
+     * @dev Only callable by DepositPool. Locked shares cannot be transferred.
+     * @param account The account whose shares to lock
+     * @param sharesAmount Number of shares to lock
+     */
+    function lockShares(address account, uint256 sharesAmount) external onlyDepositPool {
+        _lockedShares[account] += sharesAmount;
+    }
+
+    /**
+     * @notice Unlock shares after withdrawal claim or cancellation
+     * @dev Only callable by DepositPool
+     * @param account The account whose shares to unlock
+     * @param sharesAmount Number of shares to unlock
+     */
+    function unlockShares(address account, uint256 sharesAmount) external onlyDepositPool {
+        _lockedShares[account] -= sharesAmount;
+    }
+
+    /**
+     * @notice Returns the locked shares for an account
+     * @param account The address to query
+     * @return The number of locked shares
+     */
+    function lockedSharesOf(address account) external view returns (uint256) {
+        return _lockedShares[account];
+    }
+
+    // =============================================================
     //                    INTERNAL FUNCTIONS
     // =============================================================
 
@@ -385,6 +422,7 @@ contract stQRLv2 {
         if (to == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
         if (_shares[from] < amount) revert InsufficientBalance();
+        if (_shares[from] - _lockedShares[from] < amount) revert InsufficientUnlockedShares();
 
         _shares[from] -= amount;
         _shares[to] += amount;
