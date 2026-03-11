@@ -38,9 +38,12 @@ interface IstQRL {
     function mintShares(address to, uint256 qrlAmount) external returns (uint256);
     function burnShares(address from, uint256 sharesAmount) external returns (uint256);
     function updateTotalPooledQRL(uint256 newAmount) external;
+    function lockShares(address account, uint256 sharesAmount) external;
+    function unlockShares(address account, uint256 sharesAmount) external;
     function totalPooledQRL() external view returns (uint256);
     function totalShares() external view returns (uint256);
     function sharesOf(address account) external view returns (uint256);
+    function lockedSharesOf(address account) external view returns (uint256);
     function getSharesByPooledQRL(uint256 qrlAmount) external view returns (uint256);
     function getPooledQRLByShares(uint256 sharesAmount) external view returns (uint256);
 }
@@ -77,6 +80,9 @@ contract DepositPoolV2 {
 
     /// @notice Minimum blocks to wait before claiming withdrawal
     uint256 public constant WITHDRAWAL_DELAY = 128; // ~2 hours on Zond
+
+    /// @notice Absolute floor for minDeposit (prevents share inflation attack)
+    uint256 public constant MIN_DEPOSIT_FLOOR = 0.01 ether;
 
     // =============================================================
     //                          STORAGE
@@ -175,6 +181,7 @@ contract DepositPoolV2 {
     error ZeroAddress();
     error ZeroAmount();
     error BelowMinDeposit();
+    error BelowMinDepositFloor();
     error InsufficientShares();
     error NoWithdrawalPending();
     error WithdrawalNotReady();
@@ -285,13 +292,17 @@ contract DepositPoolV2 {
         returns (uint256 requestId, uint256 qrlAmount)
     {
         if (shares == 0) revert ZeroAmount();
-        if (stQRL.sharesOf(msg.sender) < shares) revert InsufficientShares();
+        uint256 unlockedShares = stQRL.sharesOf(msg.sender) - stQRL.lockedSharesOf(msg.sender);
+        if (unlockedShares < shares) revert InsufficientShares();
 
         // Sync rewards first
         _syncRewards();
 
         // Calculate current QRL value
         qrlAmount = stQRL.getPooledQRLByShares(shares);
+
+        // Lock shares so they cannot be transferred
+        stQRL.lockShares(msg.sender, shares);
 
         // Create withdrawal request (push to array for multiple requests support)
         requestId = withdrawalRequests[msg.sender].length;
@@ -327,6 +338,9 @@ contract DepositPoolV2 {
 
         // Cache shares before state changes
         uint256 sharesToBurn = request.shares;
+
+        // Unlock shares before burning
+        stQRL.unlockShares(msg.sender, sharesToBurn);
 
         // === BURN SHARES FIRST to get exact QRL amount ===
         // This ensures we use the same value for reserve check, accounting, and transfer
@@ -372,6 +386,9 @@ contract DepositPoolV2 {
         totalWithdrawalShares -= shares;
         request.shares = 0;
         request.claimed = true; // Mark as processed
+
+        // Unlock shares so they can be transferred again
+        stQRL.unlockShares(msg.sender, shares);
 
         emit WithdrawalCancelled(msg.sender, requestId, shares);
     }
@@ -631,6 +648,7 @@ contract DepositPoolV2 {
      * @param _minDeposit New minimum deposit
      */
     function setMinDeposit(uint256 _minDeposit) external onlyOwner {
+        if (_minDeposit < MIN_DEPOSIT_FLOOR) revert BelowMinDepositFloor();
         minDeposit = _minDeposit;
         emit MinDepositUpdated(_minDeposit);
     }
