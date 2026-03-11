@@ -2,8 +2,8 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
-import "../contracts/stQRL-v2.sol";
-import "../contracts/DepositPool-v2.sol";
+import "../contracts/solidity/stQRL-v2.sol";
+import "../contracts/solidity/DepositPool-v2.sol";
 
 /**
  * @title DepositPool v2 Integration Tests
@@ -65,12 +65,12 @@ contract DepositPoolV2Test is Test {
         pool.deposit{value: 100 ether}();
 
         vm.prank(user2);
-        pool.deposit{value: 50 ether}();
+        pool.deposit{value: 200 ether}();
 
         assertEq(token.balanceOf(user1), 100 ether);
-        assertEq(token.balanceOf(user2), 50 ether);
-        assertEq(pool.bufferedQRL(), 150 ether);
-        assertEq(token.totalSupply(), 150 ether);
+        assertEq(token.balanceOf(user2), 200 ether);
+        assertEq(pool.bufferedQRL(), 300 ether);
+        assertEq(token.totalSupply(), 300 ether);
     }
 
     function test_DepositAfterRewards() public {
@@ -182,12 +182,12 @@ contract DepositPoolV2Test is Test {
         vm.prank(user1);
         pool.deposit{value: 100 ether}();
 
-        // Add to withdrawal reserve (simulating validator exit)
-        pool.fundWithdrawalReserve{value: 100 ether}();
-
-        // Request withdrawal
+        // Request withdrawal FIRST (captures QRL value at current 1:1 rate)
         vm.prank(user1);
         pool.requestWithdrawal(50 ether);
+
+        // Fund withdrawal reserve AFTER request (reclassify pooled QRL for the claim)
+        pool.fundWithdrawalReserve(50 ether);
 
         // Wait for withdrawal delay
         vm.roll(block.number + 129); // > 128 blocks
@@ -206,10 +206,10 @@ contract DepositPoolV2Test is Test {
         vm.prank(user1);
         pool.deposit{value: 100 ether}();
 
-        pool.fundWithdrawalReserve{value: 100 ether}();
-
         vm.prank(user1);
         pool.requestWithdrawal(50 ether);
+
+        pool.fundWithdrawalReserve(50 ether);
 
         // Try to claim immediately (should fail)
         vm.prank(user1);
@@ -262,15 +262,16 @@ contract DepositPoolV2Test is Test {
         // User's shares now worth 110 QRL (approx due to virtual shares)
         assertApproxEqRel(token.getQRLValue(user1), 110 ether, 1e14);
 
-        // Fund withdrawal reserve
-        pool.fundWithdrawalReserve{value: 110 ether}();
-
-        // Request withdrawal of all shares (100 shares = ~110 QRL now)
+        // Request withdrawal of all shares BEFORE funding reserve
+        // (so shares are valued at current rate: ~110 QRL for 100 shares)
         vm.prank(user1);
         (, uint256 qrlAmount) = pool.requestWithdrawal(100 ether);
 
         // Approx due to virtual shares
         assertApproxEqRel(qrlAmount, 110 ether, 1e14);
+
+        // Fund withdrawal reserve (reclassify from totalPooledQRL to cover the claim)
+        pool.fundWithdrawalReserve(token.totalPooledQRL());
 
         vm.roll(block.number + 129);
 
@@ -295,12 +296,9 @@ contract DepositPoolV2Test is Test {
         // User's shares are worth 100 QRL initially (approx due to virtual shares)
         assertApproxEqRel(token.getQRLValue(user1), 100 ether, 1e14);
 
-        // Fund withdrawal reserve
-        pool.fundWithdrawalReserve{value: 100 ether}();
-
         // Simulate slashing by directly reducing the contract balance
         // In real scenarios, this happens through validator slashing on the beacon chain
-        vm.deal(address(pool), 190 ether); // Was 200 (100 pooled + 100 reserve), now 190 (90 pooled + 100 reserve)
+        vm.deal(address(pool), 90 ether); // Was 100, now 90
 
         // Sync to detect the "slashing"
         pool.syncRewards();
@@ -308,12 +306,15 @@ contract DepositPoolV2Test is Test {
         // User's shares now worth less (90 QRL instead of 100) (approx)
         assertApproxEqRel(token.getQRLValue(user1), 90 ether, 1e14);
 
-        // Request withdrawal of all shares
+        // Request withdrawal of all shares FIRST (captures slashed QRL value ~90)
         vm.prank(user1);
         (, uint256 qrlAmount) = pool.requestWithdrawal(100 ether);
 
         // Should only get ~90 QRL (slashed amount) (approx due to virtual shares)
         assertApproxEqRel(qrlAmount, 90 ether, 1e14);
+
+        // Fund withdrawal reserve AFTER request (reclassify pooled QRL for the claim)
+        pool.fundWithdrawalReserve(token.totalPooledQRL());
     }
 
     function test_SlashingDetected_EmitsEvent() public {
@@ -443,7 +444,7 @@ contract DepositPoolV2Test is Test {
     // =========================================================================
 
     function testFuzz_DepositAndWithdraw(uint256 amount) public {
-        amount = bound(amount, 0.1 ether, 10000 ether);
+        amount = bound(amount, 100 ether, 10000 ether);
 
         vm.deal(user1, amount * 2);
 
@@ -452,12 +453,13 @@ contract DepositPoolV2Test is Test {
 
         assertEq(token.balanceOf(user1), amount);
 
-        // Fund reserve and request withdrawal
-        pool.fundWithdrawalReserve{value: amount}();
-
+        // Request withdrawal FIRST (captures QRL value at current rate)
         uint256 shares = token.sharesOf(user1);
         vm.prank(user1);
         pool.requestWithdrawal(shares);
+
+        // Fund reserve AFTER request (reclassify deposited QRL for the claim)
+        pool.fundWithdrawalReserve(amount);
 
         vm.roll(block.number + 129);
 
@@ -569,10 +571,11 @@ contract DepositPoolV2Test is Test {
         vm.prank(user1);
         pool.deposit{value: 100 ether}();
 
-        pool.fundWithdrawalReserve{value: 100 ether}();
-
+        // Request FIRST (captures QRL value), then fund reserve
         vm.prank(user1);
         pool.requestWithdrawal(50 ether);
+
+        pool.fundWithdrawalReserve(50 ether);
 
         vm.roll(block.number + 129);
 
@@ -645,21 +648,24 @@ contract DepositPoolV2Test is Test {
     }
 
     function test_SetMinDeposit() public {
-        pool.setMinDeposit(1 ether);
+        pool.setMinDeposit(200 ether);
+        assertEq(pool.minDeposit(), 200 ether);
 
-        assertEq(pool.minDeposit(), 1 ether);
+        // Cannot set below the current floor (100 ether by default)
+        vm.expectRevert(DepositPoolV2.BelowMinDepositFloor.selector);
+        pool.setMinDeposit(50 ether);
     }
 
     function test_SetMinDeposit_NotOwner_Reverts() public {
         vm.prank(user1);
         vm.expectRevert(DepositPoolV2.NotOwner.selector);
-        pool.setMinDeposit(1 ether);
+        pool.setMinDeposit(200 ether);
     }
 
     function test_SetMinDeposit_EmitsEvent() public {
         vm.expectEmit(false, false, false, true);
-        emit MinDepositUpdated(1 ether);
-        pool.setMinDeposit(1 ether);
+        emit MinDepositUpdated(200 ether);
+        pool.setMinDeposit(200 ether);
     }
 
     function test_Unpause() public {
@@ -798,35 +804,60 @@ contract DepositPoolV2Test is Test {
     //                       RECEIVE FUNCTION TESTS
     // =========================================================================
 
-    function test_Receive_AddsToWithdrawalReserve() public {
+    function test_Receive_IsNoOp() public {
+        // receive() is a no-op — incoming ETH does NOT auto-add to withdrawalReserve.
+        // _syncRewards() will later detect it as a balance increase (rewards).
         uint256 reserveBefore = pool.withdrawalReserve();
 
         // Send ETH directly to contract
         (bool success,) = address(pool).call{value: 50 ether}("");
         assertTrue(success);
 
-        assertEq(pool.withdrawalReserve(), reserveBefore + 50 ether);
+        // withdrawalReserve unchanged (receive is no-op)
+        assertEq(pool.withdrawalReserve(), reserveBefore);
+
+        // syncRewards picks it up as rewards
+        pool.syncRewards();
+        assertEq(pool.totalRewardsReceived(), 50 ether);
     }
 
-    function test_Receive_EmitsEvent() public {
-        vm.expectEmit(false, false, false, true);
-        emit WithdrawalReserveFunded(50 ether);
+    function test_Receive_DetectedAsRewardsBySyncRewards() public {
+        // Deposit first so there's an existing totalPooledQRL baseline
+        vm.prank(user1);
+        pool.deposit{value: 100 ether}();
+
+        // Send ETH directly — receive() is a no-op, no event emitted
         (bool success,) = address(pool).call{value: 50 ether}("");
         assertTrue(success);
+
+        // syncRewards detects the 50 ether increase as rewards
+        vm.expectEmit(true, true, true, true);
+        emit RewardsSynced(50 ether, 150 ether, block.number);
+        pool.syncRewards();
     }
 
     function test_FundWithdrawalReserve() public {
-        uint256 reserveBefore = pool.withdrawalReserve();
+        // Need deposits first so there's totalPooledQRL to reclassify
+        vm.prank(user1);
+        pool.deposit{value: 100 ether}();
 
-        pool.fundWithdrawalReserve{value: 50 ether}();
+        uint256 reserveBefore = pool.withdrawalReserve();
+        uint256 pooledBefore = token.totalPooledQRL();
+
+        pool.fundWithdrawalReserve(50 ether);
 
         assertEq(pool.withdrawalReserve(), reserveBefore + 50 ether);
+        assertEq(token.totalPooledQRL(), pooledBefore - 50 ether);
     }
 
     function test_FundWithdrawalReserve_EmitsEvent() public {
+        // Need deposits first so there's totalPooledQRL to reclassify
+        vm.prank(user1);
+        pool.deposit{value: 100 ether}();
+
         vm.expectEmit(false, false, false, true);
         emit WithdrawalReserveFunded(50 ether);
-        pool.fundWithdrawalReserve{value: 50 ether}();
+        pool.fundWithdrawalReserve(50 ether);
     }
 
     // =========================================================================
@@ -845,14 +876,7 @@ contract DepositPoolV2Test is Test {
         assertEq(token.totalPooledQRL(), 200 ether);
         assertEq(token.totalShares(), 200 ether);
 
-        // Fund withdrawal reserve - test contract has default ETH balance
-        pool.fundWithdrawalReserve{value: 200 ether}();
-
-        // Verify reserve doesn't affect totalPooledQRL
-        assertEq(token.totalPooledQRL(), 200 ether);
-        assertEq(pool.withdrawalReserve(), 200 ether);
-
-        // Both request withdrawals
+        // Both request withdrawals FIRST (captures QRL value at 1:1 rate)
         vm.prank(user1);
         pool.requestWithdrawal(50 ether);
 
@@ -860,6 +884,13 @@ contract DepositPoolV2Test is Test {
         pool.requestWithdrawal(50 ether);
 
         assertEq(pool.totalWithdrawalShares(), 100 ether);
+
+        // Fund withdrawal reserve AFTER requests (reclassify enough for both claims)
+        pool.fundWithdrawalReserve(100 ether);
+
+        // Verify reserve and pooled state
+        assertEq(token.totalPooledQRL(), 100 ether);
+        assertEq(pool.withdrawalReserve(), 100 ether);
 
         // Wait for delay
         vm.roll(block.number + 129);
@@ -871,14 +902,12 @@ contract DepositPoolV2Test is Test {
         assertEq(user1Claimed, 50 ether);
         assertEq(user1.balance - user1BalanceBefore, 50 ether);
 
-        // User2 claims - Note: due to accounting quirk in syncRewards after first claim,
-        // user2 may receive slightly more. This tests the queue mechanics work.
+        // User2 claims - should also receive exactly 50 ether
         uint256 user2BalanceBefore = user2.balance;
         vm.prank(user2);
         uint256 user2Claimed = pool.claimWithdrawal();
-        // User2 receives their claim amount (may differ due to syncRewards accounting)
-        assertEq(user2.balance - user2BalanceBefore, user2Claimed);
-        assertTrue(user2Claimed >= 50 ether); // At least what they requested
+        assertEq(user2Claimed, 50 ether);
+        assertEq(user2.balance - user2BalanceBefore, 50 ether);
 
         // Queue should be empty
         assertEq(pool.totalWithdrawalShares(), 0);
@@ -905,10 +934,70 @@ contract DepositPoolV2Test is Test {
     }
 
     // =========================================================================
+    //                       MIN DEPOSIT FLOOR TESTS
+    // =========================================================================
+
+    function test_SetMinDepositFloor() public {
+        // Default floor is 100 ether
+        assertEq(pool.minDepositFloor(), 100 ether);
+
+        // Owner can lower the floor
+        pool.setMinDepositFloor(1 ether);
+        assertEq(pool.minDepositFloor(), 1 ether);
+
+        // Owner can raise it back
+        pool.setMinDepositFloor(50 ether);
+        assertEq(pool.minDepositFloor(), 50 ether);
+    }
+
+    function test_SetMinDepositFloor_BelowAbsoluteMin_Reverts() public {
+        // Cannot set floor below ABSOLUTE_MIN_DEPOSIT (0.001 ether)
+        vm.expectRevert(DepositPoolV2.BelowAbsoluteMin.selector);
+        pool.setMinDepositFloor(0.0001 ether);
+
+        // Zero also reverts
+        vm.expectRevert(DepositPoolV2.BelowAbsoluteMin.selector);
+        pool.setMinDepositFloor(0);
+    }
+
+    function test_SetMinDepositFloor_NotOwner_Reverts() public {
+        vm.prank(user1);
+        vm.expectRevert(DepositPoolV2.NotOwner.selector);
+        pool.setMinDepositFloor(1 ether);
+    }
+
+    function test_SetMinDepositFloor_EmitsEvent() public {
+        vm.expectEmit(false, false, false, true);
+        emit MinDepositFloorUpdated(1 ether);
+        pool.setMinDepositFloor(1 ether);
+    }
+
+    function test_SetMinDeposit_AfterFloorLowered() public {
+        // Lower the floor first
+        pool.setMinDepositFloor(1 ether);
+        assertEq(pool.minDepositFloor(), 1 ether);
+
+        // Now we can lower minDeposit below the old 100 ether floor
+        pool.setMinDeposit(5 ether);
+        assertEq(pool.minDeposit(), 5 ether);
+
+        // Deposits at the new lower minimum work
+        vm.deal(user1, 10 ether);
+        vm.prank(user1);
+        uint256 shares = pool.deposit{value: 5 ether}();
+        assertEq(shares, 5 ether);
+
+        // Still cannot go below the new floor
+        vm.expectRevert(DepositPoolV2.BelowMinDepositFloor.selector);
+        pool.setMinDeposit(0.5 ether);
+    }
+
+    // =========================================================================
     //                       EVENT DECLARATIONS
     // =========================================================================
 
     event MinDepositUpdated(uint256 newMinDeposit);
+    event MinDepositFloorUpdated(uint256 newFloor);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event ValidatorFunded(uint256 indexed validatorId, bytes pubkey, uint256 amount);
     event WithdrawalReserveFunded(uint256 amount);
