@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0
+// Generated from ../test/ValidatorManager.t.sol by scripts/sync-hyperion.js.
+// Edit the Solidity source first, then re-run this script.
 pragma hyperion ^0.8.24;
 
-import "forge-std/Test.sol";
-import "../contracts/hyperion/ValidatorManager.hyp";
+import "forge-std/Test.hyp";
+import "../contracts/ValidatorManager.hyp";
 
 /**
  * @title ValidatorManager Tests
