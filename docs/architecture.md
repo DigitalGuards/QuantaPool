@@ -84,10 +84,10 @@ Handles deposits, withdrawals, and reward synchronization.
 
 **Withdrawal Flow:**
 1. User calls `requestWithdrawal(shares)`
-2. Shares burned, QRL amount calculated
+2. Shares locked (cannot be transferred), QRL amount snapshot taken
 3. Request queued with 128-block delay (~2 hours)
-4. User calls `claimWithdrawal(requestId)` after delay
-5. QRL transferred from withdrawal reserve
+4. User calls `claimWithdrawal()` after delay
+5. Shares burned, QRL transferred from withdrawal reserve
 
 **Trustless Reward Sync:**
 - No oracle needed for reward detection
