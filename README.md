@@ -12,7 +12,9 @@ QuantaPool enables QRL holders to participate in Proof-of-Stake validation witho
 - **Fixed-Balance Token**: Share balance stays constant (tax-friendly), QRL value grows with rewards
 - **Slashing-Safe**: Fixed-balance design handles slashing by proportionally reducing all holders' QRL value
 - **Trustless Sync**: No oracle needed - rewards detected via EIP-4895 balance increases
-- **Post-Quantum Secure**: Built on QRL's Dilithium signature scheme
+- **Post-Quantum Secure**: Built on QRL's Dilithium ML-DSA-87 signature scheme
+- **Production Infrastructure**: Terraform + Ansible for automated validator deployment
+- **Monitoring Stack**: Prometheus, Grafana dashboards, and Alertmanager with Discord/Telegram alerts
 
 ## Architecture
 
@@ -27,7 +29,7 @@ QuantaPool enables QRL holders to participate in Proof-of-Stake validation witho
 │  - Accepts deposits, mints stQRL shares                     │
 │  - Queues and processes withdrawals                         │
 │  - Trustless reward sync via balance checking               │
-│  - Funds validators (MVP: stays in contract)                │
+│  - Funds validators via beacon deposit contract             │
 └───────────────────────────┬─────────────────────────────────┘
                             │ mintShares() / burnShares()
                             ▼
@@ -42,17 +44,58 @@ QuantaPool enables QRL holders to participate in Proof-of-Stake validation witho
 ┌─────────────────────────────────────────────────────────────┐
 │                  ValidatorManager.sol                       │
 │  - Tracks validator states (pending → active → exited)      │
+│  - Stores Dilithium pubkeys (2,592 bytes)                   │
 │  - MVP: single trusted operator model                       │
-└─────────────────────────────────────────────────────────────┘
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+              ┌─────────────┴─────────────┐
+              ▼                           ▼
+┌──────────────────────┐    ┌──────────────────────────────┐
+│   Infrastructure     │    │       Monitoring             │
+│  Terraform + Ansible │    │  Prometheus + Grafana        │
+│  gzond, qrysm nodes │    │  Contract exporter + alerts  │
+└──────────────────────┘    └──────────────────────────────┘
+```
+
+## Project Structure
+
+```
+QuantaPool/
+├── contracts/solidity/       # Solidity smart contracts (source of truth)
+│   ├── stQRL-v2.sol          #   Fixed-balance liquid staking token
+│   ├── DepositPool-v2.sol    #   Deposits, withdrawals, reward sync
+│   └── ValidatorManager.sol  #   Validator lifecycle tracking
+├── hyperion/                 # Hyperion language port (.hyp mirrors)
+│   ├── contracts/            #   Auto-synced from Solidity sources
+│   └── test/
+├── test/                     # Foundry test suite (217 tests)
+│   ├── stQRL-v2.t.sol        #   55 core token tests
+│   ├── DepositPool-v2.t.sol  #   68 deposit/withdrawal tests
+│   ├── ValidatorManager.t.sol#   55 validator lifecycle tests
+│   └── Audit-*.t.sol         #   39 security audit-driven tests
+├── infrastructure/           # Production validator deployment
+│   ├── terraform/            #   Hetzner Cloud provisioning
+│   ├── ansible/              #   Node configuration (gzond, qrysm)
+│   ├── scripts/              #   deploy.sh, failover.sh, health-check.sh
+│   └── docs/                 #   Runbooks and deployment guides
+├── monitoring/               # Observability stack
+│   ├── prometheus/           #   Scrape config + alert rules
+│   ├── grafana/              #   Dashboards (validator, contract, system)
+│   ├── alertmanager/         #   Discord/Telegram routing by severity
+│   └── contract-exporter/    #   Custom Node.js exporter for on-chain metrics
+├── key-management/           # Validator key lifecycle scripts
+├── scripts/                  # Build & deployment automation
+├── config/                   # Network deployment configs
+└── docs/                     # Architecture docs
 ```
 
 ## Contracts
 
-| Contract | Purpose |
-|----------|---------|
-| `stQRL-v2.sol` | Fixed-balance liquid staking token |
-| `DepositPool-v2.sol` | User entry point, deposits/withdrawals, reward sync |
-| `ValidatorManager.sol` | Validator lifecycle tracking |
+| Contract | LOC | Purpose |
+|----------|-----|---------|
+| `stQRL-v2.sol` | 496 | Fixed-balance liquid staking token (shares-based) |
+| `DepositPool-v2.sol` | 773 | User entry point, deposits/withdrawals, trustless reward sync |
+| `ValidatorManager.sol` | 349 | Validator lifecycle: Pending → Active → Exiting → Exited |
 
 Solidity sources are maintained under `contracts/solidity/`. Hyperion mirrors live separately under `hyperion/contracts/` so the `.hyp` port does not get mixed into the Foundry tree.
 
@@ -68,6 +111,30 @@ If slashing occurs (pool drops to 950 QRL):
 - User's `balanceOf()` still = **100 shares**
 - User's `getQRLValue()` = 100 × 950 / 1000 = **95 QRL**
 - Loss distributed proportionally to all holders
+
+## Infrastructure
+
+Production-ready validator infrastructure using Terraform and Ansible.
+
+**Components provisioned:**
+- **Primary validator node** — gzond (execution) + qrysm-beacon + qrysm-validator
+- **Backup validator node** — hot standby with failover script
+- **Monitoring server** — Prometheus, Grafana, Alertmanager
+
+**Key management scripts** handle the full Dilithium key lifecycle: generation, encryption, backup, restore, and import to the validator client.
+
+See `infrastructure/docs/DEPLOYMENT.md` for the step-by-step deployment guide and `infrastructure/docs/runbooks/` for operational procedures.
+
+## Monitoring
+
+Docker Compose stack providing full observability:
+
+- **Prometheus**: Scrapes metrics from gzond, qrysm-beacon, qrysm-validator, and the custom contract exporter
+- **Grafana**: Three dashboards — Validator Overview, Contract State, System Resources
+- **Alertmanager**: Routes alerts by severity (Critical/Warning/Info) to Discord and Telegram
+- **Contract Exporter**: Custom Node.js service exposing on-chain metrics (stQRL exchange rate, TVL, deposit queue, validator count)
+
+See `monitoring/README.md` for setup and configuration.
 
 ## Development
 
@@ -104,31 +171,41 @@ npm run deploy:hyperion
 
 See `hyperion/README.md` for the dedicated Hyperion layout and deploy config.
 
+### CI
+
+GitHub Actions runs `forge fmt --check`, `forge build --sizes`, and `forge test -vvv` on every push and pull request.
+
 ## Test Coverage
 
-- **173 tests passing** (55 stQRL-v2 + 63 DepositPool-v2 + 55 ValidatorManager)
+- **217 tests passing** across 10 test files
+- **Core tests** (178): stQRL-v2 (55), DepositPool-v2 (68), ValidatorManager (55)
+- **Audit-driven tests** (39): Critical findings (QP-01, QP-05), PoC reproductions, FIFO queue, buffered QRL edge cases, post-fix verification
 - Share/QRL conversion math, multi-user rewards, slashing scenarios
-- Withdrawal flow with delay enforcement
+- Withdrawal flow with 128-block delay enforcement
 - Validator lifecycle (registration, activation, exit, slashing)
-- Access control and pause functionality
-- All error paths and revert conditions
-- Event emission verification
-- Admin functions (ownership, pause, emergency)
+- Virtual shares to prevent first-depositor attacks
+- Access control, pause functionality, and reentrancy protection
 - Fuzz testing for edge cases
 
 ## Status
 
-**v2 contracts ready** - awaiting Zond testnet deployment.
+**v2 contracts ready** — infrastructure and monitoring built, awaiting Zond testnet deployment.
 
 ### Roadmap
 
+- [x] v2 fixed-balance contracts with audit remediations
+- [x] Validator infrastructure (Terraform + Ansible)
+- [x] Monitoring and alerting stack
+- [x] Key management tooling
 - [ ] Deploy v2 contracts to Zond testnet
 - [ ] Integrate staking UI into [qrlwallet.com](https://qrlwallet.com)
 
 ## Security
 
 - Slither static analysis completed (0 critical/high findings)
-- See `slither-report.txt` for full audit results
+- Audit-driven test suite covering critical findings QP-01 and QP-05
+- Virtual shares (1e3) to prevent first-depositor/inflation attacks
+- See `slither-report.txt` for full analysis results
 
 ## Acknowledgments
 
