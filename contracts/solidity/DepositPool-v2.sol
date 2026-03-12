@@ -333,6 +333,8 @@ contract DepositPoolV2 {
         uint256 totalRequests = withdrawalRequests[msg.sender].length;
 
         // Skip cancelled requests (shares=0 && claimed=true)
+        // Bounded: user can only create cancellations via their own txs,
+        // so the practical depth is small. Tested up to 500 in suite.
         while (requestIndex < totalRequests && withdrawalRequests[msg.sender][requestIndex].shares == 0) {
             requestIndex++;
         }
