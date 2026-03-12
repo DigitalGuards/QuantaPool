@@ -35,7 +35,7 @@ QuantaPool enables QRL holders to participate in Proof-of-Stake validation witho
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                      stQRL-v2.sol                           │
-│  - Fixed-balance ERC-20 token                               │
+│  - Fixed-balance QRC-20 token                               │
 │  - Shares-based accounting (wstETH-style)                   │
 │  - balanceOf = shares, getQRLValue = QRL equivalent         │
 └─────────────────────────────────────────────────────────────┘
@@ -68,11 +68,10 @@ QuantaPool/
 ├── hyperion/                 # Hyperion language port (.hyp mirrors)
 │   ├── contracts/            #   Auto-synced from Solidity sources
 │   └── test/
-├── test/                     # Foundry test suite (217 tests)
+├── test/                     # Foundry test suite (178 tests)
 │   ├── stQRL-v2.t.sol        #   55 core token tests
 │   ├── DepositPool-v2.t.sol  #   68 deposit/withdrawal tests
-│   ├── ValidatorManager.t.sol#   55 validator lifecycle tests
-│   └── Audit-*.t.sol         #   39 security audit-driven tests
+│   └── ValidatorManager.t.sol#   55 validator lifecycle tests
 ├── infrastructure/           # Production validator deployment
 │   ├── terraform/            #   Hetzner Cloud provisioning
 │   ├── ansible/              #   Node configuration (gzond, qrysm)
@@ -177,9 +176,7 @@ GitHub Actions runs `forge fmt --check`, `forge build --sizes`, and `forge test 
 
 ## Test Coverage
 
-- **217 tests passing** across 10 test files
-- **Core tests** (178): stQRL-v2 (55), DepositPool-v2 (68), ValidatorManager (55)
-- **Audit-driven tests** (39): Critical findings (QP-01, QP-05), PoC reproductions, FIFO queue, buffered QRL edge cases, post-fix verification
+- **178 tests passing** (55 stQRL-v2 + 68 DepositPool-v2 + 55 ValidatorManager)
 - Share/QRL conversion math, multi-user rewards, slashing scenarios
 - Withdrawal flow with 128-block delay enforcement
 - Validator lifecycle (registration, activation, exit, slashing)
@@ -203,7 +200,6 @@ GitHub Actions runs `forge fmt --check`, `forge build --sizes`, and `forge test 
 ## Security
 
 - Slither static analysis completed (0 critical/high findings)
-- Audit-driven test suite covering critical findings QP-01 and QP-05
 - Virtual shares (1e3) to prevent first-depositor/inflation attacks
 - See `slither-report.txt` for full analysis results
 

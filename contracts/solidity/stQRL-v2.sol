@@ -87,7 +87,7 @@ contract stQRLv2 {
     //                          EVENTS
     // =============================================================
 
-    // ERC-20 standard events (values are in shares)
+    // QRC-20 standard events (values are in shares)
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
 
@@ -144,7 +144,7 @@ contract stQRLv2 {
     }
 
     // =============================================================
-    //                    ERC-20 VIEW FUNCTIONS
+    //                    QRC-20 VIEW FUNCTIONS
     // =============================================================
 
     /**
@@ -178,7 +178,7 @@ contract stQRLv2 {
     }
 
     // =============================================================
-    //                   ERC-20 WRITE FUNCTIONS
+    //                   QRC-20 WRITE FUNCTIONS
     // =============================================================
 
     /**
