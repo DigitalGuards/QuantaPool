@@ -23,7 +23,7 @@ QuantaPool is a decentralized liquid staking protocol for QRL Zond. Users deposi
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                      stQRL-v2.sol                           │
-│  - Fixed-balance ERC-20 token (shares-based)                │
+│  - Fixed-balance QRC-20 token (shares-based)                │
 │  - balanceOf() = shares (stable, tax-friendly)              │
 │  - getQRLValue() = QRL equivalent (grows with rewards)      │
 │  - Virtual shares prevent first-depositor attacks           │
@@ -59,7 +59,7 @@ QuantaPool is a decentralized liquid staking protocol for QRL Zond. Users deposi
 
 **Key Features:**
 - Virtual shares/assets (1e3) prevent first-depositor inflation attacks
-- All ERC-20 operations work with shares, not QRL amounts
+- All QRC-20 operations work with shares, not QRL amounts
 - Tax-friendly: balance only changes on explicit user actions
 
 **Example:**
@@ -98,7 +98,7 @@ Handles deposits, withdrawals, and reward synchronization.
 **Key Parameters:**
 - `WITHDRAWAL_DELAY`: 128 blocks (~2 hours)
 - `MIN_DEPOSIT`: 1 ether (configurable)
-- `VALIDATOR_STAKE`: 10,000 ether
+- `VALIDATOR_STAKE`: 40,000 ether
 
 ### ValidatorManager.sol - Validator Lifecycle
 
@@ -157,13 +157,13 @@ When slashing occurs:
 | Block time | ~12s | ~60s |
 | Signature scheme | ECDSA | Dilithium (ML-DSA-87) |
 | Pubkey size | 48 bytes | 2,592 bytes |
-| Signature size | 96 bytes | ~2,420 bytes |
+| Signature size | 96 bytes | 4,595 bytes |
 
 ## Test Coverage
 
-- **173 tests** across 3 test suites
+- **178 tests** across 3 test suites
 - stQRL-v2: 55 tests (shares, conversions, rewards, slashing)
-- DepositPool-v2: 63 tests (deposits, withdrawals, sync, access control)
+- DepositPool-v2: 68 tests (deposits, withdrawals, sync, access control)
 - ValidatorManager: 55 tests (lifecycle, slashing, batch operations)
 
 ## Deployment Checklist
