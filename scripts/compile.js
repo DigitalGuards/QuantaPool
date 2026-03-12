@@ -2,7 +2,7 @@ const solc = require('solc');
 const fs = require('fs');
 const path = require('path');
 
-const contractsDir = path.join(__dirname, '..', 'contracts');
+const contractsDir = path.join(__dirname, '..', 'contracts', 'solidity');
 const artifactsDir = path.join(__dirname, '..', 'artifacts');
 
 // Ensure artifacts directory exists
@@ -87,7 +87,7 @@ if (args.length > 0) {
     const files = fs.readdirSync(contractsDir).filter(f => f.endsWith('.sol'));
 
     if (files.length === 0) {
-        console.log('No .sol files found in contracts/');
+        console.log('No .sol files found in contracts/solidity/');
     } else {
         files.forEach(file => {
             const contractName = file.replace('.sol', '');

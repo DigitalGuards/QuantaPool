@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity ^0.8.24;
+// Generated from ../test/DepositPool-v2.t.sol by scripts/sync-hyperion.js.
+// Edit the Solidity source first, then re-run this script.
+pragma hyperion ^0.8.24;
 
-import "forge-std/Test.sol";
-import "../contracts/solidity/stQRL-v2.sol";
-import "../contracts/solidity/DepositPool-v2.sol";
+import "forge-std/Test.hyp";
+import "../contracts/stQRL-v2.hyp";
+import "../contracts/DepositPool-v2.hyp";
 
 /**
  * @title DepositPool v2 Integration Tests

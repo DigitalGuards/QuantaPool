@@ -1,0 +1,10 @@
+{
+  "provider": "https://qrlwallet.com/api/zond-rpc/testnet",
+  "chainId": 32382,
+  "txConfirmations": 12,
+  "contracts": {
+    "stQRLV2": "",
+    "depositPoolV2": "",
+    "validatorManager": ""
+  }
+}
