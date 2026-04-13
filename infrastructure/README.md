@@ -11,7 +11,7 @@ infrastructure/
 │   └── environments/   # Environment-specific configs (testnet, mainnet)
 ├── ansible/            # Server configuration
 │   ├── playbooks/      # Deployment and maintenance playbooks
-│   └── roles/          # Ansible roles (gzond, qrysm, security, monitoring)
+│   └── roles/          # Ansible roles (gqrl, qrysm, security, monitoring)
 ├── scripts/            # Operational scripts
 │   ├── deploy.sh       # One-command deployment
 │   ├── destroy.sh      # Tear down infrastructure
@@ -39,7 +39,7 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed instructions.
 
 ## What Gets Deployed
 
-- **Primary validator node** - gzond + qrysm beacon + validator client
+- **Primary validator node** - gqrl + qrysm beacon + validator client
 - **Backup validator node** - Hot standby for failover
 - **Monitoring server** - Prometheus + Grafana + Alertmanager
 

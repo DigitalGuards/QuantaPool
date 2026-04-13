@@ -1,6 +1,6 @@
 # QuantaPool
 
-Decentralized liquid staking protocol for QRL Zond. Deposit QRL, receive stQRL, earn validator rewards automatically.
+Decentralized liquid staking protocol for QRL. Deposit QRL, receive stQRL, earn validator rewards automatically.
 
 ## Overview
 
@@ -53,7 +53,7 @@ QuantaPool enables QRL holders to participate in Proof-of-Stake validation witho
 ┌──────────────────────┐    ┌──────────────────────────────┐
 │   Infrastructure     │    │       Monitoring             │
 │  Terraform + Ansible │    │  Prometheus + Grafana        │
-│  gzond, qrysm nodes │    │  Contract exporter + alerts  │
+│  gqrl, qrysm nodes │    │  Contract exporter + alerts  │
 └──────────────────────┘    └──────────────────────────────┘
 ```
 
@@ -74,7 +74,7 @@ QuantaPool/
 │   └── ValidatorManager.t.sol#   55 validator lifecycle tests
 ├── infrastructure/           # Production validator deployment
 │   ├── terraform/            #   Hetzner Cloud provisioning
-│   ├── ansible/              #   Node configuration (gzond, qrysm)
+│   ├── ansible/              #   Node configuration (gqrl, qrysm)
 │   ├── scripts/              #   deploy.sh, failover.sh, health-check.sh
 │   └── docs/                 #   Runbooks and deployment guides
 ├── monitoring/               # Observability stack
@@ -116,7 +116,7 @@ If slashing occurs (pool drops to 950 QRL):
 Production-ready validator infrastructure using Terraform and Ansible.
 
 **Components provisioned:**
-- **Primary validator node** — gzond (execution) + qrysm-beacon + qrysm-validator
+- **Primary validator node** — gqrl (execution) + qrysm-beacon + qrysm-validator
 - **Backup validator node** — hot standby with failover script
 - **Monitoring server** — Prometheus, Grafana, Alertmanager
 
@@ -128,7 +128,7 @@ See `infrastructure/docs/DEPLOYMENT.md` for the step-by-step deployment guide an
 
 Docker Compose stack providing full observability:
 
-- **Prometheus**: Scrapes metrics from gzond, qrysm-beacon, qrysm-validator, and the custom contract exporter
+- **Prometheus**: Scrapes metrics from gqrl, qrysm-beacon, qrysm-validator, and the custom contract exporter
 - **Grafana**: Three dashboards — Validator Overview, Contract State, System Resources
 - **Alertmanager**: Routes alerts by severity (Critical/Warning/Info) to Discord and Telegram
 - **Contract Exporter**: Custom Node.js service exposing on-chain metrics (stQRL exchange rate, TVL, deposit queue, validator count)
@@ -186,7 +186,7 @@ GitHub Actions runs `forge fmt --check`, `forge build --sizes`, and `forge test 
 
 ## Status
 
-**v2 contracts ready** — infrastructure and monitoring built, awaiting Zond testnet deployment.
+**v2 contracts ready** — infrastructure and monitoring built, awaiting QRL v2 testnet deployment.
 
 ### Roadmap
 
@@ -194,7 +194,7 @@ GitHub Actions runs `forge fmt --check`, `forge build --sizes`, and `forge test 
 - [x] Validator infrastructure (Terraform + Ansible)
 - [x] Monitoring and alerting stack
 - [x] Key management tooling
-- [ ] Deploy v2 contracts to Zond testnet
+- [ ] Deploy v2 contracts to QRL v2 testnet
 - [ ] Integrate staking UI into [qrlwallet.com](https://qrlwallet.com)
 
 ## Security

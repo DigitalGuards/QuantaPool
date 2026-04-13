@@ -21,7 +21,7 @@ node scripts/sync-hyperion.js
 HYPERION_COMPILER=/path/to/hypc node scripts/compile-hyperion.js
 ```
 
-3. Deploy the v2 contracts to Zond:
+3. Deploy the v2 contracts to QRL:
 
 ```bash
 TESTNET_SEED="..." node scripts/deploy-hyperion.js
