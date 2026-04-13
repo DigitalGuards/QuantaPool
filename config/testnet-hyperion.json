@@ -1,5 +1,5 @@
 {
-  "provider": "https://qrlwallet.com/api/zond-rpc/testnet",
+  "provider": "https://qrlwallet.com/api/qrl-rpc/testnet",
   "chainId": 32382,
   "txConfirmations": 12,
   "contracts": {
