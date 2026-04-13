@@ -69,7 +69,7 @@ services:
     container_name: quantapool-contract-exporter
     restart: unless-stopped
     environment:
-      - ZOND_RPC_URL=${ZOND_RPC_URL:-https://qrlwallet.com/api/zond-rpc/testnet}
+      - QRL_RPC_URL=${QRL_RPC_URL:-https://qrlwallet.com/api/qrl-rpc/testnet}
       - STQRL_ADDRESS=${STQRL_ADDRESS}
       - DEPOSIT_POOL_ADDRESS=${DEPOSIT_POOL_ADDRESS}
       - REWARDS_ORACLE_ADDRESS=${REWARDS_ORACLE_ADDRESS}

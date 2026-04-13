@@ -1,5 +1,5 @@
 const { Web3 } = require('@theqrl/web3');
-const { MnemonicToSeedBin } = require('@theqrl/wallet.js');
+const { MLDSA87 } = require('@theqrl/wallet.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -36,10 +36,10 @@ async function main() {
 
     // Setup account
     const mnemonic = process.env.TESTNET_SEED;
-    const seedBin = MnemonicToSeedBin(mnemonic);
-    const seedHex = '0x' + Buffer.from(seedBin).toString('hex');
-    const account = web3.zond.accounts.seedToAccount(seedHex);
-    web3.zond.accounts.wallet.add(account);
+    const wallet = MLDSA87.newWalletFromMnemonic(mnemonic);
+    const seedHex = wallet.getHexExtendedSeed();
+    const account = web3.qrl.accounts.seedToAccount(seedHex);
+    web3.qrl.accounts.wallet.add(account);
 
     console.log(`Account: ${account.address}`);
     console.log(`stQRL: ${config.contracts.stQRL}`);
@@ -47,7 +47,7 @@ async function main() {
     console.log(`RewardsOracle: ${config.contracts.rewardsOracle}`);
 
     const stQRLArtifact = loadArtifact('stQRL');
-    const stQRL = new web3.zond.Contract(stQRLArtifact.abi, config.contracts.stQRL);
+    const stQRL = new web3.qrl.Contract(stQRLArtifact.abi, config.contracts.stQRL);
 
     // Check current settings
     const currentDepositPool = await stQRL.methods.depositPool().call();
@@ -57,10 +57,10 @@ async function main() {
     console.log(`Current Oracle: ${currentOracle}`);
 
     // Set DepositPool if not set
-    if (currentDepositPool === 'Z0000000000000000000000000000000000000000') {
+    if (currentDepositPool === 'Q0000000000000000000000000000000000000000') {
         console.log('\nSetting DepositPool...');
         const txData = stQRL.methods.setDepositPool(config.contracts.depositPool).encodeABI();
-        const tx1 = await web3.zond.sendTransaction({
+        const tx1 = await web3.qrl.sendTransaction({
             from: account.address,
             to: config.contracts.stQRL,
             data: txData,
@@ -72,10 +72,10 @@ async function main() {
     }
 
     // Set RewardsOracle if not set
-    if (currentOracle === 'Z0000000000000000000000000000000000000000') {
+    if (currentOracle === 'Q0000000000000000000000000000000000000000') {
         console.log('\nSetting RewardsOracle...');
         const txData = stQRL.methods.setRewardsOracle(config.contracts.rewardsOracle).encodeABI();
-        const tx2 = await web3.zond.sendTransaction({
+        const tx2 = await web3.qrl.sendTransaction({
             from: account.address,
             to: config.contracts.stQRL,
             data: txData,

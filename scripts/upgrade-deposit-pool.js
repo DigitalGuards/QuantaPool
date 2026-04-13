@@ -13,7 +13,7 @@ const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const { Web3 } = require('@theqrl/web3');
-const { MnemonicToSeedBin } = require('@theqrl/wallet.js');
+const { MLDSA87 } = require('@theqrl/wallet.js');
 
 const config = require('../config/testnet.json');
 
@@ -38,14 +38,14 @@ async function main() {
 
     // Setup account
     const mnemonic = process.env.TESTNET_SEED;
-    const seedBin = MnemonicToSeedBin(mnemonic);
-    const seedHex = '0x' + Buffer.from(seedBin).toString('hex');
-    const account = web3.zond.accounts.seedToAccount(seedHex);
-    web3.zond.accounts.wallet.add(account);
+    const wallet = MLDSA87.newWalletFromMnemonic(mnemonic);
+    const seedHex = wallet.getHexExtendedSeed();
+    const account = web3.qrl.accounts.seedToAccount(seedHex);
+    web3.qrl.accounts.wallet.add(account);
 
     console.log('\nDeployer:', account.address);
 
-    const balance = await web3.zond.getBalance(account.address);
+    const balance = await web3.qrl.getBalance(account.address);
     console.log('Balance:', web3.utils.fromWei(balance, 'ether'), 'QRL');
 
     // Check current state
@@ -54,14 +54,14 @@ async function main() {
     console.log('DepositPool (old):', config.contracts.depositPool);
 
     const stQRLAbi = loadArtifact('stQRL').abi;
-    const stQRLContract = new web3.zond.Contract(stQRLAbi, config.contracts.stQRL);
+    const stQRLContract = new web3.qrl.Contract(stQRLAbi, config.contracts.stQRL);
 
     const currentDepositPool = await stQRLContract.methods.depositPool().call();
     console.log('stQRL.depositPool():', currentDepositPool);
 
     // Get current TVL
     const oldDepositPoolAbi = loadArtifact('DepositPool').abi;
-    const oldDepositPool = new web3.zond.Contract(oldDepositPoolAbi, config.contracts.depositPool);
+    const oldDepositPool = new web3.qrl.Contract(oldDepositPoolAbi, config.contracts.depositPool);
 
     const pendingDeposits = await oldDepositPool.methods.pendingDeposits().call();
     const validatorCount = await oldDepositPool.methods.validatorCount().call();
@@ -76,7 +76,7 @@ async function main() {
     console.log('\n--- Deploying New DepositPool ---');
 
     const depositPoolArtifact = loadArtifact('DepositPool');
-    const DepositPoolContract = new web3.zond.Contract(depositPoolArtifact.abi);
+    const DepositPoolContract = new web3.qrl.Contract(depositPoolArtifact.abi);
 
     const deployTx = DepositPoolContract.deploy({
         data: depositPoolArtifact.bytecode,
@@ -94,7 +94,7 @@ async function main() {
     console.log('New DepositPool deployed:', newDepositPool.options.address);
 
     // Verify new contract has beacon deposit support
-    const newContract = new web3.zond.Contract(depositPoolArtifact.abi, newDepositPool.options.address);
+    const newContract = new web3.qrl.Contract(depositPoolArtifact.abi, newDepositPool.options.address);
     const depositContract = await newContract.methods.DEPOSIT_CONTRACT().call();
     console.log('DEPOSIT_CONTRACT:', depositContract);
 

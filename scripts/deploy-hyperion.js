@@ -4,7 +4,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const { Web3 } = require('@theqrl/web3');
-const { MnemonicToSeedBin } = require('@theqrl/wallet.js');
+const { MLDSA87 } = require('@theqrl/wallet.js');
 
 const repoRoot = path.join(__dirname, '..');
 const configPath = process.env.HYPERION_CONFIG || path.join(repoRoot, 'config', 'testnet-hyperion.json');
@@ -59,10 +59,10 @@ function getAccount(web3) {
         throw new Error('TESTNET_SEED environment variable is required');
     }
 
-    const seedBin = MnemonicToSeedBin(process.env.TESTNET_SEED);
-    const seedHex = `0x${Buffer.from(seedBin).toString('hex')}`;
-    const account = web3.zond.accounts.seedToAccount(seedHex);
-    web3.zond.accounts.wallet.add(account);
+    const wallet = MLDSA87.newWalletFromMnemonic(process.env.TESTNET_SEED);
+    const seedHex = wallet.getHexExtendedSeed();
+    const account = web3.qrl.accounts.seedToAccount(seedHex);
+    web3.qrl.accounts.wallet.add(account);
     return account;
 }
 
@@ -70,7 +70,7 @@ async function deployContract(web3, account, contractName, constructorArgs = [])
     const artifact = loadArtifact(contractName);
     console.log(`\nDeploying ${contractName}...`);
 
-    const contract = new web3.zond.Contract(artifact.abi);
+    const contract = new web3.qrl.Contract(artifact.abi);
     const deployTx = contract.deploy({
         data: artifact.bytecode,
         arguments: constructorArgs
@@ -108,13 +108,13 @@ async function main() {
     console.log(`Provider: ${config.provider}`);
 
     const web3 = new Web3(config.provider);
-    const chainId = await web3.zond.getChainId();
+    const chainId = await web3.qrl.getChainId();
     console.log(`Connected to chain ID: ${chainId}`);
 
     const account = getAccount(web3);
     console.log(`Deployer: ${account.address}`);
 
-    const balance = await web3.zond.getBalance(account.address);
+    const balance = await web3.qrl.getBalance(account.address);
     console.log(`Balance: ${web3.utils.fromWei(balance, 'ether')} QRL`);
 
     const stQRL = await deployContract(web3, account, 'stQRLv2');
@@ -124,21 +124,21 @@ async function main() {
     console.log('\nConfiguring contract links...');
 
     await sendConfiguredTx(
-        new web3.zond.Contract(loadArtifact('DepositPoolV2').abi, depositPool.options.address)
+        new web3.qrl.Contract(loadArtifact('DepositPoolV2').abi, depositPool.options.address)
             .methods.setStQRL(stQRL.options.address),
         account,
         '  DepositPoolV2.setStQRL'
     );
 
     await sendConfiguredTx(
-        new web3.zond.Contract(loadArtifact('stQRLv2').abi, stQRL.options.address)
+        new web3.qrl.Contract(loadArtifact('stQRLv2').abi, stQRL.options.address)
             .methods.setDepositPool(depositPool.options.address),
         account,
         '  stQRLv2.setDepositPool'
     );
 
     await sendConfiguredTx(
-        new web3.zond.Contract(loadArtifact('ValidatorManager').abi, validatorManager.options.address)
+        new web3.qrl.Contract(loadArtifact('ValidatorManager').abi, validatorManager.options.address)
             .methods.setDepositPool(depositPool.options.address),
         account,
         '  ValidatorManager.setDepositPool'
