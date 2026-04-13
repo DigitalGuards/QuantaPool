@@ -279,7 +279,7 @@ RewardsOracle needs to:
 
 ## Resources
 
-### QRL/QRL Documentation
+### QRL Documentation
 - Testnet docs: https://test-zond.theqrl.org/
 - Qrysm repo: https://github.com/theQRL/qrysm
 - Go-QRL repo: https://github.com/theQRL/go-qrl
