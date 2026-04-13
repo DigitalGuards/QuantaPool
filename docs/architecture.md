@@ -2,7 +2,7 @@
 
 ## Overview
 
-QuantaPool is a decentralized liquid staking protocol for QRL Zond. Users deposit QRL and receive stQRL tokens representing their stake. The protocol uses a **fixed-balance token model** (like Lido's wstETH) where share balances remain constant and QRL value grows with rewards.
+QuantaPool is a decentralized liquid staking protocol for QRL. Users deposit QRL and receive stQRL tokens representing their stake. The protocol uses a **fixed-balance token model** (like Lido's wstETH) where share balances remain constant and QRL value grows with rewards.
 
 ## Architecture Diagram
 
@@ -39,7 +39,7 @@ QuantaPool is a decentralized liquid staking protocol for QRL Zond. Users deposi
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
-│               Zond Beacon Deposit Contract                  │
+│               QRL Beacon Deposit Contract                  │
 │  - 40,000 QRL per validator                                 │
 │  - Withdrawal credentials → DepositPool                     │
 └─────────────────────────────────────────────────────────────┘
@@ -149,9 +149,9 @@ When slashing occurs:
 3. All stQRL holders share the loss via reduced `getQRLValue()`
 4. Share balances unchanged (loss is implicit)
 
-## Zond-Specific Adaptations
+## QRL-Specific Adaptations
 
-| Parameter | Ethereum | QRL Zond |
+| Parameter | Ethereum | QRL |
 |-----------|----------|----------|
 | Validator stake | 32 ETH | 40,000 QRL |
 | Block time | ~12s | ~60s |

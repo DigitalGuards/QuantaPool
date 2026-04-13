@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide covers updating gzond and qrysm clients to new versions.
+This guide covers updating gqrl and qrysm clients to new versions.
 
 ## Pre-Update Checklist
 
@@ -53,13 +53,13 @@ tar -czf /opt/quantapool/backups/slashing-pre-update-$(date +%Y%m%d).tar.gz \
 # Stop in reverse order
 systemctl stop qrysm-validator
 systemctl stop qrysm-beacon
-systemctl stop gzond
+systemctl stop gqrl
 ```
 
-#### Step 3: Update gzond
+#### Step 3: Update gqrl
 
 ```bash
-cd /opt/quantapool/gzond/source
+cd /opt/quantapool/gqrl/source
 
 # Pull latest
 git fetch --all
@@ -67,13 +67,13 @@ git checkout main  # Or specific tag
 git pull
 
 # Build
-make gzond
+make gqrl
 
 # Install
-cp build/bin/gzond /usr/local/bin/
+cp build/bin/gqrl /usr/local/bin/
 
 # Verify version
-gzond version
+gqrl version
 ```
 
 #### Step 4: Update qrysm
@@ -101,9 +101,9 @@ qrysm-validator --version
 
 ```bash
 # Start in order
-systemctl start gzond
+systemctl start gqrl
 
-# Wait for gzond to sync
+# Wait for gqrl to sync
 sleep 30
 
 systemctl start qrysm-beacon
@@ -118,7 +118,7 @@ systemctl start qrysm-validator
 
 ```bash
 # Check services
-systemctl status gzond qrysm-beacon qrysm-validator
+systemctl status gqrl qrysm-beacon qrysm-validator
 
 # Check sync status
 curl -s http://localhost:3500/eth/v1/node/syncing | jq
@@ -161,34 +161,34 @@ If update causes issues:
 
 ```bash
 # If you kept old binaries
-cp /usr/local/bin/gzond.old /usr/local/bin/gzond
+cp /usr/local/bin/gqrl.old /usr/local/bin/gqrl
 cp /usr/local/bin/qrysm-beacon.old /usr/local/bin/qrysm-beacon
 cp /usr/local/bin/qrysm-validator.old /usr/local/bin/qrysm-validator
 
-systemctl restart gzond qrysm-beacon qrysm-validator
+systemctl restart gqrl qrysm-beacon qrysm-validator
 ```
 
 ### Full Rollback (Rebuild Old Version)
 
 ```bash
-cd /opt/quantapool/gzond/source
+cd /opt/quantapool/gqrl/source
 git checkout <previous-tag>
-make gzond
-cp build/bin/gzond /usr/local/bin/
+make gqrl
+cp build/bin/gqrl /usr/local/bin/
 
 cd /opt/quantapool/qrysm/source
 git checkout <previous-tag>
 go build -o /usr/local/bin/qrysm-beacon ./cmd/beacon-chain
 go build -o /usr/local/bin/qrysm-validator ./cmd/validator
 
-systemctl restart gzond qrysm-beacon qrysm-validator
+systemctl restart gqrl qrysm-beacon qrysm-validator
 ```
 
 ## Version Compatibility
 
 Ensure execution and consensus clients are compatible:
 
-| gzond Version | qrysm Version | Notes |
+| gqrl Version | qrysm Version | Notes |
 |---------------|---------------|-------|
 | main (latest) | main (latest) | Recommended for testnet |
 | v1.x.x | v4.x.x | Check release notes |
@@ -196,7 +196,7 @@ Ensure execution and consensus clients are compatible:
 ## Post-Update Verification
 
 - [ ] All services running
-- [ ] gzond synced and processing blocks
+- [ ] gqrl synced and processing blocks
 - [ ] Beacon node synced
 - [ ] Validator submitting attestations
 - [ ] No errors in logs

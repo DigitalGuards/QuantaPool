@@ -41,7 +41,7 @@ cd infrastructure/scripts
 ```
 
 This deploys:
-- Primary validator node (gzond + qrysm)
+- Primary validator node (gqrl + qrysm)
 - Backup validator node (hot standby)
 - Monitoring server (Prometheus + Grafana)
 
@@ -101,7 +101,7 @@ ansible-playbook -i inventory.ini playbooks/deploy-monitoring.yml
 ```
 Internet
     │
-    ├── Port 30303 (gzond P2P) ──────┐
+    ├── Port 30303 (gqrl P2P) ──────┐
     ├── Port 13000 (qrysm TCP) ──────┼──► Primary Node (10.0.0.10)
     ├── Port 12000 (qrysm UDP) ──────┘
     │
@@ -111,7 +111,7 @@ Internet
 
 Private Network (10.0.0.0/24)
     │
-    ├── :8545 (gzond RPC) ───────────► Internal only
+    ├── :8545 (gqrl RPC) ───────────► Internal only
     ├── :3500 (beacon API) ──────────► Internal only
     ├── :9100 (node_exporter) ───────► Monitoring only
     └── :8080 (beacon metrics) ──────► Monitoring only
@@ -200,19 +200,19 @@ terraform output ssh_connection_primary
 
 ```bash
 # Check service status
-systemctl status gzond
+systemctl status gqrl
 systemctl status qrysm-beacon
 systemctl status qrysm-validator
 
 # View logs
-journalctl -u gzond -f
+journalctl -u gqrl -f
 journalctl -u qrysm-beacon -f
 ```
 
 ### Sync Issues
 
 ```bash
-# Check gzond sync status
+# Check gqrl sync status
 curl -X POST -H "Content-Type: application/json" \
   --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' \
   http://localhost:8545

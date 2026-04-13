@@ -2,7 +2,7 @@
 
 ## Current State (MVP)
 
-The current QuantaPool implementation handles **accounting only** - it does not actually stake on the Zond beacon chain.
+The current QuantaPool implementation handles **accounting only** - it does not actually stake on the QRL beacon chain.
 
 ### What Works
 - User deposits QRL → receives stQRL tokens
@@ -34,18 +34,18 @@ Currently `fundValidator()`:
 4. **Does NOT call beacon deposit contract**
 5. **Does NOT create real validator**
 
-## Zond Staking Architecture
+## QRL Staking Architecture
 
 ### Components
 
 | Component | Purpose | Location |
 |-----------|---------|----------|
-| gzond | Execution client | `~/zond-testnetv1/gzond` |
-| beacon-chain (qrysm) | Consensus client | `~/zond-testnetv1/beacon-chain` |
-| validator | Validator client | `~/zond-testnetv1/validator` |
-| staking-deposit-cli | Key generation | `~/zond-testnetv1/qrysm/staking-deposit-cli` |
+| gqrl | Execution client | `~/qrl-testnetv1/gqrl` |
+| beacon-chain (qrysm) | Consensus client | `~/qrl-testnetv1/beacon-chain` |
+| validator | Validator client | `~/qrl-testnetv1/validator` |
+| staking-deposit-cli | Key generation | `~/qrl-testnetv1/qrysm/staking-deposit-cli` |
 
-### Staking Requirements (Native Zond)
+### Staking Requirements (Native QRL)
 
 - **Minimum stake**: 40,000 QRL per validator
 - **Key type**: Dilithium/ML-DSA-87 (post-quantum)
@@ -55,11 +55,11 @@ Currently `fundValidator()`:
 ### QuantaPool Pooling Model
 
 QuantaPool pools user deposits to create validators:
-- **Threshold**: 40,000 QRL (matches native Zond requirement)
+- **Threshold**: 40,000 QRL (matches native QRL requirement)
 - **User gets**: stQRL tokens representing their share
 - **Protocol handles**: Validator creation, key management, rewards
 
-QuantaPool's threshold matches the native Zond validator requirement. The protocol aggregates deposits from multiple users until the 40,000 QRL threshold is reached, then creates a validator on behalf of all depositors.
+QuantaPool's threshold matches the native QRL validator requirement. The protocol aggregates deposits from multiple users until the 40,000 QRL threshold is reached, then creates a validator on behalf of all depositors.
 
 > **Note**: The threshold is configured via the `VALIDATOR_THRESHOLD` constant in `DepositPool.sol`.
 
@@ -69,7 +69,7 @@ QuantaPool's threshold matches the native Zond validator requirement. The protoc
 
 | Property | Value |
 |----------|-------|
-| Address | `Z4242424242424242424242424242424242424242` |
+| Address | `Q4242424242424242424242424242424242424242` |
 | Code size | 12,578 bytes |
 | Current deposit count | 0 |
 | Status | Deployed and operational |
@@ -110,14 +110,14 @@ interface IDepositContract {
 
 The deposit contract ABI is available at:
 - `artifacts/DepositContract.json`
-- Source: `~/zond-testnetv1/qrysm/contracts/deposit/contract.go`
+- Source: `~/qrl-testnetv1/qrysm/contracts/deposit/contract.go`
 
 ## Validator Key Generation (VERIFIED)
 
 ### Building the CLI
 
 ```bash
-cd ~/zond-testnetv1/qrysm
+cd ~/qrl-testnetv1/qrysm
 go build -o staking-deposit-cli ./cmd/staking-deposit-cli/deposit/
 ```
 
@@ -131,7 +131,7 @@ staking-deposit-cli new-seed \
   --num-validators 1 \
   --folder validator_keys \
   --chain-name testnet \
-  --execution-address Z3C6927FDD1b9C81eb73a60AbE73DeDfFC65c8943 \
+  --execution-address Q3C6927FDD1b9C81eb73a60AbE73DeDfFC65c8943 \
   --keystore-password-file keystore_password.txt
 
 # Use existing seed
@@ -140,9 +140,9 @@ staking-deposit-cli existing-seed --seed <hex-seed> ...
 # Submit deposit (uses CLI internally)
 staking-deposit-cli submit \
   --validator-keys-dir validator_keys \
-  --zond-seed-file seed.txt \
-  --deposit-contract Z4242424242424242424242424242424242424242 \
-  --http-web3provider https://qrlwallet.com/api/zond-rpc/testnet
+  --qrl-seed-file seed.txt \
+  --deposit-contract Q4242424242424242424242424242424242424242 \
+  --http-web3provider https://qrlwallet.com/api/qrl-rpc/testnet
 ```
 
 ### Generated Files
@@ -255,7 +255,7 @@ RewardsOracle needs to:
 
 ### Phase 1: Manual Staking (Testnet) ← Current
 1. [x] Build staking-deposit-cli from qrysm source
-2. [x] Find Zond testnet deposit contract address
+2. [x] Find QRL v2 testnet deposit contract address
 3. [x] Generate test Dilithium validator keys
 4. [x] Study deposit contract interface
 5. [x] Create check/submit deposit scripts
@@ -279,16 +279,16 @@ RewardsOracle needs to:
 
 ## Resources
 
-### QRL/Zond Documentation
+### QRL Documentation
 - Testnet docs: https://test-zond.theqrl.org/
 - Qrysm repo: https://github.com/theQRL/qrysm
-- Go-zond repo: https://github.com/theQRL/go-zond
+- Go-QRL repo: https://github.com/theQRL/go-qrl
 
 ### Local Files
 
 ```
-~/zond-testnetv1/
-├── gzond                 # Execution client binary
+~/qrl-testnetv1/
+├── gqrl                 # Execution client binary
 ├── beacon-chain          # Consensus client binary
 ├── validator             # Validator client binary
 ├── qrysmctl              # Qrysm control utility
@@ -296,8 +296,8 @@ RewardsOracle needs to:
 │   ├── staking-deposit-cli  # Built CLI binary (23MB)
 │   ├── cmd/staking-deposit-cli/  # CLI source
 │   └── contracts/deposit/   # Deposit contract ABI & source
-├── go-zond/              # Go-zond source code
-├── gzonddata/            # Execution layer data
+├── go-qrl/              # Go-QRL source code
+├── gqrldata/            # Execution layer data
 ├── beacondata/           # Consensus layer data
 ├── genesis.ssz           # Genesis state
 └── config.yml            # Network config (DEPOSIT_CONTRACT_ADDRESS)
@@ -320,10 +320,10 @@ scripts/
 
 | Contract | Address |
 |----------|---------|
-| DepositPool (v2) | `Z9E800e8271df4Ac91334C65641405b04584B57DC` |
-| stQRL | `Z844A6eB87927780E938908743eA24a56A220Efe8` |
-| RewardsOracle | `Z541b1f2c501956BCd7a4a6913180b2Fc27BdE17E` |
-| OperatorRegistry | `ZD370e9505D265381e839f8289f46D02815d0FF95` |
+| DepositPool (v2) | `Q9E800e8271df4Ac91334C65641405b04584B57DC` |
+| stQRL | `Q844A6eB87927780E938908743eA24a56A220Efe8` |
+| RewardsOracle | `Q541b1f2c501956BCd7a4a6913180b2Fc27BdE17E` |
+| OperatorRegistry | `QD370e9505D265381e839f8289f46D02815d0FF95` |
 
 **Changes in V2:**
 - Added `fundValidator(pubkey, withdrawal_credentials, signature, deposit_data_root)` for real beacon deposits
@@ -332,7 +332,7 @@ scripts/
 - Added input validation for Dilithium key lengths (2592 bytes pubkey, 4595 bytes signature)
 
 ### V1 - MVP (Dec 28, 2025)
-- DepositPool (v1): `Z3C6927FDD1b9C81eb73a60AbE73DeDfFC65c8943` (deprecated)
+- DepositPool (v1): `Q3C6927FDD1b9C81eb73a60AbE73DeDfFC65c8943` (deprecated)
 
 ## Current Testnet State
 
@@ -351,7 +351,7 @@ As of Dec 29, 2025:
 
 ### Known Issue: Beacon Deposit Contract Revert
 
-Direct deposits to the beacon deposit contract (`Z4242424242424242424242424242424242424242`) are failing with:
+Direct deposits to the beacon deposit contract (`Q4242424242424242424242424242424242424242`) are failing with:
 ```
 Error: Error happened while trying to execute a function inside a smart contract
 ```
@@ -368,9 +368,9 @@ Error: Error happened while trying to execute a function inside a smart contract
 | Official `staking-deposit-cli submit` | **FAILED** |
 | Direct script to beacon deposit contract | **FAILED** |
 | Via DepositPool.fundValidator() | **FAILED** |
-| Precompile via `zond_call` (direct RPC) | **WORKS** |
+| Precompile via `qrl_call` (direct RPC) | **WORKS** |
 
-**Key Finding:** The `depositroot` precompile at `Z0000000000000000000000000000000000000001` returns the correct hash when called directly via `zond_call`, but the beacon deposit contract fails when it calls the same precompile internally.
+**Key Finding:** The `depositroot` precompile at `Q0000000000000000000000000000000000000001` returns the correct hash when called directly via `qrl_call`, but the beacon deposit contract fails when it calls the same precompile internally.
 
 **Verified Correct:**
 - Fork version: `0x20000089` (matches testnet config)
