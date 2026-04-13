@@ -26,8 +26,8 @@
     - role: security
       tags: [security]
 
-    - role: gzond
-      tags: [gzond, execution]
+    - role: gqrl
+      tags: [gqrl, execution]
 
     - role: qrysm-beacon
       tags: [qrysm-beacon, beacon, consensus]
@@ -43,7 +43,7 @@
         name: "{{ item }}"
         state: started
       loop:
-        - gzond
+        - gqrl
         - qrysm-beacon
       register: service_status
       failed_when: false
@@ -67,7 +67,7 @@
           Role: {{ 'PRIMARY' if 'primary' in group_names else 'BACKUP' }}
 
           Services:
-          - gzond:         {{ 'RUNNING' if service_status.results[0].status.ActiveState == 'active' else 'STOPPED' }}
+          - gqrl:         {{ 'RUNNING' if service_status.results[0].status.ActiveState == 'active' else 'STOPPED' }}
           - qrysm-beacon:  {{ 'RUNNING' if service_status.results[1].status.ActiveState == 'active' else 'STOPPED' }}
           {% if 'primary' in group_names %}
           - qrysm-validator: {{ 'RUNNING' if validator_status.status.ActiveState == 'active' else 'STOPPED' }}
@@ -77,7 +77,7 @@
 
           Metrics endpoints:
           - Node Exporter: http://{{ private_ip }}:9100
-          - gzond:         http://{{ private_ip }}:6060
+          - gqrl:         http://{{ private_ip }}:6060
           - Beacon:        http://{{ private_ip }}:8080
           {% if 'primary' in group_names %}
           - Validator:     http://{{ private_ip }}:8081

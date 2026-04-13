@@ -1,0 +1,119 @@
+---
+# gqrl (go-qrl) execution client installation and configuration
+
+- name: Create gqrl user
+  user:
+    name: "{{ gqrl_user }}"
+    system: yes
+    shell: /bin/false
+    home: "{{ gqrl_data_dir }}"
+    create_home: no
+
+- name: Create gqrl directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ gqrl_user }}"
+    group: "{{ gqrl_group }}"
+    mode: '0750'
+  loop:
+    - "{{ gqrl_data_dir }}"
+    - /opt/quantapool/gqrl
+    - /var/log/gqrl
+
+- name: Install build dependencies
+  apt:
+    name:
+      - build-essential
+      - git
+      - golang-go
+      - wget
+      - curl
+    state: present
+    update_cache: yes
+  when: gqrl_version == "latest" or gqrl_version == "source"
+
+- name: Clone go-qrl repository
+  git:
+    repo: "{{ gqrl_repo }}"
+    dest: /opt/quantapool/gqrl/source
+    version: "{{ gqrl_version if gqrl_version != 'latest' else 'main' }}"
+    force: yes
+  register: gqrl_clone
+  when: gqrl_version == "latest" or gqrl_version == "source"
+
+- name: Build gqrl from source
+  shell: |
+    cd /opt/quantapool/gqrl/source
+    make gqrl
+    cp build/bin/gqrl {{ gqrl_binary_path }}
+  args:
+    creates: "{{ gqrl_binary_path }}"
+  when: gqrl_clone.changed or not ansible_check_mode
+  notify: restart gqrl
+
+- name: Set gqrl binary permissions
+  file:
+    path: "{{ gqrl_binary_path }}"
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Ensure JWT secret exists
+  stat:
+    path: "{{ jwt_secret_path }}"
+  register: jwt_stat
+
+- name: Generate JWT secret if missing
+  shell: |
+    openssl rand -hex 32 > {{ jwt_secret_path }}
+  when: not jwt_stat.stat.exists
+
+- name: Set JWT secret permissions
+  file:
+    path: "{{ jwt_secret_path }}"
+    owner: "{{ gqrl_user }}"
+    group: "{{ gqrl_group }}"
+    mode: '0600'
+
+- name: Create gqrl systemd service
+  template:
+    src: gqrl.service.j2
+    dest: /etc/systemd/system/gqrl.service
+    mode: '0644'
+  notify:
+    - reload systemd
+    - restart gqrl
+
+- name: Enable and start gqrl
+  systemd:
+    name: gqrl
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Wait for gqrl to start
+  wait_for:
+    port: "{{ gqrl_http_port }}"
+    host: "127.0.0.1"
+    delay: 5
+    timeout: 60
+
+- name: Check gqrl sync status
+  uri:
+    url: "http://127.0.0.1:{{ gqrl_http_port }}"
+    method: POST
+    body_format: json
+    body:
+      jsonrpc: "2.0"
+      method: "eth_syncing"
+      params: []
+      id: 1
+    return_content: yes
+  register: sync_status
+  ignore_errors: yes
+
+- name: Display gqrl sync status
+  debug:
+    msg: "gqrl sync status: {{ sync_status.json.result | default('starting') }}"
+  when: sync_status is succeeded

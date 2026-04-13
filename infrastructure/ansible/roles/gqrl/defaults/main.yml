@@ -1,0 +1,53 @@
+---
+# gqrl (go-qrl) execution client defaults
+
+# Version and source
+gqrl_version: "latest"
+gqrl_repo: "https://github.com/theQRL/go-qrl"
+gqrl_binary_path: "/usr/local/bin/gqrl"
+
+# Data directories
+gqrl_data_dir: "/var/lib/gqrl"
+gqrl_user: "gqrl"
+gqrl_group: "gqrl"
+
+# Network configuration
+gqrl_network: "testnet"
+gqrl_chain_id: 32382
+gqrl_port: 30303
+gqrl_http_port: 8545
+gqrl_ws_port: 8546
+gqrl_authrpc_port: 8551
+
+# P2P settings
+gqrl_max_peers: 50
+gqrl_bootnodes: []
+
+# API settings
+gqrl_http_api: "eth,net,web3,txpool"
+gqrl_http_addr: "127.0.0.1"
+# SECURITY: Restrict CORS to localhost only. Add specific domains if needed.
+gqrl_http_corsdomain: "localhost"
+gqrl_http_vhosts: "localhost"
+
+# Auth RPC (for beacon connection)
+gqrl_authrpc_addr: "127.0.0.1"
+gqrl_authrpc_vhosts: "localhost"
+
+# JWT secret path
+jwt_secret_path: "/etc/quantapool/jwt.hex"
+
+# Metrics
+gqrl_metrics_enabled: true
+gqrl_metrics_port: 6060
+gqrl_metrics_addr: "0.0.0.0"
+
+# Logging
+gqrl_log_level: "info"
+
+# Cache and performance
+gqrl_cache: 4096  # MB
+
+# Pruning
+gqrl_gcmode: "full"
+gqrl_syncmode: "snap"

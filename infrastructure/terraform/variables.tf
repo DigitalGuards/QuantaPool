@@ -1,5 +1,5 @@
 # QuantaPool Infrastructure Variables
-# Hetzner Cloud deployment for QRL Zond validators
+# Hetzner Cloud deployment for QRL validators
 
 variable "hcloud_token" {
   description = "Hetzner Cloud API token"
@@ -138,10 +138,10 @@ variable "operator_registry_address" {
   default     = "0xD370e9505D265381e839f8289f46D02815d0FF95"
 }
 
-variable "zond_rpc_url" {
-  description = "Zond RPC endpoint URL"
+variable "qrl_rpc_url" {
+  description = "QRL RPC endpoint URL"
   type        = string
-  default     = "https://qrlwallet.com/api/zond-rpc/testnet"
+  default     = "https://qrlwallet.com/api/qrl-rpc/testnet"
 }
 
 # Security: IP allowlists
