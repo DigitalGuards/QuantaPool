@@ -44,6 +44,7 @@ gqrl_metrics_addr: "0.0.0.0"
 
 # Logging
 gqrl_log_level: "info"
+gqrl_verbosity: 3
 
 # Cache and performance
 gqrl_cache: 4096  # MB

@@ -42,14 +42,17 @@
   register: gqrl_clone
   when: gqrl_version == "latest" or gqrl_version == "source"
 
+- name: Check if gqrl binary exists
+  stat:
+    path: "{{ gqrl_binary_path }}"
+  register: gqrl_binary_stat
+
 - name: Build gqrl from source
   shell: |
     cd /opt/quantapool/gqrl/source
     make gqrl
     cp build/bin/gqrl {{ gqrl_binary_path }}
-  args:
-    creates: "{{ gqrl_binary_path }}"
-  when: gqrl_clone.changed or not ansible_check_mode
+  when: gqrl_clone.changed or not gqrl_binary_stat.stat.exists
   notify: restart gqrl
 
 - name: Set gqrl binary permissions
@@ -115,5 +118,5 @@
 
 - name: Display gqrl sync status
   debug:
-    msg: "gqrl sync status: {{ sync_status.json.result | default('starting') }}"
+    msg: "gqrl sync status: {{ 'Synced' if sync_status.json.result == false else 'Syncing' }}"
   when: sync_status is succeeded
