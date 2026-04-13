@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 // Generated from ../contracts/solidity/DepositPool-v2.sol by scripts/sync-hyperion.js.
 // Edit the Solidity source first, then re-run this script.
-pragma hyperion ^0.8.24;
+pragma hyperion >=0.0;
 
 /**
  * @title DepositPool v2 - User Entry Point for QuantaPool
@@ -50,7 +50,7 @@ interface IstQRL {
     function getPooledQRLByShares(uint256 sharesAmount) external view returns (uint256);
 }
 
-/// @notice Zond beacon chain deposit contract interface
+/// @notice QRL beacon chain deposit contract interface
 interface IDepositContract {
     function deposit(
         bytes calldata pubkey,
@@ -65,11 +65,11 @@ contract DepositPoolV2 {
     //                          CONSTANTS
     // =============================================================
 
-    /// @notice Minimum stake for a Zond validator (MaxEffectiveBalance from Zond config)
-    uint256 public constant VALIDATOR_STAKE = 40_000 ether;
+    /// @notice Minimum stake for a QRL validator (MaxEffectiveBalance from QRL beacon config)
+    uint256 public constant VALIDATOR_STAKE = 40_000 quanta;
 
-    /// @notice Zond beacon chain deposit contract
-    address public constant DEPOSIT_CONTRACT = 0x4242424242424242424242424242424242424242;
+    /// @notice QRL beacon chain deposit contract
+    address public constant DEPOSIT_CONTRACT = Q4242424242424242424242424242424242424242;
 
     /// @notice Dilithium pubkey length (bytes)
     uint256 private constant PUBKEY_LENGTH = 2592;
@@ -81,10 +81,10 @@ contract DepositPoolV2 {
     uint256 private constant CREDENTIALS_LENGTH = 32;
 
     /// @notice Minimum blocks to wait before claiming withdrawal
-    uint256 public constant WITHDRAWAL_DELAY = 128; // ~2 hours on Zond
+    uint256 public constant WITHDRAWAL_DELAY = 128; // ~2 hours on QRL
 
     /// @notice Absolute minimum for minDepositFloor (dust prevention, ~1e15 wei)
-    uint256 public constant ABSOLUTE_MIN_DEPOSIT = 0.001 ether;
+    uint256 public constant ABSOLUTE_MIN_DEPOSIT = 0.001 quanta;
 
     // =============================================================
     //                          STORAGE
@@ -106,7 +106,7 @@ contract DepositPoolV2 {
     uint256 public minDeposit;
 
     /// @notice Adjustable floor for minDeposit (owner can lower after deployment)
-    uint256 public minDepositFloor = 100 ether;
+    uint256 public minDepositFloor = 100 quanta;
 
     /// @notice Paused state
     bool public paused;
@@ -231,7 +231,7 @@ contract DepositPoolV2 {
 
     constructor() {
         owner = msg.sender;
-        minDeposit = 100 ether; // 100 QRL minimum
+        minDeposit = 100 quanta; // 100 QRL minimum
         lastSyncBlock = block.number;
     }
 

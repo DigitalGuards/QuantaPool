@@ -21,7 +21,7 @@ NC='\033[0m'
 # Configuration
 KEY_OUTPUT_DIR="${KEY_OUTPUT_DIR:-/opt/quantapool/validator-keys}"
 NETWORK="${NETWORK:-testnet}"
-CHAIN_ID="${CHAIN_ID:-32382}"
+CHAIN_ID="${CHAIN_ID:-1337}"
 
 log() {
     echo -e "${GREEN}[$(date '+%Y-%m-%d %H:%M:%S')]${NC} $1"

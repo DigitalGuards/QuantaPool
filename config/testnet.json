@@ -1,6 +1,6 @@
 {
   "provider": "https://qrlwallet.com/api/qrl-rpc/testnet",
-  "chainId": 32382,
+  "chainId": 1337,
   "txConfirmations": 12,
   "contracts": {
     "testToken": "",
