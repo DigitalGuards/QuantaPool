@@ -10,7 +10,7 @@ const { loadDeployer } = require('./lib/loadDeployer');
 const repoRoot = path.join(__dirname, '..');
 const config = require(path.join(repoRoot, 'config', 'testnet-hyperion.json'));
 
-const PHASES = ['smoke', 'rewards', 'withdraw', 'validator', 'all'];
+const PHASES = ['status', 'smoke', 'rewards', 'withdraw', 'validator', 'errors', 'pause', 'lifecycle', 'claim-prep', 'all'];
 
 function loadAbi(name) {
     return JSON.parse(fs.readFileSync(path.join(repoRoot, 'hyperion', 'artifacts', `${name}.abi`), 'utf8'));
@@ -35,6 +35,31 @@ function fail(msg) {
 
 function expect(cond, msg) {
     cond ? ok(msg) : fail(msg);
+}
+
+// Assert that calling a method reverts. `match` is advisory: the QRL RPC proxy
+// strips the custom-error name and returns a generic "execution reverted", so we
+// accept that as a successful revert and note when the specific name surfaces.
+async function expectRevert(method, account, to, label, { value = 0n, match } = {}) {
+    try {
+        await method.estimateGas({
+            from: account.address,
+            to,
+            data: method.encodeABI(),
+            value: value.toString()
+        });
+        fail(`${label} did NOT revert (expected revert)`);
+    } catch (e) {
+        const msg = e?.innerError?.message || e?.cause?.message || e?.message || String(e);
+        const reverted = /revert/i.test(msg);
+        if (!reverted) {
+            fail(`${label} threw non-revert error: ${msg}`);
+        } else if (match && msg.includes(match)) {
+            ok(`${label} reverts with "${match}"`);
+        } else {
+            ok(`${label} reverts as expected${match ? ` (generic; proxy masked "${match}")` : ''}`);
+        }
+    }
 }
 
 // Encode-and-send pattern mirroring myqrlwallet-frontend's qrlStore.sendToken().
@@ -102,6 +127,39 @@ async function main() {
     console.log(`pool =${config.contracts.depositPoolV2}`);
     console.log(`vm   =${config.contracts.validatorManager}\n`);
     await dumpStatus(pool);
+
+    // ===== Phase 0: status (read-only) =====
+    if (phase === 'status') {
+        const shares = BigInt(await stQRL.methods.balanceOf(account.address).call());
+        const locked = BigInt(await stQRL.methods.lockedSharesOf(account.address).call());
+        const qrlValue = BigInt(await stQRL.methods.getQRLValue(account.address).call());
+        const rewards = await pool.methods.getRewardStats().call();
+        const vmStats = await vm.methods.getStats().call();
+        const wcounts = await pool.methods.getWithdrawalRequestCount(account.address).call();
+        console.log(`\nUser position (deployer):`);
+        console.log(`  stQRL shares:     ${fmt(shares)}  (locked: ${fmt(locked)})`);
+        console.log(`  QRL value:        ${fmt(qrlValue)}`);
+        console.log(`  withdraw reqs:    total=${wcounts.total} pending=${wcounts.pending}`);
+        console.log(`\nProtocol accounting:`);
+        console.log(`  rewards:          ${fmt(BigInt(rewards.totalRewards))} QRL (net: ${fmt(BigInt(rewards.netRewards))})`);
+        console.log(`  slashing:         ${fmt(BigInt(rewards.totalSlashing))} QRL`);
+        console.log(`  lastSync block:   ${rewards.lastSync}`);
+        console.log(`  paused (pool):    ${await pool.methods.paused().call()}`);
+        console.log(`  paused (stQRL):   ${await stQRL.methods.paused().call()}`);
+        console.log(`\nValidatorManager:`);
+        console.log(`  total=${vmStats.total} pending=${vmStats.pending} active=${vmStats.active}`);
+        console.log(`  totalStaked:      ${fmt(BigInt(vmStats.totalStaked))} QRL`);
+        // Iterate each request
+        if (Number(wcounts.total) > 0) {
+            console.log(`\nWithdrawal requests:`);
+            for (let i = 0; i < Number(wcounts.total); i++) {
+                const r = await pool.methods.getWithdrawalRequest(account.address, i.toString()).call();
+                console.log(`  #${i}: shares=${fmt(BigInt(r.shares))} QRL=${fmt(BigInt(r.currentQRLValue))} canClaim=${r.canClaim} blocksRemaining=${r.blocksRemaining} claimed=${r.claimed}`);
+            }
+        }
+        console.log('');
+        return;
+    }
 
     // ===== Phase 1: smoke deposit (100 QRL) =====
     if (phase === 'smoke' || phase === 'all') {
@@ -215,6 +273,184 @@ async function main() {
         const stats = await vm.methods.getStats().call();
         expect(BigInt(stats.active) >= 1n, `vm.getStats: active=${stats.active}`);
 
+        await dumpStatus(pool);
+    }
+
+    // ===== Phase 5: error cases (reverts) =====
+    if (phase === 'errors' || phase === 'all') {
+        console.log('\n[5] Revert cases');
+
+        // Deposit below minDeposit (1 wei should revert BelowMinDeposit)
+        await expectRevert(
+            pool.methods.deposit(),
+            account,
+            config.contracts.depositPoolV2,
+            'pool.deposit(1 wei)',
+            { value: 1n, match: 'BelowMinDeposit' }
+        );
+
+        // Withdraw 0 shares -> ZeroAmount
+        await expectRevert(
+            pool.methods.requestWithdrawal('0'),
+            account,
+            config.contracts.depositPoolV2,
+            'pool.requestWithdrawal(0)',
+            { match: 'ZeroAmount' }
+        );
+
+        // Withdraw more unlocked shares than we hold -> InsufficientShares
+        const held = BigInt(await stQRL.methods.sharesOf(account.address).call());
+        const locked = BigInt(await stQRL.methods.lockedSharesOf(account.address).call());
+        const unlocked = held - locked;
+        const absurd = unlocked + 10n ** 20n;
+        await expectRevert(
+            pool.methods.requestWithdrawal(absurd.toString()),
+            account,
+            config.contracts.depositPoolV2,
+            `pool.requestWithdrawal(>unlocked: ${fmt(absurd)})`,
+            { match: 'InsufficientShares' }
+        );
+
+        // Second setStQRL should revert (one-shot)
+        await expectRevert(
+            pool.methods.setStQRL(config.contracts.stQRLV2),
+            account,
+            config.contracts.depositPoolV2,
+            'pool.setStQRL(<again>)',
+            { match: 'StQRLAlreadySet' }
+        );
+
+        // Second setDepositPool on stQRL should revert (one-shot)
+        await expectRevert(
+            stQRL.methods.setDepositPool(config.contracts.depositPoolV2),
+            account,
+            config.contracts.stQRLV2,
+            'stQRL.setDepositPool(<again>)',
+            { match: 'DepositPoolAlreadySet' }
+        );
+
+        // registerValidator with wrong pubkey length (2591 bytes, off by one) -> InvalidPubkeyLength
+        const badPubkey = '0x' + 'bb'.repeat(2591);
+        await expectRevert(
+            vm.methods.registerValidator(badPubkey),
+            account,
+            config.contracts.validatorManager,
+            'vm.registerValidator(2591-byte pubkey)',
+            { match: 'InvalidPubkeyLength' }
+        );
+    }
+
+    // ===== Phase 6: pause / unpause =====
+    if (phase === 'pause' || phase === 'all') {
+        console.log('\n[6] Pause / unpause cycle');
+        const beforePaused = await pool.methods.paused().call();
+        expect(beforePaused === false, `pool.paused() == false initially`);
+
+        await tx(web3, pool.methods.pause(), account, config.contracts.depositPoolV2, 'pool.pause()');
+        const midPaused = await pool.methods.paused().call();
+        expect(midPaused === true, `pool.paused() == true after pause()`);
+
+        // Deposit should now revert with ContractPaused
+        await expectRevert(
+            pool.methods.deposit(),
+            account,
+            config.contracts.depositPoolV2,
+            'pool.deposit while paused',
+            { value: 100n * 10n ** 18n, match: 'ContractPaused' }
+        );
+
+        await tx(web3, pool.methods.unpause(), account, config.contracts.depositPoolV2, 'pool.unpause()');
+        const afterPaused = await pool.methods.paused().call();
+        expect(afterPaused === false, `pool.paused() == false after unpause()`);
+    }
+
+    // ===== Phase 7: validator lifecycle on VM =====
+    if (phase === 'lifecycle' || phase === 'all') {
+        console.log('\n[7] Validator lifecycle (request-exit → mark-exited)');
+        const stats0 = await vm.methods.getStats().call();
+        if (BigInt(stats0.active) === 0n) {
+            console.log('  (skipping — no active validators; run `validator` phase first)');
+        } else {
+            // Grab the first Active validator id by scanning totalValidators.
+            const total = BigInt(await vm.methods.totalValidators().call());
+            let targetId = 0n;
+            for (let i = 1n; i <= total; i++) {
+                const v = await vm.methods.validators(i.toString()).call();
+                // ValidatorStatus enum: None=0, Pending=1, Active=2, Exiting=3, Exited=4, Slashed=5
+                if (Number(v.status) === 2) { targetId = i; break; }
+            }
+            expect(targetId > 0n, `found an Active validator (id=${targetId})`);
+
+            await tx(web3, vm.methods.requestValidatorExit(targetId.toString()), account, config.contracts.validatorManager, `vm.requestValidatorExit(${targetId})`);
+            let v = await vm.methods.validators(targetId.toString()).call();
+            expect(Number(v.status) === 3, `status: Active → Exiting (got ${v.status})`);
+
+            await tx(web3, vm.methods.markValidatorExited(targetId.toString()), account, config.contracts.validatorManager, `vm.markValidatorExited(${targetId})`);
+            v = await vm.methods.validators(targetId.toString()).call();
+            expect(Number(v.status) === 4, `status: Exiting → Exited (got ${v.status})`);
+
+            const stats1 = await vm.methods.getStats().call();
+            expect(BigInt(stats1.active) === BigInt(stats0.active) - 1n, `active count decremented (${stats0.active} → ${stats1.active})`);
+
+            // markValidatorExited again should revert (status is now Exited, not Exiting)
+            await expectRevert(
+                vm.methods.markValidatorExited(targetId.toString()),
+                account,
+                config.contracts.validatorManager,
+                `vm.markValidatorExited(${targetId}) again`,
+                { match: 'InvalidStatusTransition' }
+            );
+        }
+    }
+
+    // ===== Phase 8: claim-prep (fund reserve; assert WithdrawalNotReady) =====
+    if (phase === 'claim-prep' || phase === 'all') {
+        console.log('\n[8] Claim prep (fund withdrawal reserve; assert not-ready-yet)');
+        const counts = await pool.methods.getWithdrawalRequestCount(account.address).call();
+        const total = Number(counts.total);
+        if (total === 0) {
+            console.log('  (skipping — no withdrawal requests; run `withdraw` phase first)');
+        } else {
+            // Fund reserve for the next pending request.
+            const nextIdx = Number(await pool.methods.nextWithdrawalIndex(account.address).call());
+            const req = await pool.methods.getWithdrawalRequest(account.address, nextIdx.toString()).call();
+            if (req.claimed) {
+                console.log(`  (skipping — next request (idx=${nextIdx}) already claimed)`);
+            } else {
+                const need = BigInt(req.currentQRLValue);
+                const reserveBefore = BigInt(await pool.methods.withdrawalReserve().call());
+                const pooledBefore = BigInt(await stQRL.methods.totalPooledQRL().call());
+
+                if (reserveBefore >= need) {
+                    ok(`reserve already sufficient (${fmt(reserveBefore)} >= ${fmt(need)} QRL)`);
+                } else {
+                    const delta = need - reserveBefore;
+                    if (delta > pooledBefore) {
+                        console.log(`  ✗ skipping: need to move ${fmt(delta)} QRL into reserve but pooled=${fmt(pooledBefore)}`);
+                        return;
+                    }
+                    await tx(web3, pool.methods.fundWithdrawalReserve(delta.toString()), account, config.contracts.depositPoolV2, `pool.fundWithdrawalReserve(${fmt(delta)})`);
+                    const reserveAfter = BigInt(await pool.methods.withdrawalReserve().call());
+                    const pooledAfter = BigInt(await stQRL.methods.totalPooledQRL().call());
+                    expect(reserveAfter === reserveBefore + delta, `reserve += ${fmt(delta)} QRL`);
+                    expect(pooledAfter === pooledBefore - delta, `pooled -= ${fmt(delta)} QRL (reclassified, not burned)`);
+                }
+
+                // Claim should still revert because 128 blocks haven't elapsed
+                const blocksRemaining = BigInt((await pool.methods.getWithdrawalRequest(account.address, nextIdx.toString()).call()).blocksRemaining);
+                if (blocksRemaining > 0n) {
+                    await expectRevert(
+                        pool.methods.claimWithdrawal(),
+                        account,
+                        config.contracts.depositPoolV2,
+                        `pool.claimWithdrawal() (${blocksRemaining} blocks remain)`,
+                        { match: 'WithdrawalNotReady' }
+                    );
+                } else {
+                    ok(`${blocksRemaining} blocks remain — claim would succeed`);
+                }
+            }
+        }
         await dumpStatus(pool);
     }
 
