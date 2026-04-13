@@ -43,14 +43,14 @@ scrape_configs:
   # Update these targets to match your validator server IP
   # ============================================
 
-  # Go-Zond (Execution Client) metrics
-  # Enable with: gzond --metrics --metrics.addr 0.0.0.0 --metrics.port 6060
-  - job_name: 'gzond'
+  # Go-QRL (Execution Client) metrics
+  # Enable with: gqrl --metrics --metrics.addr 0.0.0.0 --metrics.port 6060
+  - job_name: 'gqrl'
     metrics_path: /debug/metrics/prometheus
     static_configs:
       - targets: ['VALIDATOR_HOST:6060']
         labels:
-          client: 'gzond'
+          client: 'gqrl'
           layer: 'execution'
 
   # Qrysm Beacon Chain (Consensus Client) metrics

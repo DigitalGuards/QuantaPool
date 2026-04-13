@@ -1,5 +1,5 @@
 # QuantaPool Validator Node Module
-# Deploys primary validator server with gzond + qrysm
+# Deploys primary validator server with gqrl + qrysm
 
 variable "name" {
   description = "Server name"
@@ -52,8 +52,8 @@ variable "labels" {
   type        = map(string)
 }
 
-variable "zond_rpc_url" {
-  description = "Zond RPC URL"
+variable "qrl_rpc_url" {
+  description = "QRL RPC URL"
   type        = string
 }
 
@@ -111,7 +111,7 @@ data "template_file" "cloud_init" {
         content: |
           ENVIRONMENT=${var.environment}
           IS_PRIMARY=${var.is_primary}
-          ZOND_RPC_URL=${var.zond_rpc_url}
+          QRL_RPC_URL=${var.qrl_rpc_url}
           STQRL_ADDRESS=${var.stqrl_address}
           DEPOSIT_POOL_ADDRESS=${var.deposit_pool_address}
           REWARDS_ORACLE_ADDRESS=${var.rewards_oracle_address}
@@ -137,16 +137,16 @@ data "template_file" "cloud_init" {
 
     runcmd:
       # Create directories
-      - mkdir -p /opt/quantapool/{gzond,qrysm,validator-keys,data}
-      - mkdir -p /var/lib/gzond
+      - mkdir -p /opt/quantapool/{gqrl,qrysm,validator-keys,data}
+      - mkdir -p /var/lib/gqrl
       - mkdir -p /var/lib/qrysm/{beacon,validator}
 
       # Configure firewall
       - ufw default deny incoming
       - ufw default allow outgoing
       - ufw allow 22/tcp comment 'SSH'
-      - ufw allow 30303/tcp comment 'gzond P2P TCP'
-      - ufw allow 30303/udp comment 'gzond P2P UDP'
+      - ufw allow 30303/tcp comment 'gqrl P2P TCP'
+      - ufw allow 30303/udp comment 'gqrl P2P UDP'
       - ufw allow 13000/tcp comment 'qrysm beacon P2P TCP'
       - ufw allow 12000/udp comment 'qrysm beacon P2P UDP'
       - ufw --force enable

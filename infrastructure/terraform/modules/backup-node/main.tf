@@ -125,16 +125,16 @@ data "template_file" "cloud_init" {
 
     runcmd:
       # Create directories
-      - mkdir -p /opt/quantapool/{gzond,qrysm,validator-keys,data}
-      - mkdir -p /var/lib/gzond
+      - mkdir -p /opt/quantapool/{gqrl,qrysm,validator-keys,data}
+      - mkdir -p /var/lib/gqrl
       - mkdir -p /var/lib/qrysm/{beacon,validator}
 
       # Configure firewall
       - ufw default deny incoming
       - ufw default allow outgoing
       - ufw allow 22/tcp comment 'SSH'
-      - ufw allow 30303/tcp comment 'gzond P2P TCP'
-      - ufw allow 30303/udp comment 'gzond P2P UDP'
+      - ufw allow 30303/tcp comment 'gqrl P2P TCP'
+      - ufw allow 30303/udp comment 'gqrl P2P UDP'
       - ufw allow 13000/tcp comment 'qrysm beacon P2P TCP'
       - ufw allow 12000/udp comment 'qrysm beacon P2P UDP'
       - ufw --force enable

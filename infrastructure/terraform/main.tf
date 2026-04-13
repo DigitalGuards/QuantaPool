@@ -1,5 +1,5 @@
 # QuantaPool Infrastructure - Main Terraform Configuration
-# Deploys QRL Zond validator infrastructure on Hetzner Cloud
+# Deploys QRL validator infrastructure on Hetzner Cloud
 
 provider "hcloud" {
   token = var.hcloud_token
@@ -47,8 +47,8 @@ module "primary_validator" {
   is_primary      = true
   labels          = merge(var.labels, { role = "primary-validator" })
 
-  # Zond configuration
-  zond_rpc_url             = var.zond_rpc_url
+  # QRL configuration
+  qrl_rpc_url             = var.qrl_rpc_url
   stqrl_address            = var.stqrl_address
   deposit_pool_address     = var.deposit_pool_address
   rewards_oracle_address   = var.rewards_oracle_address
@@ -103,7 +103,7 @@ module "monitoring" {
   telegram_chat_id    = var.telegram_chat_id
 
   # Contract configuration
-  zond_rpc_url              = var.zond_rpc_url
+  qrl_rpc_url              = var.qrl_rpc_url
   stqrl_address             = var.stqrl_address
   deposit_pool_address      = var.deposit_pool_address
   rewards_oracle_address    = var.rewards_oracle_address
@@ -126,7 +126,7 @@ resource "hcloud_firewall" "validator" {
     source_ips = length(var.allowed_ssh_ips) > 0 ? var.allowed_ssh_ips : ["0.0.0.0/0", "::/0"]
   }
 
-  # gzond P2P
+  # gqrl P2P
   rule {
     direction  = "in"
     protocol   = "tcp"

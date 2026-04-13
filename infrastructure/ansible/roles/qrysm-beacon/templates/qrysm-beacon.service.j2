@@ -1,9 +1,9 @@
 [Unit]
 Description=qrysm Beacon Chain Client
 Documentation=https://github.com/theQRL/qrysm
-After=network-online.target gzond.service
+After=network-online.target gqrl.service
 Wants=network-online.target
-Requires=gzond.service
+Requires=gqrl.service
 
 [Service]
 Type=simple
@@ -24,7 +24,7 @@ ExecStart={{ qrysm_beacon_binary_path }} \
   --{{ qrysm_network }} \
 {% endif %}
   --datadir={{ qrysm_beacon_data_dir }} \
-  --execution-endpoint=http://{{ gzond_authrpc_addr }}:{{ gzond_authrpc_port }} \
+  --execution-endpoint=http://{{ gqrl_authrpc_addr }}:{{ gqrl_authrpc_port }} \
   --jwt-secret={{ jwt_secret_path }} \
   --p2p-tcp-port={{ qrysm_p2p_port }} \
   --p2p-udp-port={{ qrysm_p2p_udp_port }} \

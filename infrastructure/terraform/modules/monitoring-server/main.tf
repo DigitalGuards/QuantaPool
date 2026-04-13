@@ -75,8 +75,8 @@ variable "telegram_chat_id" {
   default     = ""
 }
 
-variable "zond_rpc_url" {
-  description = "Zond RPC URL"
+variable "qrl_rpc_url" {
+  description = "QRL RPC URL"
   type        = string
 }
 
@@ -133,7 +133,7 @@ data "template_file" "cloud_init" {
           DISCORD_WEBHOOK_URL=${var.discord_webhook_url}
           TELEGRAM_BOT_TOKEN=${var.telegram_bot_token}
           TELEGRAM_CHAT_ID=${var.telegram_chat_id}
-          ZOND_RPC_URL=${var.zond_rpc_url}
+          QRL_RPC_URL=${var.qrl_rpc_url}
           STQRL_ADDRESS=${var.stqrl_address}
           DEPOSIT_POOL_ADDRESS=${var.deposit_pool_address}
           REWARDS_ORACLE_ADDRESS=${var.rewards_oracle_address}

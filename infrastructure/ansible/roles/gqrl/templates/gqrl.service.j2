@@ -1,0 +1,63 @@
+[Unit]
+Description=go-qrl Execution Client
+Documentation=https://github.com/theQRL/go-qrl
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ gqrl_user }}
+Group={{ gqrl_group }}
+Restart=always
+RestartSec=5
+TimeoutStopSec=180
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+ExecStart={{ gqrl_binary_path }} \
+{% if gqrl_network == "testnet" %}
+  --{{ gqrl_network }} \
+{% endif %}
+  --datadir {{ gqrl_data_dir }} \
+  --port {{ gqrl_port }} \
+  --syncmode {{ gqrl_syncmode }} \
+  --gcmode {{ gqrl_gcmode }} \
+  --cache {{ gqrl_cache }} \
+  --maxpeers {{ gqrl_max_peers }} \
+{% if gqrl_bootnodes | length > 0 %}
+  --bootnodes {{ gqrl_bootnodes | join(',') }} \
+{% endif %}
+  --http \
+  --http.addr {{ gqrl_http_addr }} \
+  --http.port {{ gqrl_http_port }} \
+  --http.api {{ gqrl_http_api }} \
+  --http.corsdomain "{{ gqrl_http_corsdomain }}" \
+  --http.vhosts "{{ gqrl_http_vhosts }}" \
+  --ws \
+  --ws.addr {{ gqrl_http_addr }} \
+  --ws.port {{ gqrl_ws_port }} \
+  --authrpc.addr {{ gqrl_authrpc_addr }} \
+  --authrpc.port {{ gqrl_authrpc_port }} \
+  --authrpc.vhosts "{{ gqrl_authrpc_vhosts }}" \
+  --authrpc.jwtsecret {{ jwt_secret_path }} \
+{% if gqrl_metrics_enabled %}
+  --metrics \
+  --metrics.addr {{ gqrl_metrics_addr }} \
+  --metrics.port {{ gqrl_metrics_port }} \
+{% endif %}
+  --verbosity 3
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gqrl
+
+# Resource limits
+LimitNOFILE=65535
+LimitNPROC=65535
+
+[Install]
+WantedBy=multi-user.target

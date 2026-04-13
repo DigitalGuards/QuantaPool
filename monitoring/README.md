@@ -20,7 +20,7 @@ Prometheus + Grafana monitoring for QuantaPool validators and smart contracts.
 - Contract events (deposits, withdrawals, oracle updates)
 
 **Validator Node** (remote targets)
-- gzond (execution client) - sync status, peers, block height
+- gqrl (execution client) - sync status, peers, block height
 - qrysm beacon (consensus client) - attestations, sync status
 - qrysm validator - duties, missed attestations
 - System resources via node_exporter
@@ -95,7 +95,7 @@ The monitoring stack expects your validator node to expose metrics. Run the setu
 ```
 
 Or manually enable metrics:
-- gzond: `--metrics --metrics.addr 0.0.0.0 --metrics.port 6060`
+- gqrl: `--metrics --metrics.addr 0.0.0.0 --metrics.port 6060`
 - qrysm beacon: `--monitoring-host 0.0.0.0 --monitoring-port 8080`
 - qrysm validator: `--monitoring-host 0.0.0.0 --monitoring-port 8081`
 
