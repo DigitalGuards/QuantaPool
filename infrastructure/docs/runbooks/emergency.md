@@ -2,7 +2,7 @@
 
 ## Emergency Contact Information
 
-- **QRL Discord**: https://discord.gg/qrl (#zond channel)
+- **QRL Discord**: https://discord.gg/qrl (#qrl channel)
 - **QuantaPool Team**: [Add contact]
 - **Hetzner Support**: https://console.hetzner.cloud
 
@@ -83,7 +83,7 @@ docker system prune -a
 journalctl --vacuum-time=3d
 
 # Clean old chain data snapshots
-rm -rf /var/lib/gzond/ancient/bodies.0001
+rm -rf /var/lib/gqrl/ancient/bodies.0001
 
 # Expand Hetzner volume
 # (In Hetzner Console, resize volume)
@@ -112,7 +112,7 @@ ufw status
 
 # If still not syncing, restart services
 systemctl restart qrysm-beacon
-systemctl restart gzond
+systemctl restart gqrl
 
 # For severe desync, consider checkpoint sync
 # (requires re-deploying beacon node)
@@ -166,14 +166,14 @@ systemctl restart gzond
 
 ```bash
 # Stop services
-systemctl stop qrysm-validator qrysm-beacon gzond
+systemctl stop qrysm-validator qrysm-beacon gqrl
 
 # Restore from backup
 cd /opt/quantapool/key-management
 ./restore-keys.sh /opt/quantapool/backups/latest-backup.tar.gz.gpg
 
 # Restart services
-systemctl start gzond
+systemctl start gqrl
 sleep 30
 systemctl start qrysm-beacon
 # Wait for sync before starting validator
