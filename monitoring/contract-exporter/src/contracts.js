@@ -45,7 +45,7 @@ class ContractMonitor {
         await this.initializeContracts();
 
         // Get initial block number
-        this.lastProcessedBlock = await this.web3.zond.getBlockNumber();
+        this.lastProcessedBlock = await this.web3.qrl.getBlockNumber();
         console.log(`Starting from block ${this.lastProcessedBlock}`);
 
         // Initial metrics collection
@@ -68,10 +68,10 @@ class ContractMonitor {
         const operatorRegistryABI = this.loadArtifact('OperatorRegistry') || this.getMinimalOperatorRegistryABI();
 
         // Initialize contract instances
-        this.contracts.stQRL = new this.web3.zond.Contract(stQRLABI, this.config.STQRL_ADDRESS);
-        this.contracts.depositPool = new this.web3.zond.Contract(depositPoolABI, this.config.DEPOSIT_POOL_ADDRESS);
-        this.contracts.rewardsOracle = new this.web3.zond.Contract(rewardsOracleABI, this.config.REWARDS_ORACLE_ADDRESS);
-        this.contracts.operatorRegistry = new this.web3.zond.Contract(operatorRegistryABI, this.config.OPERATOR_REGISTRY_ADDRESS);
+        this.contracts.stQRL = new this.web3.qrl.Contract(stQRLABI, this.config.STQRL_ADDRESS);
+        this.contracts.depositPool = new this.web3.qrl.Contract(depositPoolABI, this.config.DEPOSIT_POOL_ADDRESS);
+        this.contracts.rewardsOracle = new this.web3.qrl.Contract(rewardsOracleABI, this.config.REWARDS_ORACLE_ADDRESS);
+        this.contracts.operatorRegistry = new this.web3.qrl.Contract(operatorRegistryABI, this.config.OPERATOR_REGISTRY_ADDRESS);
 
         console.log('Contracts initialized:');
         console.log(`  stQRL: ${this.config.STQRL_ADDRESS}`);
@@ -119,11 +119,11 @@ class ContractMonitor {
 
         try {
             // Get current block
-            const blockNumber = await this.web3.zond.getBlockNumber();
+            const blockNumber = await this.web3.qrl.getBlockNumber();
             this.metrics.blockHeight.set(Number(blockNumber));
 
             // Get deposit pool native balance
-            const poolBalance = await this.web3.zond.getBalance(this.config.DEPOSIT_POOL_ADDRESS);
+            const poolBalance = await this.web3.qrl.getBalance(this.config.DEPOSIT_POOL_ADDRESS);
             this.metrics.depositPoolBalance.set(Number(this.web3.utils.fromWei(poolBalance, 'ether')));
 
             // Collect Deposit Pool metrics
@@ -202,7 +202,7 @@ class ContractMonitor {
 
     async pollEvents() {
         try {
-            const currentBlock = await this.web3.zond.getBlockNumber();
+            const currentBlock = await this.web3.qrl.getBlockNumber();
 
             if (currentBlock > this.lastProcessedBlock) {
                 await this.processEvents(this.lastProcessedBlock + 1n, currentBlock);

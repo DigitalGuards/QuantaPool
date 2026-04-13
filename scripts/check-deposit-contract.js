@@ -1,5 +1,5 @@
 /**
- * Check the beacon chain deposit contract on Zond testnet
+ * Check the beacon chain deposit contract on QRL testnet
  *
  * This script verifies the deposit contract exists and displays its current state.
  */
@@ -25,15 +25,15 @@ async function checkDepositContract() {
     const web3 = new Web3(config.provider);
 
     // Deposit contract address (standard beacon chain deposit contract)
-    // Zond uses Z prefix format
-    const DEPOSIT_CONTRACT_ADDRESS = 'Z4242424242424242424242424242424242424242';
+    // QRL uses Q prefix format
+    const DEPOSIT_CONTRACT_ADDRESS = 'Q4242424242424242424242424242424242424242';
 
-    console.log('=== Zond Beacon Deposit Contract ===\n');
+    console.log('=== QRL Beacon Deposit Contract ===\n');
     console.log('Address:', DEPOSIT_CONTRACT_ADDRESS);
     console.log('Provider:', config.provider);
 
     // Check if contract exists
-    const code = await web3.zond.getCode(DEPOSIT_CONTRACT_ADDRESS);
+    const code = await web3.qrl.getCode(DEPOSIT_CONTRACT_ADDRESS);
     console.log('\nContract code length:', code.length, 'bytes');
 
     if (code === '0x' || code.length < 10) {
@@ -46,7 +46,7 @@ async function checkDepositContract() {
 
     // Load ABI and create contract instance
     const depositAbi = loadArtifact('DepositContract').abi;
-    const depositContract = new web3.zond.Contract(depositAbi, DEPOSIT_CONTRACT_ADDRESS);
+    const depositContract = new web3.qrl.Contract(depositAbi, DEPOSIT_CONTRACT_ADDRESS);
 
     // Get deposit count
     try {

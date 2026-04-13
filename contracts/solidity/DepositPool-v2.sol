@@ -48,7 +48,7 @@ interface IstQRL {
     function getPooledQRLByShares(uint256 sharesAmount) external view returns (uint256);
 }
 
-/// @notice Zond beacon chain deposit contract interface
+/// @notice QRL beacon chain deposit contract interface
 interface IDepositContract {
     function deposit(
         bytes calldata pubkey,
@@ -63,10 +63,10 @@ contract DepositPoolV2 {
     //                          CONSTANTS
     // =============================================================
 
-    /// @notice Minimum stake for a Zond validator (MaxEffectiveBalance from Zond config)
+    /// @notice Minimum stake for a QRL validator (MaxEffectiveBalance from QRL beacon config)
     uint256 public constant VALIDATOR_STAKE = 40_000 ether;
 
-    /// @notice Zond beacon chain deposit contract
+    /// @notice QRL beacon chain deposit contract
     address public constant DEPOSIT_CONTRACT = 0x4242424242424242424242424242424242424242;
 
     /// @notice Dilithium pubkey length (bytes)
@@ -79,7 +79,7 @@ contract DepositPoolV2 {
     uint256 private constant CREDENTIALS_LENGTH = 32;
 
     /// @notice Minimum blocks to wait before claiming withdrawal
-    uint256 public constant WITHDRAWAL_DELAY = 128; // ~2 hours on Zond
+    uint256 public constant WITHDRAWAL_DELAY = 128; // ~2 hours on QRL
 
     /// @notice Absolute minimum for minDepositFloor (dust prevention, ~1e15 wei)
     uint256 public constant ABSOLUTE_MIN_DEPOSIT = 0.001 ether;

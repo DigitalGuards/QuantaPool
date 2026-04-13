@@ -1,5 +1,5 @@
 const { Web3 } = require('@theqrl/web3');
-const { MnemonicToSeedBin } = require('@theqrl/wallet.js');
+const { loadDeployer } = require('./lib/loadDeployer');
 const fs = require('fs');
 const path = require('path');
 
@@ -24,14 +24,14 @@ loadEnv();
 const config = require('../config/testnet.json');
 
 async function main() {
-    console.log('Connecting to Zond testnet...');
+    console.log('Connecting to QRL testnet...');
     console.log(`Provider: ${config.provider}`);
 
     const web3 = new Web3(config.provider);
 
     // Check connection
     try {
-        const chainId = await web3.zond.getChainId();
+        const chainId = await web3.qrl.getChainId();
         console.log(`Connected! Chain ID: ${chainId}`);
     } catch (err) {
         console.error('Failed to connect to node:', err.message);
@@ -62,12 +62,7 @@ async function main() {
     // Convert mnemonic to seed binary, then to hex
     let account;
     try {
-        const seedBin = MnemonicToSeedBin(mnemonic);
-        const seedHex = '0x' + Buffer.from(seedBin).toString('hex');
-
-        // Create account from hex seed
-        account = web3.zond.accounts.seedToAccount(seedHex);
-        web3.zond.accounts.wallet.add(account);
+        account = loadDeployer(web3, mnemonic);
         console.log(`Account: ${account.address}`);
     } catch (err) {
         console.error('Failed to create account from seed:', err.message);
@@ -75,7 +70,7 @@ async function main() {
     }
 
     // Check balance
-    const balance = await web3.zond.getBalance(account.address);
+    const balance = await web3.qrl.getBalance(account.address);
     console.log(`Balance: ${web3.utils.fromWei(balance, 'ether')} QRL`);
 
     if (balance === '0' || balance === 0n) {
@@ -85,7 +80,7 @@ async function main() {
 
     // Deploy contract
     console.log('\nDeploying TestToken...');
-    const contract = new web3.zond.Contract(artifact.abi);
+    const contract = new web3.qrl.Contract(artifact.abi);
 
     const initialSupply = 1000000; // 1 million tokens
 
