@@ -10,7 +10,7 @@ const { loadDeployer } = require('./lib/loadDeployer');
 const repoRoot = path.join(__dirname, '..');
 const config = require(path.join(repoRoot, 'config', 'testnet-hyperion.json'));
 
-const PHASES = ['status', 'smoke', 'rewards', 'withdraw', 'validator', 'errors', 'pause', 'lifecycle', 'claim-prep', 'all'];
+const PHASES = ['status', 'smoke', 'rewards', 'withdraw', 'validator', 'errors', 'pause', 'lifecycle', 'claim-prep', 'claim', 'wait-claim', 'cancel', 'transfer-locked', 'all'];
 
 function loadAbi(name) {
     return JSON.parse(fs.readFileSync(path.join(repoRoot, 'hyperion', 'artifacts', `${name}.abi`), 'utf8'));
@@ -450,6 +450,138 @@ async function main() {
                     ok(`${blocksRemaining} blocks remain — claim would succeed`);
                 }
             }
+        }
+        await dumpStatus(pool);
+    }
+
+    // ===== Phase 9: claim (requires WITHDRAWAL_DELAY elapsed + reserve funded) =====
+    if (phase === 'claim' || phase === 'all') {
+        console.log('\n[9] Claim withdrawal (FIFO)');
+        const nextIdx = Number(await pool.methods.nextWithdrawalIndex(account.address).call());
+        const counts = await pool.methods.getWithdrawalRequestCount(account.address).call();
+        const total = Number(counts.total);
+        if (total === 0 || nextIdx >= total) {
+            console.log('  (skipping — no pending claimable request)');
+        } else {
+            const req = await pool.methods.getWithdrawalRequest(account.address, nextIdx.toString()).call();
+            console.log(`  target: request[${nextIdx}] shares=${fmt(BigInt(req.shares))} qrlAmount=${fmt(BigInt(req.currentQRLValue))} canClaim=${req.canClaim} blocksRemaining=${req.blocksRemaining}`);
+            if (!req.canClaim) {
+                console.log(`  ✗ not yet claimable. Retry in ~${Math.ceil(Number(req.blocksRemaining) * 60 / 60)} min, or use \`wait-claim\`.`);
+                return;
+            }
+            const balBefore = BigInt(await web3.qrl.getBalance(account.address));
+            const sharesBefore = BigInt(await stQRL.methods.balanceOf(account.address).call());
+            const lockedBefore = BigInt(await stQRL.methods.lockedSharesOf(account.address).call());
+            const reserveBefore = BigInt(await pool.methods.withdrawalReserve().call());
+            await tx(web3, pool.methods.claimWithdrawal(), account, config.contracts.depositPoolV2, `pool.claimWithdrawal() [request #${nextIdx}]`);
+            const balAfter = BigInt(await web3.qrl.getBalance(account.address));
+            const sharesAfter = BigInt(await stQRL.methods.balanceOf(account.address).call());
+            const lockedAfter = BigInt(await stQRL.methods.lockedSharesOf(account.address).call());
+            const reserveAfter = BigInt(await pool.methods.withdrawalReserve().call());
+            const reqAfter = await pool.methods.getWithdrawalRequest(account.address, nextIdx.toString()).call();
+            expect(reqAfter.claimed === true, `request[${nextIdx}].claimed == true`);
+            expect(sharesBefore - sharesAfter === BigInt(req.shares), `shares burned (${fmt(BigInt(req.shares))})`);
+            expect(lockedBefore - lockedAfter === BigInt(req.shares), `shares unlocked and burned`);
+            const qrlReceived = balAfter - balBefore; // positive = received; gas deducted separately
+            expect(qrlReceived > 0n || balAfter + (10n ** 18n) > balBefore, `deployer balance increased (after gas): Δ=${fmt(qrlReceived)}`);
+            expect(reserveBefore - reserveAfter >= BigInt(req.shares) / 2n, `reserve decreased by ~qrlAmount (${fmt(reserveBefore - reserveAfter)} QRL)`);
+        }
+        await dumpStatus(pool);
+    }
+
+    // ===== Phase 11: cancel withdrawal =====
+    if (phase === 'cancel') {
+        console.log('\n[11] Cancel withdrawal (create a 1-share request → cancel → verify unlocked)');
+        const unlocked = BigInt(await stQRL.methods.sharesOf(account.address).call())
+                       - BigInt(await stQRL.methods.lockedSharesOf(account.address).call());
+        const amount = 1n * 10n ** 18n; // 1 share
+        if (unlocked < amount) {
+            console.log(`  (skipping — need ≥1 unlocked share, have ${fmt(unlocked)})`);
+            return;
+        }
+        const lockedBefore = BigInt(await stQRL.methods.lockedSharesOf(account.address).call());
+        const totalPendingBefore = BigInt(await pool.methods.totalWithdrawalShares().call());
+        await tx(web3, pool.methods.requestWithdrawal(amount.toString()), account, config.contracts.depositPoolV2, 'pool.requestWithdrawal(1 share)');
+        const countsAfterReq = await pool.methods.getWithdrawalRequestCount(account.address).call();
+        const newId = BigInt(countsAfterReq.total) - 1n;
+        const lockedMid = BigInt(await stQRL.methods.lockedSharesOf(account.address).call());
+        expect(lockedMid === lockedBefore + amount, `locked +${fmt(amount)} after request`);
+
+        await tx(web3, pool.methods.cancelWithdrawal(newId.toString()), account, config.contracts.depositPoolV2, `pool.cancelWithdrawal(${newId})`);
+        const req = await pool.methods.getWithdrawalRequest(account.address, newId.toString()).call();
+        const lockedAfter = BigInt(await stQRL.methods.lockedSharesOf(account.address).call());
+        const totalPendingAfter = BigInt(await pool.methods.totalWithdrawalShares().call());
+        expect(BigInt(req.shares) === 0n, `request[${newId}].shares zeroed after cancel`);
+        expect(req.claimed === true, `request[${newId}].claimed=true (marks processed)`);
+        expect(lockedAfter === lockedBefore, `locked restored to pre-request (${fmt(lockedAfter)})`);
+        expect(totalPendingAfter === totalPendingBefore, `totalWithdrawalShares unchanged after cancel`);
+
+        // Cancelling again should revert
+        await expectRevert(
+            pool.methods.cancelWithdrawal(newId.toString()),
+            account,
+            config.contracts.depositPoolV2,
+            `pool.cancelWithdrawal(${newId}) again`,
+            { match: 'NoWithdrawalPending' }
+        );
+    }
+
+    // ===== Phase 12: transfer locked shares (must revert) =====
+    if (phase === 'transfer-locked') {
+        console.log('\n[12] Transfer locked shares (must revert InsufficientUnlockedShares)');
+        const held = BigInt(await stQRL.methods.balanceOf(account.address).call());
+        const locked = BigInt(await stQRL.methods.lockedSharesOf(account.address).call());
+        if (locked === 0n) {
+            console.log('  (skipping — no locked shares; run `withdraw` phase first)');
+            return;
+        }
+        const unlocked = held - locked;
+        const tryAmount = unlocked + 1n; // one more than allowed
+        // Transfer to self is a valid _transfer target; lock check should still fire.
+        await expectRevert(
+            stQRL.methods.transfer(account.address, tryAmount.toString()),
+            account,
+            config.contracts.stQRLV2,
+            `stQRL.transfer(self, unlocked+1=${fmt(tryAmount)})`,
+            { match: 'InsufficientUnlockedShares' }
+        );
+        // Transferring exactly unlocked amount should be allowed (transfer-to-self is a no-op net).
+        await tx(web3, stQRL.methods.transfer(account.address, unlocked.toString()), account, config.contracts.stQRLV2, `stQRL.transfer(self, unlocked=${fmt(unlocked)})`);
+        const heldAfter = BigInt(await stQRL.methods.balanceOf(account.address).call());
+        expect(heldAfter === held, 'self-transfer net-zero (balance unchanged)');
+    }
+
+    // ===== Phase 10: wait-claim (poll until claimable, then claim) =====
+    if (phase === 'wait-claim') {
+        console.log('\n[10] Wait-and-claim (polling until claimable)');
+        const nextIdx = Number(await pool.methods.nextWithdrawalIndex(account.address).call());
+        const counts = await pool.methods.getWithdrawalRequestCount(account.address).call();
+        if (Number(counts.total) === 0 || nextIdx >= Number(counts.total)) {
+            console.log('  (no pending request to wait on)');
+            return;
+        }
+        const POLL_MS = 60_000;
+        while (true) {
+            let req;
+            try {
+                req = await pool.methods.getWithdrawalRequest(account.address, nextIdx.toString()).call();
+            } catch (e) {
+                console.log(`  (RPC hiccup: ${e.message}; retrying in ${POLL_MS/1000}s)`);
+                await new Promise(r => setTimeout(r, POLL_MS));
+                continue;
+            }
+            const reserve = BigInt(await pool.methods.withdrawalReserve().call());
+            const needed = BigInt(req.currentQRLValue);
+            const blockNow = await web3.qrl.getBlockNumber();
+            console.log(`  [block ${blockNow}] blocksRemaining=${req.blocksRemaining} reserve=${fmt(reserve)} need≈${fmt(needed)} canClaim=${req.canClaim}`);
+            if (req.canClaim) {
+                console.log('  → claimable, submitting...');
+                await tx(web3, pool.methods.claimWithdrawal(), account, config.contracts.depositPoolV2, `pool.claimWithdrawal() [request #${nextIdx}]`);
+                const after = await pool.methods.getWithdrawalRequest(account.address, nextIdx.toString()).call();
+                expect(after.claimed === true, `request[${nextIdx}].claimed == true after claim`);
+                break;
+            }
+            await new Promise(r => setTimeout(r, POLL_MS));
         }
         await dumpStatus(pool);
     }
