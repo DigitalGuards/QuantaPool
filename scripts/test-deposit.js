@@ -1,5 +1,5 @@
 const { Web3 } = require('@theqrl/web3');
-const { MnemonicToSeedBin } = require('@theqrl/wallet.js');
+const { loadDeployer } = require('./lib/loadDeployer');
 const fs = require('fs');
 const path = require('path');
 
@@ -38,10 +38,7 @@ async function main() {
 
     // Setup account
     const mnemonic = process.env.TESTNET_SEED;
-    const seedBin = MnemonicToSeedBin(mnemonic);
-    const seedHex = '0x' + Buffer.from(seedBin).toString('hex');
-    const account = web3.zond.accounts.seedToAccount(seedHex);
-    web3.zond.accounts.wallet.add(account);
+    const account = loadDeployer(web3, mnemonic);
 
     console.log(`\nAccount: ${account.address}`);
 
@@ -49,13 +46,13 @@ async function main() {
     const stQRLArtifact = loadArtifact('stQRL');
     const depositPoolArtifact = loadArtifact('DepositPool');
 
-    const stQRL = new web3.zond.Contract(stQRLArtifact.abi, config.contracts.stQRL);
-    const depositPool = new web3.zond.Contract(depositPoolArtifact.abi, config.contracts.depositPool);
+    const stQRL = new web3.qrl.Contract(stQRLArtifact.abi, config.contracts.stQRL);
+    const depositPool = new web3.qrl.Contract(depositPoolArtifact.abi, config.contracts.depositPool);
 
     // Check initial state
     console.log('\n--- Initial State ---');
 
-    const qrlBalance = await web3.zond.getBalance(account.address);
+    const qrlBalance = await web3.qrl.getBalance(account.address);
     console.log(`QRL Balance: ${web3.utils.fromWei(qrlBalance, 'ether')} QRL`);
 
     const stQRLBalance = await stQRL.methods.balanceOf(account.address).call();
@@ -80,7 +77,7 @@ async function main() {
     // Encode deposit call
     const depositData = depositPool.methods.deposit().encodeABI();
 
-    const tx = await web3.zond.sendTransaction({
+    const tx = await web3.qrl.sendTransaction({
         from: account.address,
         to: config.contracts.depositPool,
         value: depositAmount,
@@ -93,7 +90,7 @@ async function main() {
     // Check final state
     console.log('\n--- After Deposit ---');
 
-    const newQRLBalance = await web3.zond.getBalance(account.address);
+    const newQRLBalance = await web3.qrl.getBalance(account.address);
     console.log(`QRL Balance: ${web3.utils.fromWei(newQRLBalance, 'ether')} QRL`);
 
     const newStQRLBalance = await stQRL.methods.balanceOf(account.address).call();

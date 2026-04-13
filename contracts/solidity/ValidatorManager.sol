@@ -20,7 +20,7 @@ contract ValidatorManager {
     //                          CONSTANTS
     // =============================================================
 
-    /// @notice Zond validator stake amount (MaxEffectiveBalance from Zond config)
+    /// @notice QRL validator stake amount (MaxEffectiveBalance from QRL beacon config)
     uint256 public constant VALIDATOR_STAKE = 40_000 ether;
 
     /// @notice Dilithium pubkey length

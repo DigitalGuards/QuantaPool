@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 /**
  * @title stQRL v2 - Fixed-Balance Staked QRL Token
  * @author QuantaPool
- * @notice Liquid staking token for QRL Zond. Balance represents shares (fixed),
+ * @notice Liquid staking token for QRL. Balance represents shares (fixed),
  *         use getQRLValue() to see current QRL equivalent.
  *
  * @dev Key concepts:
