@@ -1,5 +1,5 @@
 const { Web3 } = require('@theqrl/web3');
-const { MLDSA87 } = require('@theqrl/wallet.js');
+const { loadDeployer } = require('./lib/loadDeployer');
 const fs = require('fs');
 const path = require('path');
 
@@ -62,12 +62,7 @@ async function main() {
     // Convert mnemonic to seed binary, then to hex
     let account;
     try {
-        const wallet = MLDSA87.newWalletFromMnemonic(mnemonic);
-        const seedHex = wallet.getHexExtendedSeed();
-
-        // Create account from hex seed
-        account = web3.qrl.accounts.seedToAccount(seedHex);
-        web3.qrl.accounts.wallet.add(account);
+        account = loadDeployer(web3, mnemonic);
         console.log(`Account: ${account.address}`);
     } catch (err) {
         console.error('Failed to create account from seed:', err.message);

@@ -4,7 +4,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const { Web3 } = require('@theqrl/web3');
-const { MLDSA87 } = require('@theqrl/wallet.js');
+const { loadDeployer } = require('./lib/loadDeployer');
 
 const repoRoot = path.join(__dirname, '..');
 const configPath = process.env.HYPERION_CONFIG || path.join(repoRoot, 'config', 'testnet-hyperion.json');
@@ -59,10 +59,8 @@ function getAccount(web3) {
         throw new Error('TESTNET_SEED environment variable is required');
     }
 
-    const wallet = MLDSA87.newWalletFromMnemonic(process.env.TESTNET_SEED);
-    const seedHex = wallet.getHexExtendedSeed();
-    const account = web3.qrl.accounts.seedToAccount(seedHex);
-    web3.qrl.accounts.wallet.add(account);
+    const mnemonic = process.env.TESTNET_SEED;
+    const account = loadDeployer(web3, mnemonic);
     return account;
 }
 

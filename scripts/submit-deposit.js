@@ -14,7 +14,7 @@ const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const { Web3 } = require('@theqrl/web3');
-const { MLDSA87 } = require('@theqrl/wallet.js');
+const { loadDeployer } = require('./lib/loadDeployer');
 
 const config = require('../config/testnet.json');
 
@@ -62,10 +62,7 @@ async function submitDeposit() {
 
     // Setup account from seed
     console.log(`Using ${seedEnvVar} for deposit`);
-    const wallet = MLDSA87.newWalletFromMnemonic(mnemonic);
-    const seedHex = wallet.getHexExtendedSeed();
-    const account = web3.qrl.accounts.seedToAccount(seedHex);
-    web3.qrl.accounts.wallet.add(account);
+    const account = loadDeployer(web3, mnemonic);
 
     console.log('=== Beacon Chain Deposit Submission ===\n');
     console.log('Account:', account.address);

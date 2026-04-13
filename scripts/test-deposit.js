@@ -1,5 +1,5 @@
 const { Web3 } = require('@theqrl/web3');
-const { MLDSA87 } = require('@theqrl/wallet.js');
+const { loadDeployer } = require('./lib/loadDeployer');
 const fs = require('fs');
 const path = require('path');
 
@@ -38,10 +38,7 @@ async function main() {
 
     // Setup account
     const mnemonic = process.env.TESTNET_SEED;
-    const wallet = MLDSA87.newWalletFromMnemonic(mnemonic);
-    const seedHex = wallet.getHexExtendedSeed();
-    const account = web3.qrl.accounts.seedToAccount(seedHex);
-    web3.qrl.accounts.wallet.add(account);
+    const account = loadDeployer(web3, mnemonic);
 
     console.log(`\nAccount: ${account.address}`);
 

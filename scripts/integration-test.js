@@ -21,7 +21,7 @@ const crypto = require('crypto');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const { Web3 } = require('@theqrl/web3');
-const { MLDSA87 } = require('@theqrl/wallet.js');
+const { loadDeployer } = require('./lib/loadDeployer');
 
 const config = require('../config/testnet.json');
 
@@ -157,10 +157,7 @@ class IntegrationTest {
         }
 
         const mnemonic = process.env.TESTNET_SEED;
-        const wallet = MLDSA87.newWalletFromMnemonic(mnemonic);
-        const seedHex = wallet.getHexExtendedSeed();
-        this.mainAccount = this.web3.qrl.accounts.seedToAccount(seedHex);
-        this.web3.qrl.accounts.wallet.add(this.mainAccount);
+        this.mainAccount = loadDeployer(this.web3, mnemonic);
 
         const balance = await this.web3.qrl.getBalance(this.mainAccount.address);
         console.log(`   Main wallet: ${shortAddr(this.mainAccount.address)}`);
