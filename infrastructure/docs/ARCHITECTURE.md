@@ -2,7 +2,7 @@
 
 ## Overview
 
-The QuantaPool infrastructure provides automated deployment and management of QRL Zond validators with enterprise-grade reliability.
+The QuantaPool infrastructure provides automated deployment and management of QRL validators with enterprise-grade reliability.
 
 ## System Architecture
 
@@ -14,7 +14,7 @@ The QuantaPool infrastructure provides automated deployment and management of QR
 │  ┌──────────────────────┐     ┌──────────────────────┐                     │
 │  │   PRIMARY VALIDATOR  │     │   BACKUP VALIDATOR   │                     │
 │  │   ┌──────────────┐   │     │   ┌──────────────┐   │                     │
-│  │   │    gzond     │   │     │   │    gzond     │   │                     │
+│  │   │    gqrl     │   │     │   │    gqrl     │   │                     │
 │  │   │ (Execution)  │   │     │   │ (Execution)  │   │                     │
 │  │   └──────┬───────┘   │     │   └──────┬───────┘   │                     │
 │  │          │ JWT       │     │          │ JWT       │                     │
@@ -51,10 +51,10 @@ The QuantaPool infrastructure provides automated deployment and management of QR
 
 ## Component Details
 
-### Execution Client (gzond)
+### Execution Client (gqrl)
 
 - **Purpose**: Processes transactions, maintains execution state
-- **Source**: https://github.com/theQRL/go-zond
+- **Source**: https://github.com/theQRL/go-qrl
 - **Ports**:
   - 30303 (P2P)
   - 8545 (JSON-RPC, internal)
@@ -90,7 +90,7 @@ The QuantaPool infrastructure provides automated deployment and management of QR
 ├─────────────────────────────────────────────┤
 │  ALLOW IN:                                   │
 │  • 22/tcp (SSH) - Trusted IPs only*         │
-│  • 30303/tcp+udp (gzond P2P) - All          │
+│  • 30303/tcp+udp (gqrl P2P) - All          │
 │  • 13000/tcp (beacon P2P) - All             │
 │  • 12000/udp (beacon P2P) - All             │
 │  • 3000/tcp (Grafana) - Trusted IPs only*   │
@@ -169,7 +169,7 @@ RewardsOracle Updates stQRL → Exchange Rate Increases
 | Source | Port | Scrape Interval |
 |--------|------|-----------------|
 | Node Exporter | 9100 | 15s |
-| gzond | 6060 | 15s |
+| gqrl | 6060 | 15s |
 | Beacon Node | 8080 | 15s |
 | Validator | 8081 | 15s |
 | Contract Exporter | 9101 | 30s |
@@ -201,7 +201,7 @@ terraform/
 
 ```
 ansible/roles/
-├── gzond/           # Execution client
+├── gqrl/           # Execution client
 ├── qrysm-beacon/    # Consensus client
 ├── qrysm-validator/ # Validator client
 ├── monitoring/      # Monitoring stack
@@ -214,7 +214,7 @@ ansible/roles/
 
 | Data | Growth Rate | Initial | 1 Year |
 |------|-------------|---------|--------|
-| gzond Chain Data | ~5GB/month | 50GB | 110GB |
+| gqrl Chain Data | ~5GB/month | 50GB | 110GB |
 | Beacon Chain Data | ~3GB/month | 30GB | 66GB |
 | Prometheus TSDB | ~2GB/month | 10GB | 34GB |
 
@@ -222,7 +222,7 @@ ansible/roles/
 
 | Component | Minimum | Recommended |
 |-----------|---------|-------------|
-| gzond | 4GB | 8GB |
+| gqrl | 4GB | 8GB |
 | qrysm-beacon | 2GB | 4GB |
 | qrysm-validator | 1GB | 2GB |
 | Monitoring Stack | 2GB | 4GB |

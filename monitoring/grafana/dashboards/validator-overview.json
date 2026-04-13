@@ -39,8 +39,8 @@
         "textMode": "auto"
       },
       "pluginVersion": "10.2.0",
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "up{job=\"gzond\"}", "legendFormat": "Status", "refId": "A" }],
-      "title": "Go-Zond (Execution)",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "up{job=\"gqrl\"}", "legendFormat": "Status", "refId": "A" }],
+      "title": "Go-QRL (Execution)",
       "type": "stat"
     },
     {
@@ -288,7 +288,7 @@
       },
       "pluginVersion": "10.2.0",
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "p2p_peers{job=\"gzond\"}", "legendFormat": "Go-Zond Peers", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "p2p_peers{job=\"gqrl\"}", "legendFormat": "Go-QRL Peers", "refId": "A" },
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "p2p_peer_count{job=\"beacon-chain\"}", "legendFormat": "Beacon Chain Peers", "refId": "B" }
       ],
       "title": "Peer Count",

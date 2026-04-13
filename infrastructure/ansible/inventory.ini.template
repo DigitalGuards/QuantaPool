@@ -18,18 +18,18 @@ backup
 [all:vars]
 ansible_python_interpreter=/usr/bin/python3
 environment=testnet
-zond_rpc_url=https://qrlwallet.com/api/zond-rpc/testnet
+qrl_rpc_url=https://qrlwallet.com/api/qrl-rpc/testnet
 
-# Zond network configuration
-zond_chain_id=32382
-zond_network=testnet
+# QRL network configuration
+qrl_chain_id=32382
+qrl_network=testnet
 
 # Client versions (update as new releases come out)
-gzond_version=latest
+gqrl_version=latest
 qrysm_version=latest
 
 # Paths
-gzond_data_dir=/var/lib/gzond
+gqrl_data_dir=/var/lib/gqrl
 qrysm_beacon_data_dir=/var/lib/qrysm/beacon
 qrysm_validator_data_dir=/var/lib/qrysm/validator
 jwt_secret_path=/etc/quantapool/jwt.hex

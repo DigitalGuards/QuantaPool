@@ -2,14 +2,14 @@ groups:
   - name: validator_alerts
     rules:
       # Execution client offline
-      - alert: GzondDown
-        expr: up{job="gzond"} == 0
+      - alert: GqrlDown
+        expr: up{job="gqrl"} == 0
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: "Go-zond execution client is down"
-          description: "The go-zond execution client has been unreachable for more than 2 minutes."
+          summary: "Go-QRL execution client is down"
+          description: "The go-qrl execution client has been unreachable for more than 2 minutes."
 
       # Consensus client offline
       - alert: BeaconChainDown
@@ -32,14 +32,14 @@ groups:
           description: "The qrysm validator client has been unreachable for more than 2 minutes."
 
       # Low peer count - execution
-      - alert: GzondLowPeers
-        expr: p2p_peers{job="gzond"} < 3
+      - alert: GqrlLowPeers
+        expr: p2p_peers{job="gqrl"} < 3
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Go-zond has low peer count"
-          description: "Go-zond has only {{ $value }} peers. Minimum recommended is 3."
+          summary: "Go-QRL has low peer count"
+          description: "Go-QRL has only {{ $value }} peers. Minimum recommended is 3."
 
       # Low peer count - consensus
       - alert: BeaconChainLowPeers
@@ -52,14 +52,14 @@ groups:
           description: "Beacon chain has only {{ $value }} peers."
 
       # Execution client syncing for too long
-      - alert: GzondSyncing
-        expr: ethereum_blockchain_syncing{job="gzond"} == 1
+      - alert: GqrlSyncing
+        expr: ethereum_blockchain_syncing{job="gqrl"} == 1
         for: 30m
         labels:
           severity: warning
         annotations:
-          summary: "Go-zond is still syncing"
-          description: "Go-zond has been syncing for more than 30 minutes."
+          summary: "Go-QRL is still syncing"
+          description: "Go-QRL has been syncing for more than 30 minutes."
 
       # Beacon chain not synced
       - alert: BeaconChainNotSynced

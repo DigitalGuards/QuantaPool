@@ -1,5 +1,5 @@
 # QuantaPool Testnet Environment
-# Zond Testnet deployment configuration
+# QRL Testnet deployment configuration
 
 terraform {
   backend "local" {
@@ -28,7 +28,7 @@ module "quantapool" {
   deposit_pool_address      = "0x9E800e8271df4Ac91334C65641405b04584B57DC"
   rewards_oracle_address    = "0x541b1f2c501956BCd7a4a6913180b2Fc27BdE17E"
   operator_registry_address = "0xD370e9505D265381e839f8289f46D02815d0FF95"
-  zond_rpc_url              = "https://qrlwallet.com/api/zond-rpc/testnet"
+  qrl_rpc_url              = "https://qrlwallet.com/api/qrl-rpc/testnet"
 
   # Alerting (optional)
   discord_webhook_url = var.discord_webhook_url
