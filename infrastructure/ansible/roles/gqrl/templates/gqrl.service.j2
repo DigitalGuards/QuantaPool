@@ -49,7 +49,7 @@ ExecStart={{ gqrl_binary_path }} \
   --metrics.addr {{ gqrl_metrics_addr }} \
   --metrics.port {{ gqrl_metrics_port }} \
 {% endif %}
-  --verbosity 3
+  --verbosity {{ gqrl_verbosity }}
 
 StandardOutput=journal
 StandardError=journal
