@@ -37,14 +37,38 @@ function expect(cond, msg) {
     cond ? ok(msg) : fail(msg);
 }
 
-async function tx(method, account, label, sendOptions = {}) {
-    const gas = await method.estimateGas({ from: account.address, ...sendOptions });
-    const receipt = await method.send({
+// Encode-and-send pattern mirroring myqrlwallet-frontend's qrlStore.sendToken().
+// Contract instances created via `new web3.qrl.Contract(abi, addr)` do not
+// auto-bind to the wallet, so calling `.send({from})` on them forwards as
+// qrl_sendTransaction and the proxy rejects with "unknown account". Building
+// the tx object manually and routing through web3.qrl.sendTransaction uses
+// the wallet registered on web3.qrl.wallet for local signing.
+async function tx(web3, method, account, to, label, { value = 0n } = {}) {
+    const data = method.encodeABI();
+    const gas = await method.estimateGas({
         from: account.address,
-        gas: Math.floor(Number(gas) * 1.2),
-        ...sendOptions
+        to,
+        data,
+        value: value.toString()
     });
-    console.log(`  → ${label} : ${receipt.transactionHash}`);
+    const baseGasPrice = (await web3.qrl.getGasPrice()) || 1_000_000_000n;
+    const txObj = {
+        type: '0x2',
+        from: account.address,
+        to,
+        data,
+        gas: ((BigInt(gas) * 12n) / 10n).toString(),
+        value: value.toString(),
+        maxFeePerGas: (baseGasPrice * 2n).toString(),
+        maxPriorityFeePerGas: baseGasPrice.toString()
+    };
+    const receipt = await web3.qrl.sendTransaction(txObj, undefined, {
+        checkRevertBeforeSending: true
+    });
+    const hash = typeof receipt.transactionHash === 'string'
+        ? receipt.transactionHash
+        : '0x' + Buffer.from(receipt.transactionHash).toString('hex');
+    console.log(`  → ${label} : ${hash}`);
     return receipt;
 }
 
@@ -67,17 +91,9 @@ async function main() {
 
     const web3 = new Web3(config.provider);
     const account = loadDeployer(web3, process.env.TESTNET_SEED);
-    web3.qrl.defaultAccount = account.address;
     const stQRL = new web3.qrl.Contract(loadAbi('stQRLv2'), config.contracts.stQRLV2);
     const pool = new web3.qrl.Contract(loadAbi('DepositPoolV2'), config.contracts.depositPoolV2);
     const vm = new web3.qrl.Contract(loadAbi('ValidatorManager'), config.contracts.validatorManager);
-    // The wallet attached on `web3` does not automatically propagate to Contract
-    // instances created by user code; bind it explicitly so .send({from}) signs
-    // locally instead of forwarding to the node (which fails with "unknown account").
-    for (const c of [stQRL, pool, vm]) {
-        c.wallet = web3.qrl.accounts.wallet;
-        c.defaultAccount = account.address;
-    }
 
     const chainId = await web3.qrl.getChainId();
     const balance = await web3.qrl.getBalance(account.address);
@@ -96,7 +112,7 @@ async function main() {
             buffered: BigInt(await pool.methods.bufferedQRL().call())
         };
         const value = 100n * 10n ** 18n;
-        await tx(pool.methods.deposit(), account, 'pool.deposit(100 QRL)', { value: value.toString() });
+        await tx(web3, pool.methods.deposit(), account, config.contracts.depositPoolV2, 'pool.deposit(100 QRL)', { value });
         const after = {
             shares: BigInt(await stQRL.methods.balanceOf(account.address).call()),
             pooled: BigInt(await stQRL.methods.totalPooledQRL().call()),
@@ -117,14 +133,18 @@ async function main() {
         const beforeRewards = BigInt((await pool.methods.getRewardStats().call()).totalRewards);
         const donate = 1n * 10n ** 18n;
         // Send raw QRL to pool address — triggers receive(), bumps balance only
+        const baseGasPrice = (await web3.qrl.getGasPrice()) || 1_000_000_000n;
         await web3.qrl.sendTransaction({
+            type: '0x2',
             from: account.address,
             to: config.contracts.depositPoolV2,
             value: donate.toString(),
-            gas: 100_000
+            gas: '100000',
+            maxFeePerGas: (baseGasPrice * 2n).toString(),
+            maxPriorityFeePerGas: baseGasPrice.toString()
         });
         console.log('  → donated 1 QRL via raw transfer');
-        await tx(pool.methods.syncRewards(), account, 'pool.syncRewards()');
+        await tx(web3, pool.methods.syncRewards(), account, config.contracts.depositPoolV2, 'pool.syncRewards()');
         const afterRate = BigInt(await stQRL.methods.getExchangeRate().call());
         const afterRewards = BigInt((await pool.methods.getRewardStats().call()).totalRewards);
         expect(afterRate > beforeRate, `exchange rate increased (${fmt(beforeRate)} → ${fmt(afterRate)})`);
@@ -141,7 +161,7 @@ async function main() {
             console.log('  (skipping — no shares to withdraw)');
         } else {
             const lockedBefore = BigInt(await stQRL.methods.lockedSharesOf(account.address).call());
-            await tx(pool.methods.requestWithdrawal(reqShares.toString()), account, `pool.requestWithdrawal(${fmt(reqShares)})`);
+            await tx(web3, pool.methods.requestWithdrawal(reqShares.toString()), account, config.contracts.depositPoolV2, `pool.requestWithdrawal(${fmt(reqShares)})`);
             const lockedAfter = BigInt(await stQRL.methods.lockedSharesOf(account.address).call());
             expect(lockedAfter === lockedBefore + reqShares, `locked shares += request amount`);
             const counts = await pool.methods.getWithdrawalRequestCount(account.address).call();
@@ -169,7 +189,7 @@ async function main() {
                 return;
             }
             console.log(`  topping up buffer with ${fmt(need)} QRL`);
-            await tx(pool.methods.deposit(), account, `pool.deposit(${fmt(need)} QRL)`, { value: need.toString() });
+            await tx(web3, pool.methods.deposit(), account, config.contracts.depositPoolV2, `pool.deposit(${fmt(need)} QRL)`, { value: need });
         }
         const can = await pool.methods.canFundValidator().call();
         expect(can.possible, `canFundValidator: possible=${can.possible} buffered=${fmt(BigInt(can.bufferedAmount))}`);
@@ -177,21 +197,21 @@ async function main() {
         // Register a placeholder Dilithium pubkey on ValidatorManager (no real keys yet).
         const placeholderPubkey = '0x' + 'aa'.repeat(2592);
         const before = BigInt(await vm.methods.totalValidators().call());
-        await tx(vm.methods.registerValidator(placeholderPubkey), account, 'vm.registerValidator(placeholder)');
+        await tx(web3, vm.methods.registerValidator(placeholderPubkey), account, config.contracts.validatorManager, 'vm.registerValidator(placeholder)');
         const validatorId = BigInt(await vm.methods.totalValidators().call());
         expect(validatorId === before + 1n, `vm.totalValidators bumped → ${validatorId}`);
 
         // Fund via MVP path (no real beacon deposit)
         const bufferedBefore = BigInt(await pool.methods.bufferedQRL().call());
         const validatorsBefore = BigInt(await pool.methods.validatorCount().call());
-        await tx(pool.methods.fundValidatorMVP(), account, 'pool.fundValidatorMVP()');
+        await tx(web3, pool.methods.fundValidatorMVP(), account, config.contracts.depositPoolV2, 'pool.fundValidatorMVP()');
         const bufferedAfter = BigInt(await pool.methods.bufferedQRL().call());
         const validatorsAfter = BigInt(await pool.methods.validatorCount().call());
         expect(bufferedAfter === bufferedBefore - VALIDATOR_STAKE, `bufferedQRL -= 40000 QRL`);
         expect(validatorsAfter === validatorsBefore + 1n, `pool.validatorCount += 1 → ${validatorsAfter}`);
 
         // Activate on VM (operator action, simulated)
-        await tx(vm.methods.activateValidator(validatorId.toString()), account, `vm.activateValidator(${validatorId})`);
+        await tx(web3, vm.methods.activateValidator(validatorId.toString()), account, config.contracts.validatorManager, `vm.activateValidator(${validatorId})`);
         const stats = await vm.methods.getStats().call();
         expect(BigInt(stats.active) >= 1n, `vm.getStats: active=${stats.active}`);
 
