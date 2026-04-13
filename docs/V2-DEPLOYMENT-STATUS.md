@@ -40,23 +40,17 @@ Read-back smoke confirmed all 6 wiring asserts and constants:
 
 ## What's blocked / not done
 
-### 1. Integration test (`scripts/integration-test-v2.js`)
-Written but does not execute. Stops at the first `pool.deposit().send()` with `unknown account` from the proxy.
+### 1. ~~Integration test~~ — PASSING as of `83060a7`
+All four phases of `scripts/integration-test-v2.js` pass on chainId 1337:
 
-**Root cause:** Contract instances created via `new web3.qrl.Contract(abi, addr)` (i.e. loaded by address rather than from a `.deploy()` result) do **not** auto-bind to the wallet attached on the parent `web3` instance. `.send({from})` therefore round-trips to the node as `qrl_sendTransaction` instead of being signed locally as `qrl_sendRawTransaction`.
-
-**Tried, did not work:** setting `web3.qrl.defaultAccount`, assigning `contract.wallet = web3.qrl.accounts.wallet`, setting `contract.defaultAccount`.
-
-**Workaround for next session:** sign each tx manually:
-```js
-const data = pool.methods.deposit().encodeABI();
-const signed = await web3.qrl.accounts.signTransaction(
-    { to: pool.options.address, value, gas, data, chainId: 1337 },
-    process.env.TESTNET_SEED   // or the seed-derived hex private key
-);
-await web3.qrl.sendSignedTransaction(signed.rawTransaction);
 ```
-Or look for the @theqrl/web3 v0.4 idiomatic way to bind a Wallet to a `new Contract(...)` after construction.
+[1] smoke      deposit 100 QRL → 100 shares, totals consistent
+[2] rewards    donate 1 QRL + syncRewards → rate 1.00 → 1.01
+[3] withdraw   request 50 shares → locked, blocksRemaining=128
+[4] validator  40k QRL → register → fundValidatorMVP → activate (active=1)
+```
+
+Root-cause fix: load-by-address Contract instances don't inherit the wallet on the parent `web3`, so `.send({from})` on them is rejected as `unknown account`. Fixed by porting the frontend's encode-and-send pattern (`method.encodeABI()` → `web3.qrl.sendTransaction(txObj)`), plus registering the hex seed on `web3.qrl.wallet` inside `loadDeployer` so the local signer picks it up.
 
 ### 2. `DEPOSIT_CONTRACT` address (`Q4242…`) unverified
 QRL team's staking documentation is in QA (per Discord, Jack Matier, 2026-04-13). Until verified, **do not call `pool.fundValidator()`** (the real beacon path). The MVP path `pool.fundValidatorMVP()` does not touch this address and is safe to use.
@@ -81,9 +75,7 @@ node -e "require('dotenv').config({path:'.env'}); \
   w.qrl.getChainId().then(id => console.log('chainId',id))"     # expect 1337n
 ```
 
-The integration test file is at `scripts/integration-test-v2.js`, blocked at line ~85 (the `pool.deposit()` call). Implement the manual-sign workaround in the helper `tx()` function (line ~37) — that function is the single place every state-changing tx flows through.
-
-Phases run independently:
+Integration test phases run independently (idempotent per phase, but each run adds to on-chain state):
 ```bash
 node scripts/integration-test-v2.js smoke      # 100 QRL deposit
 node scripts/integration-test-v2.js rewards    # 1 QRL donate + syncRewards
@@ -92,13 +84,22 @@ node scripts/integration-test-v2.js validator  # 40,000 QRL → fundValidatorMVP
 node scripts/integration-test-v2.js all        # full sequence
 ```
 
-The `validator` phase will lock 40,000 QRL in the contract (recoverable only via the 128-block claim flow with reserve funded by owner). User has access to more testnet funds if needed.
+The `validator` phase locks 40,000 QRL (recoverable only via the 128-block claim flow with reserve funded by owner).
+
+### Next natural step: full claim flow
+To exercise claim end-to-end, after `validator` run:
+1. `pool.fundWithdrawalReserve(<reqQRL>)` as owner — reclassifies pooled QRL into the reserve.
+2. Wait WITHDRAWAL_DELAY (128 blocks, ~2 h).
+3. `pool.claimWithdrawal()` burns the locked shares and transfers QRL to user.
+
+Not yet scripted. Candidate for `node scripts/integration-test-v2.js claim` as a phase 5.
 
 ---
 
 ## Cost so far
 - Contract deploys + wiring: ~0.04 QRL gas
-- Deployer balance after deploy: **49,999.96 QRL** (read at block 18,113)
+- Full 4-phase integration test (including 40,001 QRL deposited into pool): **deployer down to ~9,898 QRL** (rest is in the pool contract as pooled/validator stake)
+- Balance at last check: 49,898.96 QRL *before* the `validator` phase; after the 40k deposit, ~9,898 QRL in deployer + 40,001 QRL in pool.
 
 ## Files of interest
 - `config/testnet-hyperion.json` — provider URL, chainId, live addresses
