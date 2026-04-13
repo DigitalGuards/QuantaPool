@@ -13,7 +13,7 @@ gqrl_group: "gqrl"
 
 # Network configuration
 gqrl_network: "testnet"
-gqrl_chain_id: 32382
+gqrl_chain_id: 1337
 gqrl_port: 30303
 gqrl_http_port: 8545
 gqrl_ws_port: 8546

@@ -21,7 +21,7 @@ environment=testnet
 qrl_rpc_url=https://qrlwallet.com/api/qrl-rpc/testnet
 
 # QRL network configuration
-qrl_chain_id=32382
+qrl_chain_id=1337
 qrl_network=testnet
 
 # Client versions (update as new releases come out)
