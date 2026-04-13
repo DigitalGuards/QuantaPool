@@ -113,7 +113,7 @@ async function main() {
     console.log(`Deployer: ${account.address}`);
 
     const balance = await web3.qrl.getBalance(account.address);
-    console.log(`Balance: ${web3.utils.fromWei(balance, 'ether')} QRL`);
+    console.log(`Balance: ${web3.utils.fromPlanck(balance, 'quanta')} QRL`);
 
     const stQRL = await deployContract(web3, account, 'stQRLv2');
     const depositPool = await deployContract(web3, account, 'DepositPoolV2');
@@ -122,22 +122,19 @@ async function main() {
     console.log('\nConfiguring contract links...');
 
     await sendConfiguredTx(
-        new web3.qrl.Contract(loadArtifact('DepositPoolV2').abi, depositPool.options.address)
-            .methods.setStQRL(stQRL.options.address),
+        depositPool.methods.setStQRL(stQRL.options.address),
         account,
         '  DepositPoolV2.setStQRL'
     );
 
     await sendConfiguredTx(
-        new web3.qrl.Contract(loadArtifact('stQRLv2').abi, stQRL.options.address)
-            .methods.setDepositPool(depositPool.options.address),
+        stQRL.methods.setDepositPool(depositPool.options.address),
         account,
         '  stQRLv2.setDepositPool'
     );
 
     await sendConfiguredTx(
-        new web3.qrl.Contract(loadArtifact('ValidatorManager').abi, validatorManager.options.address)
-            .methods.setDepositPool(depositPool.options.address),
+        validatorManager.methods.setDepositPool(depositPool.options.address),
         account,
         '  ValidatorManager.setDepositPool'
     );
