@@ -3,8 +3,8 @@
   "chainId": 1337,
   "txConfirmations": 12,
   "contracts": {
-    "stQRLV2": "Qd4EC1BEBdD86A9Aa387295d82d0B3Ef3E84f955e",
-    "depositPoolV2": "QD4B89C98727a9C149fDaCf9DcE46E0E7846BaDC5",
-    "validatorManager": "Q9a80a082870B6632cF0E71494162BFC2AF53F4d8"
+    "stQRLV2": "QA2f23388d1e3986416A36d2Ef113850D6900b69C",
+    "depositPoolV2": "Q109d7C528a67b80eb638D4C85e7C4545ef9Bb9aC",
+    "validatorManager": "QA5b6e85B7713670589e4eAf2F039380Ec2792c8C"
   }
 }

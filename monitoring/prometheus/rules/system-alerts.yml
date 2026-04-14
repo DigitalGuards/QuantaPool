@@ -12,14 +12,16 @@ groups:
           description: "Cannot collect system metrics from validator node."
 
       # High CPU usage
+      # Beacon initial sync drives 80–95% CPU for ~30 min — raise threshold
+      # and window so we don't page during first-boot sync.
       - alert: HighCPUUsage
-        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
-        for: 15m
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[15m])) * 100) > 95
+        for: 30m
         labels:
           severity: warning
         annotations:
           summary: "High CPU usage on validator node"
-          description: "CPU usage is above 80% for more than 15 minutes. Current: {{ $value | printf \"%.1f\" }}%"
+          description: "CPU usage is above 95% for more than 30 minutes. Current: {{ $value | printf \"%.1f\" }}%"
 
       # Critical CPU usage
       - alert: CriticalCPUUsage
@@ -82,8 +84,12 @@ groups:
           description: "CPU I/O wait is above 20%. Current: {{ $value | printf \"%.1f\" }}%. This may indicate slow disk or high I/O load."
 
       # Network interface down
+      # Exclude virtual interfaces and the unplugged secondary NIC on this
+      # host (enp1s0f1). The primary uplink enp1s0f0 is what we care about.
+      # node_exporter doesn't export node_network_carrier by default, so we
+      # just name-exclude known-unused NICs instead of doing a carrier filter.
       - alert: NetworkInterfaceDown
-        expr: node_network_up{device!~"lo|veth.*|docker.*|br-.*"} == 0
+        expr: node_network_up{device!~"lo|veth.*|docker.*|br-.*|enp1s0f1"} == 0
         for: 2m
         labels:
           severity: critical
