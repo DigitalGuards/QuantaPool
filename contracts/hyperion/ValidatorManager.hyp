@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 // Generated from ../contracts/solidity/ValidatorManager.sol by scripts/sync-hyperion.js.
 // Edit the Solidity source first, then re-run this script.
-pragma hyperion ^0.8.24;
+pragma hyperion >=0.0;
 
 /**
  * @title ValidatorManager - Simplified Validator Tracking for QuantaPool
@@ -22,8 +22,8 @@ contract ValidatorManager {
     //                          CONSTANTS
     // =============================================================
 
-    /// @notice Zond validator stake amount (MaxEffectiveBalance from Zond config)
-    uint256 public constant VALIDATOR_STAKE = 40_000 ether;
+    /// @notice QRL validator stake amount (MaxEffectiveBalance from QRL beacon config)
+    uint256 public constant VALIDATOR_STAKE = 40_000 quanta;
 
     /// @notice Dilithium pubkey length
     uint256 private constant PUBKEY_LENGTH = 2592;

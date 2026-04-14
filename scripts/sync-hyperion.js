@@ -3,9 +3,9 @@ const path = require('path');
 
 const repoRoot = path.join(__dirname, '..');
 const solidityContractsDir = path.join(repoRoot, 'contracts', 'solidity');
-const solidityTestsDir = path.join(repoRoot, 'test');
-const hyperionContractsDir = path.join(repoRoot, 'hyperion', 'contracts');
-const hyperionTestsDir = path.join(repoRoot, 'hyperion', 'test');
+const solidityTestsDir = path.join(repoRoot, 'contracts', 'test');
+const hyperionContractsDir = path.join(repoRoot, 'contracts', 'hyperion');
+const hyperionTestsDir = path.join(repoRoot, 'contracts', 'test', 'hyperion');
 const mirroredTestFiles = [
     'DepositPool-v2.t.sol',
     'ValidatorManager.t.sol',
@@ -13,26 +13,49 @@ const mirroredTestFiles = [
 ];
 
 function toHyperionSource(source, sourceFile, sourceDirLabel) {
-    const pragmaUpdated = source.replace(/^pragma solidity\b/m, 'pragma hyperion');
+    const pragmaUpdated = source.replace(
+        /^pragma solidity\s+[^;]+;/m,
+        'pragma hyperion >=0.0;'
+    );
 
     if (pragmaUpdated === source) {
         throw new Error(`Could not find Solidity pragma in ${sourceDirLabel}/${sourceFile}`);
     }
 
+    // Rewrite imports:
+    //   Production .sol at contracts/solidity/*.sol generates to
+    //   contracts/hyperion/*.hyp — same-directory imports need no path rewrite.
+    //   Test .sol at contracts/test/*.sol imports ../solidity/Foo.sol;
+    //   its .hyp mirror at contracts/test/hyperion/*.t.hyp needs ../../hyperion/Foo.hyp.
     const importsUpdated = pragmaUpdated
-        .replace(/\.\.\/contracts\/solidity\//g, '../contracts/')
+        .replace(/\.\.\/solidity\//g, '../../hyperion/')
         .replace(/(import\s+[^'"]*["'][^'"]+)\.sol(["'];)/g, '$1.hyp$2');
+
+    // Translate Solidity unit denominations to Hyperion equivalents.
+    // 1 ether (Solidity) == 1 quanta (Hyperion) == 10^18 planck.
+    const denominationsUpdated = importsUpdated
+        .replace(/(\b\d[\d_]*(?:\.\d+)?\s+)ether\b/g, '$1quanta')
+        .replace(/(\b\d[\d_]*(?:\.\d+)?\s+)gwei\b/g, '$1shor')
+        .replace(/(\b\d[\d_]*(?:\.\d+)?\s+)wei\b/g, '$1planck');
+
+    // Translate Solidity 0x-prefixed 40-hex address literals to Hyperion
+    // Q-prefixed form. Only matches exactly 40 hex chars to avoid touching
+    // bytes32 / bytes4 / numeric literals.
+    const addressesUpdated = denominationsUpdated.replace(
+        /\b0x([0-9a-fA-F]{40})\b/g,
+        'Q$1'
+    );
 
     const banner =
         `// Generated from ../${sourceDirLabel}/${sourceFile} by scripts/sync-hyperion.js.\n` +
         '// Edit the Solidity source first, then re-run this script.\n';
 
-    if (importsUpdated.startsWith('// SPDX-License-Identifier:')) {
-        const firstNewline = importsUpdated.indexOf('\n');
-        return `${importsUpdated.slice(0, firstNewline + 1)}${banner}${importsUpdated.slice(firstNewline + 1)}`;
+    if (addressesUpdated.startsWith('// SPDX-License-Identifier:')) {
+        const firstNewline = addressesUpdated.indexOf('\n');
+        return `${addressesUpdated.slice(0, firstNewline + 1)}${banner}${addressesUpdated.slice(firstNewline + 1)}`;
     }
 
-    return `${banner}${importsUpdated}`;
+    return `${banner}${addressesUpdated}`;
 }
 
 function clearGeneratedDir(dir) {

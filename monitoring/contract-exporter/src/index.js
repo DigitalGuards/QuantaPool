@@ -1,7 +1,7 @@
 /**
  * QuantaPool Contract Metrics Exporter
  *
- * Prometheus exporter for QuantaPool smart contract metrics on QRL Zond.
+ * Prometheus exporter for QuantaPool smart contract metrics on QRL.
  * Collects metrics from stQRL, DepositPool, RewardsOracle, and OperatorRegistry contracts.
  */
 
@@ -29,23 +29,23 @@ async function main() {
     console.log('='.repeat(60));
     console.log('');
     console.log('Configuration:');
-    console.log(`  RPC URL: ${config.ZOND_RPC_URL}`);
+    console.log(`  RPC URL: ${config.QRL_RPC_URL}`);
     console.log(`  Metrics Port: ${config.METRICS_PORT}`);
     console.log(`  Scrape Interval: ${config.SCRAPE_INTERVAL_MS}ms`);
     console.log(`  Event Poll Interval: ${config.EVENT_POLL_INTERVAL_MS}ms`);
     console.log('');
 
     // Initialize Web3 connection
-    console.log('Connecting to Zond RPC...');
-    const web3 = new Web3(config.ZOND_RPC_URL);
+    console.log('Connecting to QRL RPC...');
+    const web3 = new Web3(config.QRL_RPC_URL);
 
     // Test connection
     try {
-        const blockNumber = await web3.zond.getBlockNumber();
-        const chainId = await web3.zond.getChainId();
+        const blockNumber = await web3.qrl.getBlockNumber();
+        const chainId = await web3.qrl.getChainId();
         console.log(`Connected! Chain ID: ${chainId}, Block: ${blockNumber}`);
     } catch (error) {
-        console.error('Failed to connect to Zond RPC:', error.message);
+        console.error('Failed to connect to QRL RPC:', error.message);
         process.exit(1);
     }
 

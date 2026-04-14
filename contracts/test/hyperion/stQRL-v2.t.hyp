@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0
 // Generated from ../test/stQRL-v2.t.sol by scripts/sync-hyperion.js.
 // Edit the Solidity source first, then re-run this script.
-pragma hyperion ^0.8.24;
+pragma hyperion >=0.0;
 
 import "forge-std/Test.hyp";
-import "../contracts/stQRL-v2.hyp";
+import "../../hyperion/stQRL-v2.hyp";
 
 /**
  * @title stQRL v2 Tests
@@ -57,7 +57,7 @@ contract stQRLv2Test is Test {
     // =========================================================================
 
     function test_FirstDeposit_OneToOneRatio() public {
-        uint256 amount = 100 ether;
+        uint256 amount = 100 quanta;
 
         // Order matters with virtual shares: mint FIRST, then update pooled
         // This matches how DepositPool.deposit() works
@@ -76,7 +76,7 @@ contract stQRLv2Test is Test {
 
     function test_RewardsIncreaseQRLValue() public {
         // Initial deposit of 100 QRL
-        uint256 initialDeposit = 100 ether;
+        uint256 initialDeposit = 100 quanta;
 
         // Mint first, then update (matches DepositPool behavior)
         vm.startPrank(depositPool);
@@ -84,23 +84,23 @@ contract stQRLv2Test is Test {
         token.updateTotalPooledQRL(initialDeposit);
         vm.stopPrank();
 
-        assertEq(token.balanceOf(user1), 100 ether); // shares
-        assertApproxEqRel(token.getQRLValue(user1), 100 ether, 1e14); // QRL value (tiny precision diff from virtual shares)
+        assertEq(token.balanceOf(user1), 100 quanta); // shares
+        assertApproxEqRel(token.getQRLValue(user1), 100 quanta, 1e14); // QRL value (tiny precision diff from virtual shares)
 
         // Simulate 10 QRL rewards (10% increase)
         vm.prank(depositPool);
-        token.updateTotalPooledQRL(110 ether);
+        token.updateTotalPooledQRL(110 quanta);
 
         // User's shares remain the same (fixed-balance)
-        assertEq(token.balanceOf(user1), 100 ether);
+        assertEq(token.balanceOf(user1), 100 quanta);
         // But QRL value increases (use approx due to virtual shares precision)
-        assertApproxEqRel(token.getQRLValue(user1), 110 ether, 1e14);
-        assertEq(token.sharesOf(user1), 100 ether);
+        assertApproxEqRel(token.getQRLValue(user1), 110 quanta, 1e14);
+        assertEq(token.sharesOf(user1), 100 quanta);
     }
 
     function test_SlashingDecreasesQRLValue() public {
         // Initial deposit of 100 QRL
-        uint256 initialDeposit = 100 ether;
+        uint256 initialDeposit = 100 quanta;
 
         // Mint first, then update (matches DepositPool behavior)
         vm.startPrank(depositPool);
@@ -108,79 +108,79 @@ contract stQRLv2Test is Test {
         token.updateTotalPooledQRL(initialDeposit);
         vm.stopPrank();
 
-        assertEq(token.balanceOf(user1), 100 ether); // shares
-        assertApproxEqRel(token.getQRLValue(user1), 100 ether, 1e14); // QRL value
+        assertEq(token.balanceOf(user1), 100 quanta); // shares
+        assertApproxEqRel(token.getQRLValue(user1), 100 quanta, 1e14); // QRL value
 
         // Simulate 5% slashing (pool drops to 95 QRL)
         vm.prank(depositPool);
-        token.updateTotalPooledQRL(95 ether);
+        token.updateTotalPooledQRL(95 quanta);
 
         // User's shares remain the same (fixed-balance)
-        assertEq(token.balanceOf(user1), 100 ether);
+        assertEq(token.balanceOf(user1), 100 quanta);
         // But QRL value decreases (use approx due to virtual shares precision)
-        assertApproxEqRel(token.getQRLValue(user1), 95 ether, 1e14);
-        assertEq(token.sharesOf(user1), 100 ether);
+        assertApproxEqRel(token.getQRLValue(user1), 95 quanta, 1e14);
+        assertEq(token.sharesOf(user1), 100 quanta);
     }
 
     function test_MultipleUsers_RewardDistribution() public {
         // User1 deposits 100 QRL
         // Order: mint shares FIRST (calculates at current rate), THEN update pooled
         vm.startPrank(depositPool);
-        token.mintShares(user1, 100 ether);
-        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 quanta);
+        token.updateTotalPooledQRL(100 quanta);
         vm.stopPrank();
 
         // User2 deposits 50 QRL (total now 150 QRL)
         // Same order: mint first (at 1:1 rate), then update
         vm.startPrank(depositPool);
-        token.mintShares(user2, 50 ether);
-        token.updateTotalPooledQRL(150 ether);
+        token.mintShares(user2, 50 quanta);
+        token.updateTotalPooledQRL(150 quanta);
         vm.stopPrank();
 
         // Check shares (fixed-balance: balanceOf returns shares)
-        assertEq(token.balanceOf(user1), 100 ether);
-        assertEq(token.balanceOf(user2), 50 ether);
+        assertEq(token.balanceOf(user1), 100 quanta);
+        assertEq(token.balanceOf(user2), 50 quanta);
 
         // Check QRL values before rewards (approx due to virtual shares)
-        assertApproxEqRel(token.getQRLValue(user1), 100 ether, 1e14);
-        assertApproxEqRel(token.getQRLValue(user2), 50 ether, 1e14);
+        assertApproxEqRel(token.getQRLValue(user1), 100 quanta, 1e14);
+        assertApproxEqRel(token.getQRLValue(user2), 50 quanta, 1e14);
 
         // Add 30 QRL rewards (20% increase, total now 180 QRL)
         vm.prank(depositPool);
-        token.updateTotalPooledQRL(180 ether);
+        token.updateTotalPooledQRL(180 quanta);
 
         // Shares remain the same (fixed-balance)
-        assertEq(token.balanceOf(user1), 100 ether);
-        assertEq(token.balanceOf(user2), 50 ether);
+        assertEq(token.balanceOf(user1), 100 quanta);
+        assertEq(token.balanceOf(user2), 50 quanta);
 
         // QRL values should be distributed proportionally (approx due to virtual shares)
         // User1 has 100/150 = 66.67% of shares -> gets 66.67% of 180 = 120 QRL
         // User2 has 50/150 = 33.33% of shares -> gets 33.33% of 180 = 60 QRL
-        assertApproxEqRel(token.getQRLValue(user1), 120 ether, 1e14);
-        assertApproxEqRel(token.getQRLValue(user2), 60 ether, 1e14);
+        assertApproxEqRel(token.getQRLValue(user1), 120 quanta, 1e14);
+        assertApproxEqRel(token.getQRLValue(user2), 60 quanta, 1e14);
     }
 
     function test_ShareConversion_AfterRewards() public {
         // Deposit 100 QRL - mint first, then update
         vm.startPrank(depositPool);
-        token.mintShares(user1, 100 ether);
-        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 quanta);
+        token.updateTotalPooledQRL(100 quanta);
         vm.stopPrank();
 
         // Add 50 QRL rewards (now 150 QRL, still 100 shares)
         vm.prank(depositPool);
-        token.updateTotalPooledQRL(150 ether);
+        token.updateTotalPooledQRL(150 quanta);
 
         // New deposit should get fewer shares
         // With virtual shares: 100 * (100e18 + 1000) / (150e18 + 1000) ≈ 66.67 shares
-        uint256 expectedShares = token.getSharesByPooledQRL(100 ether);
+        uint256 expectedShares = token.getSharesByPooledQRL(100 quanta);
         // At rate of 1.5 QRL/share, 100 QRL ≈ 66.67 shares
-        assertApproxEqRel(expectedShares, 66.67 ether, 1e16); // 1% tolerance
+        assertApproxEqRel(expectedShares, 66.67 quanta, 1e16); // 1% tolerance
 
         // And those shares should be worth 100 QRL
         assertApproxEqRel(
             token.getPooledQRLByShares(expectedShares),
-            100 ether,
+            100 quanta,
             1e15 // 0.1% tolerance for rounding
         );
     }
@@ -197,14 +197,14 @@ contract stQRLv2Test is Test {
     function test_ZeroPooled_ZeroTotalShares() public view {
         // Before any deposits, with virtual shares the math is:
         // getSharesByPooledQRL(100e18) = 100e18 * (0 + 1000) / (0 + 1000) = 100e18
-        assertEq(token.getSharesByPooledQRL(100 ether), 100 ether);
+        assertEq(token.getSharesByPooledQRL(100 quanta), 100 quanta);
         // getPooledQRLByShares(100e18) = 100e18 * (0 + 1000) / (0 + 1000) = 100e18
         // Virtual shares ensure 1:1 ratio even with empty pool
-        assertEq(token.getPooledQRLByShares(100 ether), 100 ether);
+        assertEq(token.getPooledQRLByShares(100 quanta), 100 quanta);
     }
 
     function test_LargeNumbers() public {
-        uint256 largeAmount = 1_000_000_000 ether; // 1 billion QRL
+        uint256 largeAmount = 1_000_000_000 quanta; // 1 billion QRL
 
         // Mint first, then update (matches DepositPool behavior)
         vm.startPrank(depositPool);
@@ -227,7 +227,7 @@ contract stQRLv2Test is Test {
     }
 
     function test_SmallNumbers() public {
-        uint256 smallAmount = 1; // 1 wei
+        uint256 smallAmount = 1; // 1 planck
 
         // Mint first, then update (matches DepositPool behavior)
         vm.startPrank(depositPool);
@@ -241,7 +241,7 @@ contract stQRLv2Test is Test {
 
     function testFuzz_ExchangeRateMath(uint256 deposit, uint256 rewardPercent) public {
         // Bound inputs to reasonable ranges
-        deposit = bound(deposit, 1 ether, 1_000_000_000 ether);
+        deposit = bound(deposit, 1 quanta, 1_000_000_000 quanta);
         rewardPercent = bound(rewardPercent, 0, 100); // 0-100% rewards
 
         // Mint first, then update (matches DepositPool behavior)
@@ -270,61 +270,61 @@ contract stQRLv2Test is Test {
     function test_Transfer() public {
         // Setup: user1 has 100 shares - mint first, then update
         vm.startPrank(depositPool);
-        token.mintShares(user1, 100 ether);
-        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 quanta);
+        token.updateTotalPooledQRL(100 quanta);
         vm.stopPrank();
 
         // Transfer 30 shares to user2
         vm.prank(user1);
-        token.transfer(user2, 30 ether);
+        token.transfer(user2, 30 quanta);
 
-        assertEq(token.balanceOf(user1), 70 ether);
-        assertEq(token.balanceOf(user2), 30 ether);
+        assertEq(token.balanceOf(user1), 70 quanta);
+        assertEq(token.balanceOf(user2), 30 quanta);
     }
 
     function test_TransferAfterRewards() public {
         // Setup: user1 has 100 shares - mint first, then update
         vm.startPrank(depositPool);
-        token.mintShares(user1, 100 ether);
-        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 quanta);
+        token.updateTotalPooledQRL(100 quanta);
         vm.stopPrank();
 
         // Add 50% rewards (user1's shares now worth 150 QRL)
         vm.prank(depositPool);
-        token.updateTotalPooledQRL(150 ether);
+        token.updateTotalPooledQRL(150 quanta);
 
-        assertEq(token.balanceOf(user1), 100 ether); // still 100 shares
-        assertApproxEqRel(token.getQRLValue(user1), 150 ether, 1e14); // worth 150 QRL (approx)
+        assertEq(token.balanceOf(user1), 100 quanta); // still 100 shares
+        assertApproxEqRel(token.getQRLValue(user1), 150 quanta, 1e14); // worth 150 QRL (approx)
 
         // Transfer 50 shares (half) to user2
         vm.prank(user1);
-        token.transfer(user2, 50 ether);
+        token.transfer(user2, 50 quanta);
 
         // Each user has 50 shares
-        assertEq(token.balanceOf(user1), 50 ether);
-        assertEq(token.balanceOf(user2), 50 ether);
+        assertEq(token.balanceOf(user1), 50 quanta);
+        assertEq(token.balanceOf(user2), 50 quanta);
         // Each user's shares worth 75 QRL (half of 150 total) (approx due to virtual shares)
-        assertApproxEqRel(token.getQRLValue(user1), 75 ether, 1e14);
-        assertApproxEqRel(token.getQRLValue(user2), 75 ether, 1e14);
+        assertApproxEqRel(token.getQRLValue(user1), 75 quanta, 1e14);
+        assertApproxEqRel(token.getQRLValue(user2), 75 quanta, 1e14);
     }
 
     function test_TransferFrom() public {
         // Setup: user1 has 100 shares - mint first, then update
         vm.startPrank(depositPool);
-        token.mintShares(user1, 100 ether);
-        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 quanta);
+        token.updateTotalPooledQRL(100 quanta);
         vm.stopPrank();
 
         // user1 approves user2
         vm.prank(user1);
-        token.approve(user2, 50 ether);
+        token.approve(user2, 50 quanta);
 
         // user2 transfers from user1
         vm.prank(user2);
-        token.transferFrom(user1, user2, 50 ether);
+        token.transferFrom(user1, user2, 50 quanta);
 
-        assertEq(token.balanceOf(user1), 50 ether);
-        assertEq(token.balanceOf(user2), 50 ether);
+        assertEq(token.balanceOf(user1), 50 quanta);
+        assertEq(token.balanceOf(user2), 50 quanta);
     }
 
     // =========================================================================
@@ -334,25 +334,25 @@ contract stQRLv2Test is Test {
     function test_OnlyDepositPoolCanMint() public {
         vm.prank(user1);
         vm.expectRevert(stQRLv2.NotDepositPool.selector);
-        token.mintShares(user1, 100 ether);
+        token.mintShares(user1, 100 quanta);
     }
 
     function test_OnlyDepositPoolCanBurn() public {
         // First mint some shares
         vm.startPrank(depositPool);
-        token.updateTotalPooledQRL(100 ether);
-        token.mintShares(user1, 100 ether);
+        token.updateTotalPooledQRL(100 quanta);
+        token.mintShares(user1, 100 quanta);
         vm.stopPrank();
 
         vm.prank(user1);
         vm.expectRevert(stQRLv2.NotDepositPool.selector);
-        token.burnShares(user1, 50 ether);
+        token.burnShares(user1, 50 quanta);
     }
 
     function test_OnlyDepositPoolCanUpdatePooledQRL() public {
         vm.prank(user1);
         vm.expectRevert(stQRLv2.NotDepositPool.selector);
-        token.updateTotalPooledQRL(100 ether);
+        token.updateTotalPooledQRL(100 quanta);
     }
 
     function test_OnlyOwnerCanSetDepositPool() public {
@@ -374,8 +374,8 @@ contract stQRLv2Test is Test {
     function test_PauseBlocksTransfers() public {
         // Setup
         vm.startPrank(depositPool);
-        token.updateTotalPooledQRL(100 ether);
-        token.mintShares(user1, 100 ether);
+        token.updateTotalPooledQRL(100 quanta);
+        token.mintShares(user1, 100 quanta);
         vm.stopPrank();
 
         // Pause
@@ -384,14 +384,14 @@ contract stQRLv2Test is Test {
         // Transfer should fail
         vm.prank(user1);
         vm.expectRevert(stQRLv2.ContractPaused.selector);
-        token.transfer(user2, 50 ether);
+        token.transfer(user2, 50 quanta);
     }
 
     function test_UnpauseAllowsTransfers() public {
         // Setup - mint first, then update (correct order)
         vm.startPrank(depositPool);
-        token.mintShares(user1, 100 ether);
-        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 quanta);
+        token.updateTotalPooledQRL(100 quanta);
         vm.stopPrank();
 
         // Pause then unpause
@@ -400,8 +400,8 @@ contract stQRLv2Test is Test {
 
         // Transfer should work
         vm.prank(user1);
-        token.transfer(user2, 50 ether);
-        assertEq(token.balanceOf(user2), 50 ether);
+        token.transfer(user2, 50 quanta);
+        assertEq(token.balanceOf(user2), 50 quanta);
     }
 
     // =========================================================================
@@ -411,39 +411,39 @@ contract stQRLv2Test is Test {
     function test_Approve() public {
         // Setup
         vm.startPrank(depositPool);
-        token.updateTotalPooledQRL(100 ether);
-        token.mintShares(user1, 100 ether);
+        token.updateTotalPooledQRL(100 quanta);
+        token.mintShares(user1, 100 quanta);
         vm.stopPrank();
 
         // Approve
         vm.prank(user1);
-        bool success = token.approve(user2, 50 ether);
+        bool success = token.approve(user2, 50 quanta);
 
         assertTrue(success);
-        assertEq(token.allowance(user1, user2), 50 ether);
+        assertEq(token.allowance(user1, user2), 50 quanta);
     }
 
     function test_Approve_ZeroAddress_Reverts() public {
         vm.startPrank(depositPool);
-        token.updateTotalPooledQRL(100 ether);
-        token.mintShares(user1, 100 ether);
+        token.updateTotalPooledQRL(100 quanta);
+        token.mintShares(user1, 100 quanta);
         vm.stopPrank();
 
         vm.prank(user1);
         vm.expectRevert(stQRLv2.ZeroAddress.selector);
-        token.approve(address(0), 50 ether);
+        token.approve(address(0), 50 quanta);
     }
 
     function test_Approve_EmitsEvent() public {
         vm.startPrank(depositPool);
-        token.updateTotalPooledQRL(100 ether);
-        token.mintShares(user1, 100 ether);
+        token.updateTotalPooledQRL(100 quanta);
+        token.mintShares(user1, 100 quanta);
         vm.stopPrank();
 
         vm.prank(user1);
         vm.expectEmit(true, true, false, true);
-        emit Approval(user1, user2, 50 ether);
-        token.approve(user2, 50 ether);
+        emit Approval(user1, user2, 50 quanta);
+        token.approve(user2, 50 quanta);
     }
 
     // =========================================================================
@@ -452,19 +452,19 @@ contract stQRLv2Test is Test {
 
     function test_Transfer_ToZeroAddress_Reverts() public {
         vm.startPrank(depositPool);
-        token.updateTotalPooledQRL(100 ether);
-        token.mintShares(user1, 100 ether);
+        token.updateTotalPooledQRL(100 quanta);
+        token.mintShares(user1, 100 quanta);
         vm.stopPrank();
 
         vm.prank(user1);
         vm.expectRevert(stQRLv2.ZeroAddress.selector);
-        token.transfer(address(0), 50 ether);
+        token.transfer(address(0), 50 quanta);
     }
 
     function test_Transfer_ZeroAmount_Reverts() public {
         vm.startPrank(depositPool);
-        token.updateTotalPooledQRL(100 ether);
-        token.mintShares(user1, 100 ether);
+        token.updateTotalPooledQRL(100 quanta);
+        token.mintShares(user1, 100 quanta);
         vm.stopPrank();
 
         vm.prank(user1);
@@ -474,26 +474,26 @@ contract stQRLv2Test is Test {
 
     function test_Transfer_InsufficientBalance_Reverts() public {
         vm.startPrank(depositPool);
-        token.updateTotalPooledQRL(100 ether);
-        token.mintShares(user1, 100 ether);
+        token.updateTotalPooledQRL(100 quanta);
+        token.mintShares(user1, 100 quanta);
         vm.stopPrank();
 
         vm.prank(user1);
         vm.expectRevert(stQRLv2.InsufficientBalance.selector);
-        token.transfer(user2, 150 ether);
+        token.transfer(user2, 150 quanta);
     }
 
     function test_Transfer_EmitsEvent() public {
         // Mint first, then update (correct order)
         vm.startPrank(depositPool);
-        token.mintShares(user1, 100 ether);
-        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 quanta);
+        token.updateTotalPooledQRL(100 quanta);
         vm.stopPrank();
 
         vm.prank(user1);
         vm.expectEmit(true, true, false, true);
-        emit Transfer(user1, user2, 50 ether);
-        token.transfer(user2, 50 ether);
+        emit Transfer(user1, user2, 50 quanta);
+        token.transfer(user2, 50 quanta);
     }
 
     // =========================================================================
@@ -503,12 +503,12 @@ contract stQRLv2Test is Test {
     function test_TransferFrom_ZeroAmount_Reverts() public {
         // Mint first, then update (correct order)
         vm.startPrank(depositPool);
-        token.mintShares(user1, 100 ether);
-        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 quanta);
+        token.updateTotalPooledQRL(100 quanta);
         vm.stopPrank();
 
         vm.prank(user1);
-        token.approve(user2, 50 ether);
+        token.approve(user2, 50 quanta);
 
         vm.prank(user2);
         vm.expectRevert(stQRLv2.ZeroAmount.selector);
@@ -518,23 +518,23 @@ contract stQRLv2Test is Test {
     function test_TransferFrom_InsufficientAllowance_Reverts() public {
         // Mint first, then update (correct order)
         vm.startPrank(depositPool);
-        token.mintShares(user1, 100 ether);
-        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 quanta);
+        token.updateTotalPooledQRL(100 quanta);
         vm.stopPrank();
 
         vm.prank(user1);
-        token.approve(user2, 30 ether);
+        token.approve(user2, 30 quanta);
 
         vm.prank(user2);
         vm.expectRevert(stQRLv2.InsufficientAllowance.selector);
-        token.transferFrom(user1, user2, 50 ether);
+        token.transferFrom(user1, user2, 50 quanta);
     }
 
     function test_TransferFrom_UnlimitedAllowance() public {
         // Mint first, then update (correct order)
         vm.startPrank(depositPool);
-        token.mintShares(user1, 100 ether);
-        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 quanta);
+        token.updateTotalPooledQRL(100 quanta);
         vm.stopPrank();
 
         // Approve unlimited
@@ -543,7 +543,7 @@ contract stQRLv2Test is Test {
 
         // Transfer
         vm.prank(user2);
-        token.transferFrom(user1, user2, 50 ether);
+        token.transferFrom(user1, user2, 50 quanta);
 
         // Allowance should remain unlimited
         assertEq(token.allowance(user1, user2), type(uint256).max);
@@ -552,18 +552,18 @@ contract stQRLv2Test is Test {
     function test_TransferFrom_WhenPaused_Reverts() public {
         // Mint first, then update (correct order)
         vm.startPrank(depositPool);
-        token.mintShares(user1, 100 ether);
-        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 quanta);
+        token.updateTotalPooledQRL(100 quanta);
         vm.stopPrank();
 
         vm.prank(user1);
-        token.approve(user2, 50 ether);
+        token.approve(user2, 50 quanta);
 
         token.pause();
 
         vm.prank(user2);
         vm.expectRevert(stQRLv2.ContractPaused.selector);
-        token.transferFrom(user1, user2, 50 ether);
+        token.transferFrom(user1, user2, 50 quanta);
     }
 
     // =========================================================================
@@ -573,7 +573,7 @@ contract stQRLv2Test is Test {
     function test_MintShares_ToZeroAddress_Reverts() public {
         vm.prank(depositPool);
         vm.expectRevert(stQRLv2.ZeroAddress.selector);
-        token.mintShares(address(0), 100 ether);
+        token.mintShares(address(0), 100 quanta);
     }
 
     function test_MintShares_ZeroAmount_Reverts() public {
@@ -587,36 +587,36 @@ contract stQRLv2Test is Test {
 
         vm.prank(depositPool);
         vm.expectRevert(stQRLv2.ContractPaused.selector);
-        token.mintShares(user1, 100 ether);
+        token.mintShares(user1, 100 quanta);
     }
 
     function test_MintShares_EmitsEvents() public {
         // Mint first (correct order) - pool is empty so 1:1 ratio
         vm.prank(depositPool);
         vm.expectEmit(true, false, false, true);
-        emit SharesMinted(user1, 100 ether, 100 ether);
+        emit SharesMinted(user1, 100 quanta, 100 quanta);
         vm.expectEmit(true, true, false, true);
-        emit Transfer(address(0), user1, 100 ether);
-        token.mintShares(user1, 100 ether);
+        emit Transfer(address(0), user1, 100 quanta);
+        token.mintShares(user1, 100 quanta);
     }
 
     function test_BurnShares_FromZeroAddress_Reverts() public {
         // Mint first, then update (correct order)
         vm.startPrank(depositPool);
-        token.mintShares(user1, 100 ether);
-        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 quanta);
+        token.updateTotalPooledQRL(100 quanta);
         vm.stopPrank();
 
         vm.prank(depositPool);
         vm.expectRevert(stQRLv2.ZeroAddress.selector);
-        token.burnShares(address(0), 50 ether);
+        token.burnShares(address(0), 50 quanta);
     }
 
     function test_BurnShares_ZeroAmount_Reverts() public {
         // Mint first, then update (correct order)
         vm.startPrank(depositPool);
-        token.mintShares(user1, 100 ether);
-        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 quanta);
+        token.updateTotalPooledQRL(100 quanta);
         vm.stopPrank();
 
         vm.prank(depositPool);
@@ -627,61 +627,61 @@ contract stQRLv2Test is Test {
     function test_BurnShares_InsufficientBalance_Reverts() public {
         // Mint first, then update (correct order)
         vm.startPrank(depositPool);
-        token.mintShares(user1, 100 ether);
-        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 quanta);
+        token.updateTotalPooledQRL(100 quanta);
         vm.stopPrank();
 
         vm.prank(depositPool);
         vm.expectRevert(stQRLv2.InsufficientBalance.selector);
-        token.burnShares(user1, 150 ether);
+        token.burnShares(user1, 150 quanta);
     }
 
     function test_BurnShares_WhenPaused_Reverts() public {
         // Mint first, then update (correct order)
         vm.startPrank(depositPool);
-        token.mintShares(user1, 100 ether);
-        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 quanta);
+        token.updateTotalPooledQRL(100 quanta);
         vm.stopPrank();
 
         token.pause();
 
         vm.prank(depositPool);
         vm.expectRevert(stQRLv2.ContractPaused.selector);
-        token.burnShares(user1, 50 ether);
+        token.burnShares(user1, 50 quanta);
     }
 
     function test_BurnShares_EmitsEvents() public {
         // Mint first, then update (correct order)
         vm.startPrank(depositPool);
-        token.mintShares(user1, 100 ether);
-        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 quanta);
+        token.updateTotalPooledQRL(100 quanta);
         vm.stopPrank();
 
         // At 1:1 rate, 50 shares = 50 QRL (with tiny virtual shares diff)
-        uint256 expectedQRL = token.getPooledQRLByShares(50 ether);
+        uint256 expectedQRL = token.getPooledQRLByShares(50 quanta);
 
         vm.prank(depositPool);
         vm.expectEmit(true, false, false, true);
-        emit SharesBurned(user1, 50 ether, expectedQRL);
+        emit SharesBurned(user1, 50 quanta, expectedQRL);
         vm.expectEmit(true, true, false, true);
-        emit Transfer(user1, address(0), 50 ether);
-        token.burnShares(user1, 50 ether);
+        emit Transfer(user1, address(0), 50 quanta);
+        token.burnShares(user1, 50 quanta);
     }
 
     function test_BurnShares_ReturnsCorrectQRLAmount() public {
         // Mint first, then update (correct order)
         vm.startPrank(depositPool);
-        token.mintShares(user1, 100 ether);
-        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 quanta);
+        token.updateTotalPooledQRL(100 quanta);
         // Add 50% rewards
-        token.updateTotalPooledQRL(150 ether);
+        token.updateTotalPooledQRL(150 quanta);
         vm.stopPrank();
 
         vm.prank(depositPool);
-        uint256 qrlAmount = token.burnShares(user1, 50 ether);
+        uint256 qrlAmount = token.burnShares(user1, 50 quanta);
 
         // 50 shares at ~1.5 QRL/share ≈ 75 QRL (approx due to virtual shares)
-        assertApproxEqRel(qrlAmount, 75 ether, 1e14);
+        assertApproxEqRel(qrlAmount, 75 quanta, 1e14);
     }
 
     // =========================================================================
@@ -762,17 +762,17 @@ contract stQRLv2Test is Test {
     function test_GetQRLValue_ReturnsCorrectValue() public {
         // Mint first, then update (correct order)
         vm.startPrank(depositPool);
-        token.mintShares(user1, 100 ether);
-        token.updateTotalPooledQRL(100 ether);
+        token.mintShares(user1, 100 quanta);
+        token.updateTotalPooledQRL(100 quanta);
         vm.stopPrank();
 
-        assertApproxEqRel(token.getQRLValue(user1), 100 ether, 1e14);
+        assertApproxEqRel(token.getQRLValue(user1), 100 quanta, 1e14);
 
         // Add rewards
         vm.prank(depositPool);
-        token.updateTotalPooledQRL(150 ether);
+        token.updateTotalPooledQRL(150 quanta);
 
-        assertApproxEqRel(token.getQRLValue(user1), 150 ether, 1e14);
+        assertApproxEqRel(token.getQRLValue(user1), 150 quanta, 1e14);
     }
 
     function test_GetQRLValue_ZeroShares() public view {

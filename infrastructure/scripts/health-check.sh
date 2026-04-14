@@ -131,7 +131,7 @@ if [[ -n "$PRIMARY_HOST" ]]; then
         add_json_result "primary_ssh" "ok" "connected"
 
         # Services
-        for service in gzond qrysm-beacon qrysm-validator; do
+        for service in gqrl qrysm-beacon qrysm-validator; do
             if check_service "$PRIMARY_HOST" "$service"; then
                 if [[ "$JSON_OUTPUT" == "false" ]]; then
                     check_status "$service service" true
@@ -146,11 +146,11 @@ if [[ -n "$PRIMARY_HOST" ]]; then
             fi
         done
 
-        # gzond sync status
+        # gqrl sync status
         if [[ "$VERBOSE" == "true" ]]; then
             SYNC_STATUS=$(ssh_cmd "$PRIMARY_HOST" "curl -s -X POST -H 'Content-Type: application/json' --data '{\"jsonrpc\":\"2.0\",\"method\":\"eth_syncing\",\"params\":[],\"id\":1}' http://localhost:8545" | jq -r '.result')
             if [[ "$JSON_OUTPUT" == "false" ]]; then
-                echo "  gzond sync: $SYNC_STATUS"
+                echo "  gqrl sync: $SYNC_STATUS"
             fi
         fi
 
@@ -186,7 +186,7 @@ if [[ -n "$BACKUP_HOST" ]]; then
         add_json_result "backup_ssh" "ok" "connected"
 
         # Services (validator should be stopped on backup)
-        for service in gzond qrysm-beacon; do
+        for service in gqrl qrysm-beacon; do
             if check_service "$BACKUP_HOST" "$service"; then
                 if [[ "$JSON_OUTPUT" == "false" ]]; then
                     check_status "$service service" true

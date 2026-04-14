@@ -1,12 +1,12 @@
 {
-  "provider": "https://qrlwallet.com/api/zond-rpc/testnet",
-  "chainId": 32382,
+  "provider": "https://qrlwallet.com/api/qrl-rpc/testnet",
+  "chainId": 1337,
   "txConfirmations": 12,
   "contracts": {
     "testToken": "",
-    "stQRL": "Z844A6eB87927780E938908743eA24a56A220Efe8",
-    "depositPool": "Z9E800e8271df4Ac91334C65641405b04584B57DC",
-    "rewardsOracle": "Z541b1f2c501956BCd7a4a6913180b2Fc27BdE17E",
-    "operatorRegistry": "ZD370e9505D265381e839f8289f46D02815d0FF95"
+    "stQRL": "",
+    "depositPool": "",
+    "rewardsOracle": "",
+    "operatorRegistry": ""
   }
 }

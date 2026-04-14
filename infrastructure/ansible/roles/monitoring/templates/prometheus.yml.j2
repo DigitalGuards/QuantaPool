@@ -33,7 +33,7 @@ scrape_configs:
         labels:
           node: 'primary'
 
-  - job_name: 'primary-gzond'
+  - job_name: 'primary-gqrl'
     static_configs:
       - targets: ['{{ hostvars[groups["primary"][0]]["private_ip"] }}:6060']
         labels:
@@ -60,7 +60,7 @@ scrape_configs:
         labels:
           node: 'backup'
 
-  - job_name: 'backup-gzond'
+  - job_name: 'backup-gqrl'
     static_configs:
       - targets: ['{{ hostvars[groups["backup"][0]]["private_ip"] }}:6060']
         labels:

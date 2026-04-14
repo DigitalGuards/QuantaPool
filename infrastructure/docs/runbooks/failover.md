@@ -16,7 +16,7 @@ This runbook covers the procedure for failing over validator duties from the pri
 ## Prerequisites
 
 - SSH access to both primary and backup nodes
-- Backup node is synced (gzond and beacon)
+- Backup node is synced (gqrl and beacon)
 - Slashing protection database is accessible
 
 ## Automated Failover
@@ -118,7 +118,7 @@ curl -s http://localhost:3500/eth/v1/node/syncing
 
 # Should return: {"data":{"is_syncing":false,"head_slot":"...",..."}}
 
-# Check gzond is synced
+# Check gqrl is synced
 curl -s -X POST -H "Content-Type: application/json" \
   --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' \
   http://localhost:8545
@@ -195,7 +195,7 @@ If backup failover fails:
 
 ## Emergency Contacts
 
-- QRL Discord: #zond channel
+- QRL Discord: #qrl channel
 - QuantaPool Team: [Contact info]
 
 ## Checklist
@@ -204,7 +204,7 @@ If backup failover fails:
 - [ ] Primary process confirmed killed
 - [ ] Slashing protection transferred
 - [ ] Backup beacon synced
-- [ ] Backup gzond synced
+- [ ] Backup gqrl synced
 - [ ] Lock file removed on backup
 - [ ] Backup validator started
 - [ ] Attestations being submitted

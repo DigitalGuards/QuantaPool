@@ -65,11 +65,11 @@ receivers:
 
 # Inhibition rules - suppress dependent alerts
 inhibit_rules:
-  # If gzond is down, don't alert about sync issues
+  # If gqrl is down, don't alert about sync issues
   - source_match:
-      alertname: GzondDown
+      alertname: GqrlDown
     target_match:
-      alertname: GzondSyncing
+      alertname: GqrlSyncing
     equal: ['instance']
 
   # If beacon-chain is down, don't alert about sync or validator issues
