@@ -1,9 +1,125 @@
 /**
- * Contract monitoring logic for QuantaPool
+ * v2 contract monitoring for QuantaPool.
+ *
+ * Uses minimal inline ABIs for the ~16 view functions + 6 events we need.
+ * No dependency on the Hyperion build output so the exporter can ship
+ * standalone (Docker image, Ansible deploy) without the contract tree.
  */
 
-const fs = require('fs');
-const path = require('path');
+// =============================================================
+//                        MINIMAL ABIs
+// =============================================================
+// Only the functions and events the exporter reads. Keep this
+// inline and human-editable rather than importing artifacts.
+
+const view = (name, outputType) => ({
+    name, type: 'function', stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: outputType, name: '' }]
+});
+
+const evt = (name, inputs = []) => ({
+    name, type: 'event', anonymous: false, inputs
+});
+
+const STQRL_ABI = [
+    view('totalPooledQRL', 'uint256'),
+    view('totalShares', 'uint256'),
+    view('getExchangeRate', 'uint256'),
+    view('paused', 'bool')
+];
+
+const POOL_ABI = [
+    view('bufferedQRL', 'uint256'),
+    view('validatorCount', 'uint256'),
+    view('withdrawalReserve', 'uint256'),
+    view('totalWithdrawalShares', 'uint256'),
+    view('totalRewardsReceived', 'uint256'),
+    view('totalSlashingLosses', 'uint256'),
+    view('minDeposit', 'uint256'),
+    view('paused', 'bool'),
+    // Events (subset — enough to drive counters)
+    evt('Deposited', [
+        { name: 'user', type: 'address', indexed: true },
+        { name: 'qrlAmount', type: 'uint256', indexed: false },
+        { name: 'shares', type: 'uint256', indexed: false }
+    ]),
+    evt('WithdrawalRequested', [
+        { name: 'user', type: 'address', indexed: true },
+        { name: 'shares', type: 'uint256', indexed: false },
+        { name: 'qrlAmount', type: 'uint256', indexed: false },
+        { name: 'requestBlock', type: 'uint256', indexed: false }
+    ]),
+    evt('WithdrawalClaimed', [
+        { name: 'user', type: 'address', indexed: true },
+        { name: 'shares', type: 'uint256', indexed: false },
+        { name: 'qrlAmount', type: 'uint256', indexed: false }
+    ]),
+    evt('WithdrawalCancelled', [
+        { name: 'user', type: 'address', indexed: true },
+        { name: 'requestId', type: 'uint256', indexed: false },
+        { name: 'shares', type: 'uint256', indexed: false }
+    ]),
+    evt('ValidatorFunded', [
+        { name: 'validatorId', type: 'uint256', indexed: true },
+        { name: 'pubkey', type: 'bytes', indexed: false },
+        { name: 'amount', type: 'uint256', indexed: false }
+    ]),
+    evt('RewardsSynced', [
+        { name: 'rewards', type: 'uint256', indexed: false },
+        { name: 'newTotalPooled', type: 'uint256', indexed: false },
+        { name: 'blockNumber', type: 'uint256', indexed: false }
+    ]),
+    evt('SlashingDetected', [
+        { name: 'loss', type: 'uint256', indexed: false },
+        { name: 'newTotalPooled', type: 'uint256', indexed: false },
+        { name: 'blockNumber', type: 'uint256', indexed: false }
+    ])
+];
+
+const VM_ABI = [
+    view('totalValidators', 'uint256'),
+    view('activeValidatorCount', 'uint256'),
+    view('pendingValidatorCount', 'uint256'),
+    evt('ValidatorRegistered', [
+        { name: 'validatorId', type: 'uint256', indexed: true },
+        { name: 'pubkey', type: 'bytes', indexed: false },
+        { name: 'status', type: 'uint8', indexed: false }
+    ]),
+    evt('ValidatorActivated', [
+        { name: 'validatorId', type: 'uint256', indexed: true },
+        { name: 'activatedBlock', type: 'uint256', indexed: false }
+    ]),
+    evt('ValidatorExitRequested', [
+        { name: 'validatorId', type: 'uint256', indexed: true },
+        { name: 'requestBlock', type: 'uint256', indexed: false }
+    ]),
+    evt('ValidatorExited', [
+        { name: 'validatorId', type: 'uint256', indexed: true },
+        { name: 'exitedBlock', type: 'uint256', indexed: false }
+    ]),
+    evt('ValidatorSlashed', [
+        { name: 'validatorId', type: 'uint256', indexed: true },
+        { name: 'slashedBlock', type: 'uint256', indexed: false }
+    ])
+];
+
+// =============================================================
+//                      HELPERS
+// =============================================================
+const ONE_E18 = 1_000_000_000_000_000_000n;
+
+/** BigInt or string → floating-point QRL. Precision loss is acceptable for gauges. */
+function planckToQrl(v) {
+    const bi = typeof v === 'bigint' ? v : BigInt(v);
+    const whole = Number(bi / ONE_E18);
+    const frac = Number(bi % ONE_E18) / 1e18;
+    return whole + frac;
+}
+
+// =============================================================
+//                     CONTRACT MONITOR
+// =============================================================
 
 class ContractMonitor {
     constructor(web3, metrics, config) {
@@ -15,188 +131,119 @@ class ContractMonitor {
         this.lastProcessedBlock = 0n;
     }
 
-    /**
-     * Load contract artifact from file or use bundled ABI
-     */
-    loadArtifact(name) {
-        // Try to load from artifacts folder (relative to monitoring dir or QuantaPool root)
-        const possiblePaths = [
-            path.join(__dirname, '..', '..', '..', 'artifacts', `${name}.json`),  // From monitoring/contract-exporter/src
-            path.join(process.cwd(), 'artifacts', `${name}.json`),  // From cwd
-            path.join(process.cwd(), '..', 'artifacts', `${name}.json`),  // Up one level
-        ];
-
-        for (const artifactPath of possiblePaths) {
-            if (fs.existsSync(artifactPath)) {
-                console.log(`  Loading ${name} ABI from ${artifactPath}`);
-                const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
-                return artifact.abi;
-            }
-        }
-
-        console.warn(`  Warning: Could not find ${name}.json artifact, using minimal ABI`);
-        return null;
-    }
-
     async start() {
-        console.log('Initializing contract monitor...');
+        console.log('Initializing v2 contract monitor...');
 
-        // Load contract ABIs
-        await this.initializeContracts();
+        this.contracts.stQRL = new this.web3.qrl.Contract(STQRL_ABI, this.config.STQRL_ADDRESS);
+        this.contracts.pool = new this.web3.qrl.Contract(POOL_ABI, this.config.DEPOSIT_POOL_ADDRESS);
+        this.contracts.vm = new this.web3.qrl.Contract(VM_ABI, this.config.VALIDATOR_MANAGER_ADDRESS);
 
-        // Get initial block number
+        console.log('Contracts initialized:');
+        console.log(`  stQRLv2:          ${this.config.STQRL_ADDRESS}`);
+        console.log(`  DepositPoolV2:    ${this.config.DEPOSIT_POOL_ADDRESS}`);
+        console.log(`  ValidatorManager: ${this.config.VALIDATOR_MANAGER_ADDRESS}`);
+
         this.lastProcessedBlock = await this.web3.qrl.getBlockNumber();
         console.log(`Starting from block ${this.lastProcessedBlock}`);
 
-        // Initial metrics collection
         await this.collectMetrics();
 
-        // Start periodic collection
         setInterval(() => this.collectMetrics(), this.config.SCRAPE_INTERVAL_MS);
-
-        // Start event polling (separate interval for events)
         setInterval(() => this.pollEvents(), this.config.EVENT_POLL_INTERVAL_MS);
 
         console.log('Contract monitor started');
     }
 
-    async initializeContracts() {
-        // Load ABIs from artifacts or use fallback minimal ABIs
-        const stQRLABI = this.loadArtifact('stQRL') || this.getMinimalStQRLABI();
-        const depositPoolABI = this.loadArtifact('DepositPool') || this.getMinimalDepositPoolABI();
-        const rewardsOracleABI = this.loadArtifact('RewardsOracle') || this.getMinimalRewardsOracleABI();
-        const operatorRegistryABI = this.loadArtifact('OperatorRegistry') || this.getMinimalOperatorRegistryABI();
-
-        // Initialize contract instances
-        this.contracts.stQRL = new this.web3.qrl.Contract(stQRLABI, this.config.STQRL_ADDRESS);
-        this.contracts.depositPool = new this.web3.qrl.Contract(depositPoolABI, this.config.DEPOSIT_POOL_ADDRESS);
-        this.contracts.rewardsOracle = new this.web3.qrl.Contract(rewardsOracleABI, this.config.REWARDS_ORACLE_ADDRESS);
-        this.contracts.operatorRegistry = new this.web3.qrl.Contract(operatorRegistryABI, this.config.OPERATOR_REGISTRY_ADDRESS);
-
-        console.log('Contracts initialized:');
-        console.log(`  stQRL: ${this.config.STQRL_ADDRESS}`);
-        console.log(`  DepositPool: ${this.config.DEPOSIT_POOL_ADDRESS}`);
-        console.log(`  RewardsOracle: ${this.config.REWARDS_ORACLE_ADDRESS}`);
-        console.log(`  OperatorRegistry: ${this.config.OPERATOR_REGISTRY_ADDRESS}`);
-    }
-
-    // Fallback minimal ABIs (in case artifacts not available)
-    getMinimalStQRLABI() {
-        return [
-            { name: 'totalAssets', type: 'function', inputs: [], outputs: [{ type: 'uint256' }], stateMutability: 'view' },
-            { name: 'totalSupply', type: 'function', inputs: [], outputs: [{ type: 'uint256' }], stateMutability: 'view' },
-            { name: 'getExchangeRate', type: 'function', inputs: [], outputs: [{ type: 'uint256' }], stateMutability: 'view' }
-        ];
-    }
-
-    getMinimalDepositPoolABI() {
-        return [
-            { name: 'pendingDeposits', type: 'function', inputs: [], outputs: [{ type: 'uint256' }], stateMutability: 'view' },
-            { name: 'liquidReserve', type: 'function', inputs: [], outputs: [{ type: 'uint256' }], stateMutability: 'view' },
-            { name: 'validatorCount', type: 'function', inputs: [], outputs: [{ type: 'uint256' }], stateMutability: 'view' },
-            { name: 'pendingWithdrawals', type: 'function', inputs: [], outputs: [{ type: 'uint256' }], stateMutability: 'view' },
-            { name: 'paused', type: 'function', inputs: [], outputs: [{ type: 'bool' }], stateMutability: 'view' }
-        ];
-    }
-
-    getMinimalRewardsOracleABI() {
-        return [
-            { name: 'lastReportTimestamp', type: 'function', inputs: [], outputs: [{ type: 'uint256' }], stateMutability: 'view' },
-            { name: 'lastReportedBalance', type: 'function', inputs: [], outputs: [{ type: 'uint256' }], stateMutability: 'view' },
-            { name: 'reportCooldown', type: 'function', inputs: [], outputs: [{ type: 'uint256' }], stateMutability: 'view' }
-        ];
-    }
-
-    getMinimalOperatorRegistryABI() {
-        return [
-            { name: 'commissionRate', type: 'function', inputs: [], outputs: [{ type: 'uint256' }], stateMutability: 'view' },
-            { name: 'getOperatorCount', type: 'function', inputs: [], outputs: [{ type: 'uint256' }], stateMutability: 'view' }
-        ];
+    async safeCall(fn, defaultValue, label) {
+        try {
+            return await fn();
+        } catch (error) {
+            console.warn(`Contract call failed [${label || '?'}]: ${error.message}`);
+            this.metrics.rpcErrors.inc({ method: label || 'call', error: error.code || 'unknown' });
+            return defaultValue;
+        }
     }
 
     async collectMetrics() {
         const startTime = Date.now();
 
         try {
-            // Get current block
             const blockNumber = await this.web3.qrl.getBlockNumber();
             this.metrics.blockHeight.set(Number(blockNumber));
 
-            // Get deposit pool native balance
             const poolBalance = await this.web3.qrl.getBalance(this.config.DEPOSIT_POOL_ADDRESS);
-            this.metrics.depositPoolBalance.set(Number(this.web3.utils.fromWei(poolBalance, 'ether')));
+            this.metrics.poolBalance.set(planckToQrl(poolBalance));
 
-            // Collect Deposit Pool metrics
-            const [pendingDeposits, liquidReserve, validatorCount, pendingWithdrawals, dpPaused] = await Promise.all([
-                this.safeCall(() => this.contracts.depositPool.methods.pendingDeposits().call(), 0n),
-                this.safeCall(() => this.contracts.depositPool.methods.liquidReserve().call(), 0n),
-                this.safeCall(() => this.contracts.depositPool.methods.validatorCount().call(), 0n),
-                this.safeCall(() => this.contracts.depositPool.methods.pendingWithdrawals().call(), 0n),
-                this.safeCall(() => this.contracts.depositPool.methods.paused().call(), false)
+            // stQRL reads
+            const [totalPooled, totalShares, exchangeRate, stQRLPaused] = await Promise.all([
+                this.safeCall(() => this.contracts.stQRL.methods.totalPooledQRL().call(), 0n, 'stQRL.totalPooledQRL'),
+                this.safeCall(() => this.contracts.stQRL.methods.totalShares().call(), 0n, 'stQRL.totalShares'),
+                this.safeCall(() => this.contracts.stQRL.methods.getExchangeRate().call(), ONE_E18, 'stQRL.getExchangeRate'),
+                this.safeCall(() => this.contracts.stQRL.methods.paused().call(), false, 'stQRL.paused')
             ]);
 
-            this.metrics.pendingDeposits.set(Number(this.web3.utils.fromWei(pendingDeposits.toString(), 'ether')));
-            this.metrics.liquidReserve.set(Number(this.web3.utils.fromWei(liquidReserve.toString(), 'ether')));
-            this.metrics.validatorCount.set(Number(validatorCount));
-            this.metrics.pendingWithdrawals.set(Number(this.web3.utils.fromWei(pendingWithdrawals.toString(), 'ether')));
-            this.metrics.contractPaused.set(dpPaused ? 1 : 0);
-
-            // Collect stQRL metrics
-            const [totalAssets, totalSupply, exchangeRate] = await Promise.all([
-                this.safeCall(() => this.contracts.stQRL.methods.totalAssets().call(), 0n),
-                this.safeCall(() => this.contracts.stQRL.methods.totalSupply().call(), 0n),
-                this.safeCall(() => this.contracts.stQRL.methods.getExchangeRate().call(), BigInt(1e18))
-            ]);
-
-            this.metrics.totalAssets.set(Number(this.web3.utils.fromWei(totalAssets.toString(), 'ether')));
-            this.metrics.totalSupply.set(Number(this.web3.utils.fromWei(totalSupply.toString(), 'ether')));
+            this.metrics.totalPooledQRL.set(planckToQrl(totalPooled));
+            this.metrics.totalShares.set(planckToQrl(totalShares));
             this.metrics.exchangeRate.set(Number(exchangeRate));
             this.metrics.exchangeRateNormalized.set(Number(exchangeRate) / 1e18);
+            this.metrics.stQRLPaused.set(stQRLPaused ? 1 : 0);
 
-            // Collect Oracle metrics
-            const [lastReportTimestamp, lastReportedBalance, reportCooldown] = await Promise.all([
-                this.safeCall(() => this.contracts.rewardsOracle.methods.lastReportTimestamp().call(), 0n),
-                this.safeCall(() => this.contracts.rewardsOracle.methods.lastReportedBalance().call(), 0n),
-                this.safeCall(() => this.contracts.rewardsOracle.methods.reportCooldown().call(), 0n)
+            // DepositPool reads
+            const [
+                buffered,
+                validatorCount,
+                withdrawalReserve,
+                totalWithdrawalShares,
+                totalRewards,
+                totalSlashing,
+                minDeposit,
+                poolPaused
+            ] = await Promise.all([
+                this.safeCall(() => this.contracts.pool.methods.bufferedQRL().call(), 0n, 'pool.bufferedQRL'),
+                this.safeCall(() => this.contracts.pool.methods.validatorCount().call(), 0n, 'pool.validatorCount'),
+                this.safeCall(() => this.contracts.pool.methods.withdrawalReserve().call(), 0n, 'pool.withdrawalReserve'),
+                this.safeCall(() => this.contracts.pool.methods.totalWithdrawalShares().call(), 0n, 'pool.totalWithdrawalShares'),
+                this.safeCall(() => this.contracts.pool.methods.totalRewardsReceived().call(), 0n, 'pool.totalRewardsReceived'),
+                this.safeCall(() => this.contracts.pool.methods.totalSlashingLosses().call(), 0n, 'pool.totalSlashingLosses'),
+                this.safeCall(() => this.contracts.pool.methods.minDeposit().call(), 0n, 'pool.minDeposit'),
+                this.safeCall(() => this.contracts.pool.methods.paused().call(), false, 'pool.paused')
             ]);
 
-            const now = Math.floor(Date.now() / 1000);
-            const cooldownRemaining = Math.max(0, Number(lastReportTimestamp) + Number(reportCooldown) - now);
+            this.metrics.bufferedQRL.set(planckToQrl(buffered));
+            this.metrics.validatorCount.set(Number(validatorCount));
+            this.metrics.withdrawalReserve.set(planckToQrl(withdrawalReserve));
+            this.metrics.pendingWithdrawalShares.set(planckToQrl(totalWithdrawalShares));
+            this.metrics.totalRewards.set(planckToQrl(totalRewards));
+            this.metrics.totalSlashing.set(planckToQrl(totalSlashing));
+            this.metrics.minDeposit.set(planckToQrl(minDeposit));
+            this.metrics.poolPaused.set(poolPaused ? 1 : 0);
 
-            this.metrics.lastReportTimestamp.set(Number(lastReportTimestamp));
-            this.metrics.lastReportedBalance.set(Number(this.web3.utils.fromWei(lastReportedBalance.toString(), 'ether')));
-            this.metrics.oracleCooldownRemaining.set(cooldownRemaining);
-
-            // Collect Operator Registry metrics
-            const [totalOperators, commissionRate] = await Promise.all([
-                this.safeCall(() => this.contracts.operatorRegistry.methods.getOperatorCount().call(), 0n),
-                this.safeCall(() => this.contracts.operatorRegistry.methods.commissionRate().call(), 0n)
+            // ValidatorManager reads
+            const [vmTotal, vmActive, vmPending] = await Promise.all([
+                this.safeCall(() => this.contracts.vm.methods.totalValidators().call(), 0n, 'vm.totalValidators'),
+                this.safeCall(() => this.contracts.vm.methods.activeValidatorCount().call(), 0n, 'vm.activeValidatorCount'),
+                this.safeCall(() => this.contracts.vm.methods.pendingValidatorCount().call(), 0n, 'vm.pendingValidatorCount')
             ]);
 
-            this.metrics.totalOperators.set(Number(totalOperators));
-            this.metrics.commissionRate.set(Number(commissionRate));
+            this.metrics.vmTotalValidators.set(Number(vmTotal));
+            this.metrics.vmActiveValidators.set(Number(vmActive));
+            this.metrics.vmPendingValidators.set(Number(vmPending));
 
-            // Record latency
             const latency = (Date.now() - startTime) / 1000;
             this.metrics.rpcLatency.observe({ method: 'collectMetrics' }, latency);
 
             this.lastUpdate = new Date().toISOString();
             this.metrics.lastUpdateTimestamp.set(Math.floor(Date.now() / 1000));
 
-            console.log(`Metrics collected in ${latency.toFixed(2)}s - Block: ${blockNumber}, TVL: ${this.web3.utils.fromWei(totalAssets.toString(), 'ether')} QRL`);
-
+            console.log(
+                `Metrics collected in ${latency.toFixed(2)}s — ` +
+                `block=${blockNumber} pooled=${planckToQrl(totalPooled).toFixed(4)} QRL ` +
+                `shares=${planckToQrl(totalShares).toFixed(4)} rate=${(Number(exchangeRate) / 1e18).toFixed(6)} ` +
+                `validators=${validatorCount}/${vmActive}a`
+            );
         } catch (error) {
             console.error('Error collecting metrics:', error.message);
             this.metrics.rpcErrors.inc({ method: 'collectMetrics', error: error.code || 'unknown' });
-        }
-    }
-
-    async safeCall(fn, defaultValue) {
-        try {
-            return await fn();
-        } catch (error) {
-            console.warn(`Contract call failed: ${error.message}`);
-            return defaultValue;
         }
     }
 
@@ -215,52 +262,34 @@ class ContractMonitor {
     }
 
     async processEvents(fromBlock, toBlock) {
-        console.log(`Processing events from block ${fromBlock} to ${toBlock}`);
+        const range = { fromBlock, toBlock };
 
-        try {
-            // Process Deposited events
-            const depositedEvents = await this.contracts.depositPool.getPastEvents('Deposited', { fromBlock, toBlock });
-            depositedEvents.forEach(() => {
-                this.metrics.depositEvents.inc({ status: 'success' });
-            });
-            if (depositedEvents.length > 0) {
-                console.log(`  Found ${depositedEvents.length} Deposited events`);
+        const count = async (contract, evtName, handler) => {
+            try {
+                const events = await contract.getPastEvents(evtName, range);
+                events.forEach(handler);
+                if (events.length > 0) {
+                    console.log(`  ${evtName}: +${events.length}`);
+                }
+            } catch (error) {
+                console.warn(`getPastEvents(${evtName}) failed: ${error.message}`);
             }
+        };
 
-            // Process Withdrawal events
-            const withdrawalRequestedEvents = await this.contracts.depositPool.getPastEvents('WithdrawalRequested', { fromBlock, toBlock });
-            withdrawalRequestedEvents.forEach(() => {
-                this.metrics.withdrawalEvents.inc({ type: 'requested' });
-            });
-
-            const withdrawalClaimedEvents = await this.contracts.depositPool.getPastEvents('WithdrawalClaimed', { fromBlock, toBlock });
-            withdrawalClaimedEvents.forEach(() => {
-                this.metrics.withdrawalEvents.inc({ type: 'claimed' });
-            });
-
-            // Process Validator events
-            const validatorFundedEvents = await this.contracts.depositPool.getPastEvents('ValidatorFunded', { fromBlock, toBlock });
-            validatorFundedEvents.forEach(() => {
-                this.metrics.validatorEvents.inc({ type: 'funded' });
-            });
-
-            const validatorStakedEvents = await this.contracts.depositPool.getPastEvents('ValidatorStaked', { fromBlock, toBlock });
-            validatorStakedEvents.forEach(() => {
-                this.metrics.validatorEvents.inc({ type: 'staked' });
-            });
-
-            // Process Oracle reports
-            const reportEvents = await this.contracts.rewardsOracle.getPastEvents('ReportSubmitted', { fromBlock, toBlock });
-            reportEvents.forEach(() => {
-                this.metrics.oracleReportEvents.inc();
-            });
-            if (reportEvents.length > 0) {
-                console.log(`  Found ${reportEvents.length} oracle report events`);
-            }
-
-        } catch (error) {
-            console.error('Error processing events:', error.message);
-        }
+        await Promise.all([
+            count(this.contracts.pool, 'Deposited', () => this.metrics.depositEvents.inc()),
+            count(this.contracts.pool, 'WithdrawalRequested', () => this.metrics.withdrawalEvents.inc({ type: 'requested' })),
+            count(this.contracts.pool, 'WithdrawalClaimed', () => this.metrics.withdrawalEvents.inc({ type: 'claimed' })),
+            count(this.contracts.pool, 'WithdrawalCancelled', () => this.metrics.withdrawalEvents.inc({ type: 'cancelled' })),
+            count(this.contracts.pool, 'ValidatorFunded', () => this.metrics.validatorFundedEvents.inc()),
+            count(this.contracts.pool, 'RewardsSynced', () => this.metrics.rewardsSyncEvents.inc()),
+            count(this.contracts.pool, 'SlashingDetected', () => this.metrics.slashingEvents.inc()),
+            count(this.contracts.vm, 'ValidatorRegistered', () => this.metrics.vmEvents.inc({ type: 'registered' })),
+            count(this.contracts.vm, 'ValidatorActivated', () => this.metrics.vmEvents.inc({ type: 'activated' })),
+            count(this.contracts.vm, 'ValidatorExitRequested', () => this.metrics.vmEvents.inc({ type: 'exit_requested' })),
+            count(this.contracts.vm, 'ValidatorExited', () => this.metrics.vmEvents.inc({ type: 'exited' })),
+            count(this.contracts.vm, 'ValidatorSlashed', () => this.metrics.vmEvents.inc({ type: 'slashed' }))
+        ]);
     }
 }
 
