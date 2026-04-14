@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
-import "../contracts/solidity/ValidatorManager.sol";
+import "../solidity/ValidatorManager.sol";
 
 /**
  * @title ValidatorManager Tests

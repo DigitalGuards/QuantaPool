@@ -4,7 +4,7 @@
 pragma hyperion >=0.0;
 
 import "forge-std/Test.hyp";
-import "../../contracts/hyperion/ValidatorManager.hyp";
+import "../../hyperion/ValidatorManager.hyp";
 
 /**
  * @title ValidatorManager Tests
