@@ -61,17 +61,19 @@ QuantaPool enables QRL holders to participate in Proof-of-Stake validation witho
 
 ```
 QuantaPool/
-├── contracts/solidity/       # Solidity smart contracts (source of truth)
-│   ├── stQRL-v2.sol          #   Fixed-balance liquid staking token
-│   ├── DepositPool-v2.sol    #   Deposits, withdrawals, reward sync
-│   └── ValidatorManager.sol  #   Validator lifecycle tracking
-├── hyperion/                 # Hyperion language port (.hyp mirrors)
-│   ├── contracts/            #   Auto-synced from Solidity sources
-│   └── test/
-├── test/                     # Foundry test suite (178 tests)
-│   ├── stQRL-v2.t.sol        #   55 core token tests
-│   ├── DepositPool-v2.t.sol  #   68 deposit/withdrawal tests
-│   └── ValidatorManager.t.sol#   55 validator lifecycle tests
+├── contracts/                # All on-chain code lives here
+│   ├── solidity/             #   Solidity sources (source of truth)
+│   │   ├── stQRL-v2.sol      #     Fixed-balance liquid staking token
+│   │   ├── DepositPool-v2.sol#     Deposits, withdrawals, reward sync
+│   │   └── ValidatorManager.sol #  Validator lifecycle tracking
+│   ├── hyperion/             #   Auto-synced Hyperion mirrors (.hyp)
+│   │   └── README.md         #     Dialect rules and hypc workflow
+│   └── test/                 #   Foundry test suite (178 tests)
+│       ├── stQRL-v2.t.sol    #     55 core token tests
+│       ├── DepositPool-v2.t.sol  # 68 deposit/withdrawal tests
+│       ├── ValidatorManager.t.sol # 55 validator lifecycle tests
+│       └── hyperion/         #     Generated .t.hyp mirrors (reference only)
+├── build/hyperion/           # hypc output (ABI, bin, manifest.json) — gitignored
 ├── infrastructure/           # Production validator deployment
 │   ├── terraform/            #   Hetzner Cloud provisioning
 │   ├── ansible/              #   Node configuration (gqrl, qrysm)
@@ -96,7 +98,7 @@ QuantaPool/
 | `DepositPool-v2.sol` | 773 | User entry point, deposits/withdrawals, trustless reward sync |
 | `ValidatorManager.sol` | 349 | Validator lifecycle: Pending → Active → Exiting → Exited |
 
-Solidity sources are maintained under `contracts/solidity/`; Hyperion mirrors are generated into `contracts/hyperion/` (sibling, kept under `contracts/` so both language flavors are co-located). Compiled Hyperion artifacts land in `build/hyperion/` (gitignored).
+All on-chain code lives under `contracts/`. Solidity sources in `contracts/solidity/` are the canonical editing target; Hyperion mirrors in `contracts/hyperion/` are generated from them (never hand-edit). Foundry tests live in `contracts/test/` with a parallel `contracts/test/hyperion/` tree of reference `.t.hyp` mirrors. Compiled Hyperion artifacts land in `build/hyperion/` (gitignored).
 
 ## How Fixed-Balance Model Works
 
