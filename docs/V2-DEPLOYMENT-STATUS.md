@@ -55,17 +55,24 @@ Net protocol validation: **the claim paid exactly `qrlAmount=50.5` (the snapshot
 
 ## What's blocked / deferred
 
-### 1. `DEPOSIT_CONTRACT` address (`Q4242…`) unverified
-QRL team's staking documentation is in QA (per Discord, Jack Matier, 2026-04-13). Until verified, **do not call `pool.fundValidator()`** (the real beacon path). The MVP path `pool.fundValidatorMVP()` does not touch this address and is safe to use.
+### 1. ~~`DEPOSIT_CONTRACT = Q4242…` unverified~~ — **verified** (2026-04-14)
 
-### 2. Real validator deployment
+Confirmed against `qrysm/config/params/testnet_e2e_config.go:8` and `testdata/e2e_config.yaml:57`. Bytecode is pre-deployed at genesis (`qrysm/runtime/interop/genesis.go`). See `docs/UPSTREAM-FINDINGS.md` for details, including the mainnet address (`Q00000000219ab540356cBB839Cbe05303d7705Fa`).
+
+### 2. Withdrawal-credential prefix byte was wrong — **fixed in source, live deploy still pre-fix**
+
+While verifying (1), found that qrysm uses `ExecutionAddressWithdrawalPrefixByte = byte(0)` (`mainnet_config.go:74`). Our `DepositPool-v2.sol:559` hardcoded `bytes1(0x01)` from Ethereum-spec muscle memory. Any real `staking-deposit-cli` deposit would have reverted with `InvalidWithdrawalCredentials` and stuck the stake.
+
+Source fixed in same commit as this doc; Hyperion mirror regenerated; 178 Foundry tests still green. **The live deployment at `Q38F73cb87c60d365fdFA7abF0e534fc1a9D5F9B9` still has the pre-fix bytecode — redeploy required before the real beacon path works.** MVP path (`fundValidatorMVP`) is unaffected and continues to work.
+
+### 3. Real validator deployment
 Not started. Requires (cloud) hardware running `gqrl` execution + `qrysm` beacon + `qrysm` validator. The Ansible/Terraform infra renamed in PR #14 is what provisions it. Out of scope until you're ready to rent hardware.
 
-### 3. Monitoring contract-exporter rewrite
+### 4. Monitoring contract-exporter rewrite
 The exporter at `monitoring/contract-exporter/` still calls v1 ABI (`totalAssets()`, `pendingDeposits()`, `liquidReserve()`). `safeCall` swallows the errors and returns `0n` — dashboards will look "fine" but show zeros. Need to rewrite against v2 ABI before any production observability work is useful.
 
-### 4. Slashing path
-Not testable on the testnet (can't force a validator to be slashed externally). Foundry unit tests in `contracts/test/` cover the `markValidatorSlashed` accounting at the Solidity level.
+### 5. Slashing path
+Not testable on the testnet (can't force a validator to be slashed externally). Foundry unit tests in `contracts/test/` cover the `markValidatorSlashed` accounting at the Solidity level. Current qrysm slashing constants are **placeholders** per the QRL team (Discord, 2026-01-25) — snapshot captured in `docs/UPSTREAM-FINDINGS.md` §4 for later diffing.
 
 ---
 
