@@ -96,7 +96,7 @@ QuantaPool/
 | `DepositPool-v2.sol` | 773 | User entry point, deposits/withdrawals, trustless reward sync |
 | `ValidatorManager.sol` | 349 | Validator lifecycle: Pending → Active → Exiting → Exited |
 
-Solidity sources are maintained under `contracts/solidity/`. Hyperion mirrors live separately under `hyperion/contracts/` so the `.hyp` port does not get mixed into the Foundry tree.
+Solidity sources are maintained under `contracts/solidity/`; Hyperion mirrors are generated into `contracts/hyperion/` (sibling, kept under `contracts/` so both language flavors are co-located). Compiled Hyperion artifacts land in `build/hyperion/` (gitignored).
 
 ## How Fixed-Balance Model Works
 
@@ -168,7 +168,7 @@ npm run compile:hyperion
 npm run deploy:hyperion
 ```
 
-See `hyperion/README.md` for the dedicated Hyperion layout and deploy config.
+See `contracts/hyperion/README.md` for the dedicated Hyperion layout and deploy config.
 
 ### CI
 

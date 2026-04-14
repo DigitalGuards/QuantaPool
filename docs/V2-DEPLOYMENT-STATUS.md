@@ -106,6 +106,6 @@ Not yet scripted. Candidate for `node scripts/integration-test-v2.js claim` as a
 - `scripts/deploy-hyperion.js` — deploy + wire (works)
 - `scripts/integration-test-v2.js` — MVP flow (blocked on wallet-binding)
 - `scripts/sync-hyperion.js` — Solidity → Hyperion dialect translator
-- `hyperion/artifacts/{stQRLv2,DepositPoolV2,ValidatorManager}.{abi,bin}` — compiled artifacts (gitignored)
+- `build/hyperion/{stQRLv2,DepositPoolV2,ValidatorManager}.{abi,bin}` — compiled artifacts (gitignored)
 - `.env` — `TESTNET_SEED` (gitignored)
 - `scripts/v1-deprecated/` — archived v1 scripts (do not run against v2)
