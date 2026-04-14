@@ -76,7 +76,7 @@ async function tx(web3, method, account, to, label, { value = 0n } = {}) {
         data,
         value: value.toString()
     });
-    const baseGasPrice = (await web3.qrl.getGasPrice()) || 1_000_000_000n;
+    const baseGasPrice = BigInt((await web3.qrl.getGasPrice()) || 1_000_000_000);
     const txObj = {
         type: '0x2',
         from: account.address,
@@ -191,7 +191,7 @@ async function main() {
         const beforeRewards = BigInt((await pool.methods.getRewardStats().call()).totalRewards);
         const donate = 1n * 10n ** 18n;
         // Send raw QRL to pool address — triggers receive(), bumps balance only
-        const baseGasPrice = (await web3.qrl.getGasPrice()) || 1_000_000_000n;
+        const baseGasPrice = BigInt((await web3.qrl.getGasPrice()) || 1_000_000_000);
         await web3.qrl.sendTransaction({
             type: '0x2',
             from: account.address,
