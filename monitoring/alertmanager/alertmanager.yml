@@ -36,6 +36,12 @@ route:
       receiver: 'info'
       repeat_interval: 12h
 
+# NOTE: receivers are intentionally null in the git-tracked file.
+# The deployed config on the validator host (/opt/quantapool/monitoring/alertmanager/
+# alertmanager.yml) overrides each entry with a `discord_configs` block containing
+# the real webhook URL. Webhook URLs are secrets and never live in git.
+# To wire alerts in a fresh deployment, edit the host file (NOT this one) and
+# `docker compose restart alertmanager`. See the example block at the top.
 receivers:
   - name: 'default'
   - name: 'critical'
