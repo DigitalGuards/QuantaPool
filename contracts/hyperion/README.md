@@ -5,12 +5,12 @@ Generated Hyperion mirrors of the canonical Solidity contracts. Kept peer to `co
 ## Layout
 
 ```
-contracts/solidity/*.sol   # canonical, hand-edited
-contracts/hyperion/*.hyp   # generated mirrors — do not edit directly
-test/*.sol                 # Foundry test suite (canonical)
-test/hyperion/*.t.hyp      # generated test mirrors (reference only; not compiled)
-build/hyperion/            # hypc output (ABI, bin, manifest.json) — gitignored
-config/testnet-hyperion.json   # deployment addresses + provider for the Hyperion path
+contracts/solidity/*.sol          # canonical, hand-edited
+contracts/hyperion/*.hyp          # generated mirrors — do not edit directly
+contracts/test/*.sol              # Foundry test suite (canonical)
+contracts/test/hyperion/*.t.hyp   # generated test mirrors (reference only; not compiled)
+build/hyperion/                   # hypc output (ABI, bin, manifest.json) — gitignored
+config/testnet-hyperion.json      # deployment addresses + provider for the Hyperion path
 ```
 
 ## Workflow
@@ -37,4 +37,4 @@ TESTNET_SEED="..." node scripts/deploy-hyperion.js
 
 - The Solidity sources in `contracts/solidity/` are the canonical editing target. Never hand-edit a `.hyp` file — regenerate.
 - `scripts/sync-hyperion.js` translates three Solidity-vs-Hyperion dialect differences: pragma version, unit suffixes (`ether/wei/gwei` → `quanta/planck/shor`), and address literal prefix (`0x<40hex>` → `Q<40hex>`).
-- The Foundry tests in `test/` are the canonical test suite; `test/hyperion/` is a mirrored compatibility layer kept for reference but not run through `hypc`.
+- The Foundry tests in `contracts/test/` are the canonical test suite; `contracts/test/hyperion/` is a mirrored compatibility layer kept for reference but not run through `hypc`.

@@ -3,9 +3,9 @@ const path = require('path');
 
 const repoRoot = path.join(__dirname, '..');
 const solidityContractsDir = path.join(repoRoot, 'contracts', 'solidity');
-const solidityTestsDir = path.join(repoRoot, 'test');
+const solidityTestsDir = path.join(repoRoot, 'contracts', 'test');
 const hyperionContractsDir = path.join(repoRoot, 'contracts', 'hyperion');
-const hyperionTestsDir = path.join(repoRoot, 'test', 'hyperion');
+const hyperionTestsDir = path.join(repoRoot, 'contracts', 'test', 'hyperion');
 const mirroredTestFiles = [
     'DepositPool-v2.t.sol',
     'ValidatorManager.t.sol',
@@ -23,13 +23,12 @@ function toHyperionSource(source, sourceFile, sourceDirLabel) {
     }
 
     // Rewrite imports:
-    //   Production .sol files sit at contracts/solidity/*.sol and generate to
-    //   contracts/hyperion/*.hyp (same-dir imports — no path rewrite needed).
-    //   Test .sol files sit at test/*.sol and import ../contracts/solidity/Foo.sol;
-    //   their .hyp mirrors live at test/hyperion/*.t.hyp and need
-    //   ../../contracts/hyperion/Foo.hyp.
+    //   Production .sol at contracts/solidity/*.sol generates to
+    //   contracts/hyperion/*.hyp — same-directory imports need no path rewrite.
+    //   Test .sol at contracts/test/*.sol imports ../solidity/Foo.sol;
+    //   its .hyp mirror at contracts/test/hyperion/*.t.hyp needs ../../hyperion/Foo.hyp.
     const importsUpdated = pragmaUpdated
-        .replace(/\.\.\/contracts\/solidity\//g, '../../contracts/hyperion/')
+        .replace(/\.\.\/solidity\//g, '../../hyperion/')
         .replace(/(import\s+[^'"]*["'][^'"]+)\.sol(["'];)/g, '$1.hyp$2');
 
     // Translate Solidity unit denominations to Hyperion equivalents.

@@ -1,8 +1,8 @@
 [profile.default]
-src = "contracts"
+src = "contracts/solidity"
 out = "out"
 libs = ["lib"]
-test = "test"
+test = "contracts/test"
 solc = "0.8.24"
 
 # Optimizer settings

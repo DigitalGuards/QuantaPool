@@ -4,8 +4,8 @@
 pragma hyperion >=0.0;
 
 import "forge-std/Test.hyp";
-import "../../contracts/hyperion/stQRL-v2.hyp";
-import "../../contracts/hyperion/DepositPool-v2.hyp";
+import "../../hyperion/stQRL-v2.hyp";
+import "../../hyperion/DepositPool-v2.hyp";
 
 /**
  * @title DepositPool v2 Integration Tests
