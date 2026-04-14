@@ -62,12 +62,12 @@
     comment: 'SSH'
   when: firewall_enabled
 
-- name: Allow gzond P2P
+- name: Allow gqrl P2P
   ufw:
     rule: allow
     port: 30303
     proto: "{{ item }}"
-    comment: 'gzond P2P'
+    comment: 'gqrl P2P'
   loop:
     - tcp
     - udp
@@ -98,7 +98,7 @@
     comment: 'Metrics'
   loop:
     - 9100  # node_exporter
-    - 6060  # gzond metrics
+    - 6060  # gqrl metrics
     - 8080  # beacon metrics
     - 8081  # validator metrics
   when: firewall_enabled and ('validators' in group_names) and ('monitoring' in groups)

@@ -15,7 +15,7 @@ const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const { Web3 } = require('@theqrl/web3');
-const { MnemonicToSeedBin } = require('@theqrl/wallet.js');
+const { loadDeployer } = require('./lib/loadDeployer');
 
 const config = require('../config/testnet.json');
 
@@ -39,7 +39,7 @@ function loadDepositData(folder = 'validator_keys') {
 }
 
 async function estimateGasWithBuffer(web3, txParams) {
-    const estimated = await web3.zond.estimateGas(txParams);
+    const estimated = await web3.qrl.estimateGas(txParams);
     return BigInt(estimated) * 150n / 100n;
 }
 
@@ -54,15 +54,12 @@ async function fundValidator() {
 
     // Setup account from seed
     const mnemonic = process.env.TESTNET_SEED;
-    const seedBin = MnemonicToSeedBin(mnemonic);
-    const seedHex = '0x' + Buffer.from(seedBin).toString('hex');
-    const account = web3.zond.accounts.seedToAccount(seedHex);
-    web3.zond.accounts.wallet.add(account);
+    const account = loadDeployer(web3, mnemonic);
 
     console.log('Account:', account.address);
     console.log('Mode:', beaconMode ? 'BEACON CHAIN DEPOSIT' : 'MVP (accounting only)');
 
-    const depositPool = new web3.zond.Contract(depositPoolAbi, config.contracts.depositPool);
+    const depositPool = new web3.qrl.Contract(depositPoolAbi, config.contracts.depositPool);
 
     // Check queue status
     const queueStatus = await depositPool.methods.getQueueStatus().call();
@@ -107,7 +104,7 @@ async function fundValidator() {
             const gasEstimate = await estimateGasWithBuffer(web3, txParams);
             console.log('  Gas estimate:', gasEstimate.toString());
 
-            const tx = await web3.zond.sendTransaction({
+            const tx = await web3.qrl.sendTransaction({
                 ...txParams,
                 gas: gasEstimate.toString()
             });

@@ -20,8 +20,8 @@ qrysm_grpc_gateway_port: 3500
 qrysm_rpc_port: 4001
 
 # Execution client connection
-gzond_authrpc_addr: "127.0.0.1"
-gzond_authrpc_port: 8551
+gqrl_authrpc_addr: "127.0.0.1"
+gqrl_authrpc_port: 8551
 jwt_secret_path: "/etc/quantapool/jwt.hex"
 
 # P2P settings

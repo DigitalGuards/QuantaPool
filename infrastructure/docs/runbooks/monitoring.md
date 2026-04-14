@@ -73,7 +73,7 @@ Shows:
 |-------|---------|--------|
 | MissedAttestation | Missed >2 attestations | Check validator logs |
 | BeaconChainNotSynced | Sync lag >30 min | Check peers, network |
-| GzondLowPeers | <3 execution peers | Check firewall |
+| GqrlLowPeers | <3 execution peers | Check firewall |
 | OracleReportStale | No oracle report 48h | Check oracle service |
 
 ### Info Alerts (Awareness)
@@ -103,7 +103,7 @@ amtool silence add alertname="ValidatorOffline" comment="Planned maintenance" du
 # Check node_exporter
 curl -s http://<validator-ip>:9100/metrics | grep node_
 
-# Check gzond metrics
+# Check gqrl metrics
 curl -s http://<validator-ip>:6060/debug/metrics/prometheus
 
 # Check beacon metrics
@@ -125,8 +125,8 @@ curl -s http://<monitoring-ip>:9101/metrics | grep quantapool
 ### View Service Logs
 
 ```bash
-# gzond logs
-journalctl -u gzond -f --since "1 hour ago"
+# gqrl logs
+journalctl -u gqrl -f --since "1 hour ago"
 
 # Beacon logs
 journalctl -u qrysm-beacon -f

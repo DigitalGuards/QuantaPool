@@ -2,7 +2,7 @@
 
 ## Overview
 
-QuantaPool is a decentralized liquid staking protocol for QRL Zond. Users deposit QRL and receive stQRL tokens representing their stake. The protocol uses a **fixed-balance token model** (like Lido's wstETH) where share balances remain constant and QRL value grows with rewards.
+QuantaPool is a decentralized liquid staking protocol for QRL. Users deposit QRL and receive stQRL tokens representing their stake. The protocol uses a **fixed-balance token model** (like Lido's wstETH) where share balances remain constant and QRL value grows with rewards.
 
 ## Architecture Diagram
 
@@ -39,7 +39,7 @@ QuantaPool is a decentralized liquid staking protocol for QRL Zond. Users deposi
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
-│               Zond Beacon Deposit Contract                  │
+│               QRL Beacon Deposit Contract                  │
 │  - 40,000 QRL per validator                                 │
 │  - Withdrawal credentials → DepositPool                     │
 └─────────────────────────────────────────────────────────────┘
@@ -96,9 +96,9 @@ Handles deposits, withdrawals, and reward synchronization.
 - EIP-4895 withdrawals automatically credit the contract
 
 **Key Parameters:**
-- `WITHDRAWAL_DELAY`: 128 blocks (~2 hours)
-- `MIN_DEPOSIT`: 1 ether (configurable)
-- `VALIDATOR_STAKE`: 40,000 ether
+- `WITHDRAWAL_DELAY`: 128 blocks (~2 hours on QRL v2 testnet at ~60s/block, verified)
+- `minDeposit`: 100 QRL default (configurable by owner, down to `ABSOLUTE_MIN_DEPOSIT = 0.001 QRL`)
+- `VALIDATOR_STAKE`: 40,000 QRL
 
 ### ValidatorManager.sol - Validator Lifecycle
 
@@ -149,9 +149,9 @@ When slashing occurs:
 3. All stQRL holders share the loss via reduced `getQRLValue()`
 4. Share balances unchanged (loss is implicit)
 
-## Zond-Specific Adaptations
+## QRL-Specific Adaptations
 
-| Parameter | Ethereum | QRL Zond |
+| Parameter | Ethereum | QRL |
 |-----------|----------|----------|
 | Validator stake | 32 ETH | 40,000 QRL |
 | Block time | ~12s | ~60s |
@@ -161,20 +161,26 @@ When slashing occurs:
 
 ## Test Coverage
 
-- **178 tests** across 3 test suites
-- stQRL-v2: 55 tests (shares, conversions, rewards, slashing)
-- DepositPool-v2: 68 tests (deposits, withdrawals, sync, access control)
-- ValidatorManager: 55 tests (lifecycle, slashing, batch operations)
+**Unit (Foundry, `contracts/test/`):** 178 tests, all green.
+- `stQRL-v2.t.sol`: 55 tests (shares, conversions, rewards, slashing)
+- `DepositPool-v2.t.sol`: 68 tests (deposits, withdrawals, sync, access control)
+- `ValidatorManager.t.sol`: 55 tests (lifecycle, slashing, batch operations)
+
+**Integration (live testnet, `scripts/integration-test-v2.js`):** 16 phases, all verified against the deployed contracts on chainId 1337. Covers deposit/mint, reward sync via EIP-4895-style balance donation, withdrawal request → 128-block delay → reserve funding → claim, pause/unpause, revert paths, validator lifecycle, QRC-20 allowance, batch activation, cancel. See `docs/V2-DEPLOYMENT-STATUS.md` for the phase matrix and current live state.
 
 ## Deployment Checklist
 
-1. Deploy stQRL-v2
-2. Deploy ValidatorManager
-3. Deploy DepositPool-v2
-4. Call `stQRL.setDepositPool(depositPool)` (one-time)
-5. Call `depositPool.setStQRL(stQRL)` (one-time)
-6. Call `validatorManager.setDepositPool(depositPool)`
+Automated by `node scripts/deploy-hyperion.js` in a single run. For reference, the sequence it performs:
+
+1. Deploy `stQRLv2` (no constructor args)
+2. Deploy `DepositPoolV2` (no constructor args; sets `minDeposit = 100 QRL`, `lastSyncBlock = block.number`)
+3. Deploy `ValidatorManager` (no constructor args)
+4. `pool.setStQRL(stQRL)` (**one-shot, irreversible**)
+5. `stQRL.setDepositPool(pool)` (**one-shot, irreversible**)
+6. `vm.setDepositPool(pool)` (reversible by owner)
 7. Transfer ownership to multisig (optional for mainnet)
+
+The two one-shot steps mean that wiring to the wrong address requires full redeploy. `deploy-hyperion.js` deploys in one tx each and wires immediately afterward using the contract instances returned by `.deploy().send()` (the wallet is pre-bound on those; see `contracts/hyperion/README.md` for the `@theqrl/web3` wallet-binding notes).
 
 ## Future Improvements
 

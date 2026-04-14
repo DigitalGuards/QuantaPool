@@ -1,6 +1,6 @@
 # QuantaPool
 
-Decentralized liquid staking protocol for QRL Zond. Deposit QRL, receive stQRL, earn validator rewards automatically.
+Decentralized liquid staking protocol for QRL. Deposit QRL, receive stQRL, earn validator rewards automatically.
 
 ## Overview
 
@@ -53,7 +53,7 @@ QuantaPool enables QRL holders to participate in Proof-of-Stake validation witho
 ┌──────────────────────┐    ┌──────────────────────────────┐
 │   Infrastructure     │    │       Monitoring             │
 │  Terraform + Ansible │    │  Prometheus + Grafana        │
-│  gzond, qrysm nodes │    │  Contract exporter + alerts  │
+│  gqrl, qrysm nodes │    │  Contract exporter + alerts  │
 └──────────────────────┘    └──────────────────────────────┘
 ```
 
@@ -61,20 +61,22 @@ QuantaPool enables QRL holders to participate in Proof-of-Stake validation witho
 
 ```
 QuantaPool/
-├── contracts/solidity/       # Solidity smart contracts (source of truth)
-│   ├── stQRL-v2.sol          #   Fixed-balance liquid staking token
-│   ├── DepositPool-v2.sol    #   Deposits, withdrawals, reward sync
-│   └── ValidatorManager.sol  #   Validator lifecycle tracking
-├── hyperion/                 # Hyperion language port (.hyp mirrors)
-│   ├── contracts/            #   Auto-synced from Solidity sources
-│   └── test/
-├── test/                     # Foundry test suite (178 tests)
-│   ├── stQRL-v2.t.sol        #   55 core token tests
-│   ├── DepositPool-v2.t.sol  #   68 deposit/withdrawal tests
-│   └── ValidatorManager.t.sol#   55 validator lifecycle tests
+├── contracts/                # All on-chain code lives here
+│   ├── solidity/             #   Solidity sources (source of truth)
+│   │   ├── stQRL-v2.sol      #     Fixed-balance liquid staking token
+│   │   ├── DepositPool-v2.sol#     Deposits, withdrawals, reward sync
+│   │   └── ValidatorManager.sol #  Validator lifecycle tracking
+│   ├── hyperion/             #   Auto-synced Hyperion mirrors (.hyp)
+│   │   └── README.md         #     Dialect rules and hypc workflow
+│   └── test/                 #   Foundry test suite (178 tests)
+│       ├── stQRL-v2.t.sol    #     55 core token tests
+│       ├── DepositPool-v2.t.sol  # 68 deposit/withdrawal tests
+│       ├── ValidatorManager.t.sol # 55 validator lifecycle tests
+│       └── hyperion/         #     Generated .t.hyp mirrors (reference only)
+├── build/hyperion/           # hypc output (ABI, bin, manifest.json) — gitignored
 ├── infrastructure/           # Production validator deployment
 │   ├── terraform/            #   Hetzner Cloud provisioning
-│   ├── ansible/              #   Node configuration (gzond, qrysm)
+│   ├── ansible/              #   Node configuration (gqrl, qrysm)
 │   ├── scripts/              #   deploy.sh, failover.sh, health-check.sh
 │   └── docs/                 #   Runbooks and deployment guides
 ├── monitoring/               # Observability stack
@@ -96,7 +98,7 @@ QuantaPool/
 | `DepositPool-v2.sol` | 773 | User entry point, deposits/withdrawals, trustless reward sync |
 | `ValidatorManager.sol` | 349 | Validator lifecycle: Pending → Active → Exiting → Exited |
 
-Solidity sources are maintained under `contracts/solidity/`. Hyperion mirrors live separately under `hyperion/contracts/` so the `.hyp` port does not get mixed into the Foundry tree.
+All on-chain code lives under `contracts/`. Solidity sources in `contracts/solidity/` are the canonical editing target; Hyperion mirrors in `contracts/hyperion/` are generated from them (never hand-edit). Foundry tests live in `contracts/test/` with a parallel `contracts/test/hyperion/` tree of reference `.t.hyp` mirrors. Compiled Hyperion artifacts land in `build/hyperion/` (gitignored).
 
 ## How Fixed-Balance Model Works
 
@@ -116,7 +118,7 @@ If slashing occurs (pool drops to 950 QRL):
 Production-ready validator infrastructure using Terraform and Ansible.
 
 **Components provisioned:**
-- **Primary validator node** — gzond (execution) + qrysm-beacon + qrysm-validator
+- **Primary validator node** — gqrl (execution) + qrysm-beacon + qrysm-validator
 - **Backup validator node** — hot standby with failover script
 - **Monitoring server** — Prometheus, Grafana, Alertmanager
 
@@ -128,7 +130,7 @@ See `infrastructure/docs/DEPLOYMENT.md` for the step-by-step deployment guide an
 
 Docker Compose stack providing full observability:
 
-- **Prometheus**: Scrapes metrics from gzond, qrysm-beacon, qrysm-validator, and the custom contract exporter
+- **Prometheus**: Scrapes metrics from gqrl, qrysm-beacon, qrysm-validator, and the custom contract exporter
 - **Grafana**: Three dashboards — Validator Overview, Contract State, System Resources
 - **Alertmanager**: Routes alerts by severity (Critical/Warning/Info) to Discord and Telegram
 - **Contract Exporter**: Custom Node.js service exposing on-chain metrics (stQRL exchange rate, TVL, deposit queue, validator count)
@@ -168,7 +170,7 @@ npm run compile:hyperion
 npm run deploy:hyperion
 ```
 
-See `hyperion/README.md` for the dedicated Hyperion layout and deploy config.
+See `contracts/hyperion/README.md` for the dedicated Hyperion layout and deploy config.
 
 ### CI
 
@@ -186,7 +188,7 @@ GitHub Actions runs `forge fmt --check`, `forge build --sizes`, and `forge test 
 
 ## Status
 
-**v2 contracts ready** — infrastructure and monitoring built, awaiting Zond testnet deployment.
+**v2 contracts ready** — infrastructure and monitoring built, awaiting QRL v2 testnet deployment.
 
 ### Roadmap
 
@@ -194,7 +196,7 @@ GitHub Actions runs `forge fmt --check`, `forge build --sizes`, and `forge test 
 - [x] Validator infrastructure (Terraform + Ansible)
 - [x] Monitoring and alerting stack
 - [x] Key management tooling
-- [ ] Deploy v2 contracts to Zond testnet
+- [ ] Deploy v2 contracts to QRL v2 testnet
 - [ ] Integrate staking UI into [qrlwallet.com](https://qrlwallet.com)
 
 ## Security

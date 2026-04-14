@@ -1,5 +1,5 @@
 const { Web3 } = require('@theqrl/web3');
-const { MnemonicToSeedBin } = require('@theqrl/wallet.js');
+const { loadDeployer } = require('./lib/loadDeployer');
 const fs = require('fs');
 const path = require('path');
 
@@ -38,7 +38,7 @@ async function deploy(web3, account, artifactName, constructorArgs = []) {
     const artifact = loadArtifact(artifactName);
     console.log(`\nDeploying ${artifactName}...`);
 
-    const contract = new web3.zond.Contract(artifact.abi);
+    const contract = new web3.qrl.Contract(artifact.abi);
 
     const deployTx = contract.deploy({
         data: artifact.bytecode,
@@ -62,18 +62,18 @@ async function main() {
     console.log('QuantaPool MVP Deployment');
     console.log('='.repeat(60));
 
-    console.log('\nConnecting to Zond testnet...');
+    console.log('\nConnecting to QRL testnet...');
     console.log(`Provider: ${config.provider}`);
 
     const web3 = new Web3(config.provider);
 
     // Check connection
     try {
-        const chainId = await web3.zond.getChainId();
+        const chainId = await web3.qrl.getChainId();
         console.log(`Connected! Chain ID: ${chainId}`);
 
         // Check sync status
-        const syncing = await web3.zond.isSyncing();
+        const syncing = await web3.qrl.isSyncing();
         if (syncing) {
             console.log('\n⚠️  Node is still syncing:');
             console.log(`   Current: ${parseInt(syncing.currentBlock, 16)}`);
@@ -93,14 +93,11 @@ async function main() {
         process.exit(1);
     }
 
-    const seedBin = MnemonicToSeedBin(mnemonic);
-    const seedHex = '0x' + Buffer.from(seedBin).toString('hex');
-    const account = web3.zond.accounts.seedToAccount(seedHex);
-    web3.zond.accounts.wallet.add(account);
+    const account = loadDeployer(web3, mnemonic);
 
     console.log(`\nDeployer: ${account.address}`);
 
-    const balance = await web3.zond.getBalance(account.address);
+    const balance = await web3.qrl.getBalance(account.address);
     const balanceQRL = web3.utils.fromWei(balance, 'ether');
     console.log(`Balance: ${balanceQRL} QRL`);
 
@@ -137,7 +134,7 @@ async function main() {
 
     // Set DepositPool in stQRL
     console.log('\nSetting DepositPool in stQRL...');
-    const stQRLContract = new web3.zond.Contract(
+    const stQRLContract = new web3.qrl.Contract(
         loadArtifact('stQRL').abi,
         stQRL.options.address
     );

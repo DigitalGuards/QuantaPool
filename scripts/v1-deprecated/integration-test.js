@@ -21,7 +21,7 @@ const crypto = require('crypto');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const { Web3 } = require('@theqrl/web3');
-const { MnemonicToSeedBin, SeedBinToMnemonic } = require('@theqrl/wallet.js');
+const { loadDeployer } = require('./lib/loadDeployer');
 
 const config = require('../config/testnet.json');
 
@@ -131,7 +131,7 @@ function shortAddr(addr) {
  * @returns {BigInt} Estimated gas with 20% buffer
  */
 async function estimateGasWithBuffer(web3, txParams) {
-    const estimated = await web3.zond.estimateGas(txParams);
+    const estimated = await web3.qrl.estimateGas(txParams);
     return BigInt(estimated) * 120n / 100n;
 }
 
@@ -141,8 +141,8 @@ class IntegrationTest {
         this.stQRLArtifact = loadArtifact('stQRL');
         this.depositPoolArtifact = loadArtifact('DepositPool');
 
-        this.stQRL = new this.web3.zond.Contract(this.stQRLArtifact.abi, config.contracts.stQRL);
-        this.depositPool = new this.web3.zond.Contract(this.depositPoolArtifact.abi, config.contracts.depositPool);
+        this.stQRL = new this.web3.qrl.Contract(this.stQRLArtifact.abi, config.contracts.stQRL);
+        this.depositPool = new this.web3.qrl.Contract(this.depositPoolArtifact.abi, config.contracts.depositPool);
 
         this.mainAccount = null;
         this.testWallets = [];
@@ -157,12 +157,9 @@ class IntegrationTest {
         }
 
         const mnemonic = process.env.TESTNET_SEED;
-        const seedBin = MnemonicToSeedBin(mnemonic);
-        const seedHex = '0x' + Buffer.from(seedBin).toString('hex');
-        this.mainAccount = this.web3.zond.accounts.seedToAccount(seedHex);
-        this.web3.zond.accounts.wallet.add(this.mainAccount);
+        this.mainAccount = loadDeployer(this.web3, mnemonic);
 
-        const balance = await this.web3.zond.getBalance(this.mainAccount.address);
+        const balance = await this.web3.qrl.getBalance(this.mainAccount.address);
         console.log(`   Main wallet: ${shortAddr(this.mainAccount.address)}`);
         console.log(`   Balance: ${formatQRL(balance)} QRL`);
 
@@ -180,8 +177,8 @@ class IntegrationTest {
             const randomBytes = crypto.randomBytes(48);
             const seedHex = '0x' + randomBytes.toString('hex');
 
-            const account = this.web3.zond.accounts.seedToAccount(seedHex);
-            this.web3.zond.accounts.wallet.add(account);
+            const account = this.web3.qrl.accounts.seedToAccount(seedHex);
+            this.web3.qrl.accounts.wallet.add(account);
 
             this.testWallets.push({
                 account,
@@ -204,14 +201,14 @@ class IntegrationTest {
 
         for (const wallet of this.testWallets) {
             try {
-                const tx = await this.web3.zond.sendTransaction({
+                const tx = await this.web3.qrl.sendTransaction({
                     from: this.mainAccount.address,
                     to: wallet.account.address,
                     value: amountWei,
                     gas: 21000
                 });
 
-                const balance = await this.web3.zond.getBalance(wallet.account.address);
+                const balance = await this.web3.qrl.getBalance(wallet.account.address);
                 console.log(`   ✓ ${wallet.name}: ${formatQRL(balance)} QRL (tx: ${tx.transactionHash.slice(0, 16)}...)`);
 
                 // Assert wallet was funded correctly
@@ -256,7 +253,7 @@ class IntegrationTest {
         const amountWei = this.web3.utils.toWei(amount, 'ether');
 
         // Get balances before
-        const qrlBefore = await this.web3.zond.getBalance(wallet.account.address);
+        const qrlBefore = await this.web3.qrl.getBalance(wallet.account.address);
         const stQRLBefore = await this.stQRL.methods.balanceOf(wallet.account.address).call();
         const protocolStateBefore = await this.checkProtocolState();
 
@@ -275,13 +272,13 @@ class IntegrationTest {
 
             const gasEstimate = await estimateGasWithBuffer(this.web3, txParams);
 
-            const tx = await this.web3.zond.sendTransaction({
+            const tx = await this.web3.qrl.sendTransaction({
                 ...txParams,
                 gas: gasEstimate.toString()
             });
 
             // Get balances after
-            const qrlAfter = await this.web3.zond.getBalance(wallet.account.address);
+            const qrlAfter = await this.web3.qrl.getBalance(wallet.account.address);
             const stQRLAfter = await this.stQRL.methods.balanceOf(wallet.account.address).call();
             const stQRLReceived = BigInt(stQRLAfter) - BigInt(stQRLBefore);
 
@@ -334,7 +331,7 @@ class IntegrationTest {
 
             const gasEstimate = await estimateGasWithBuffer(this.web3, txParams);
 
-            const tx = await this.web3.zond.sendTransaction({
+            const tx = await this.web3.qrl.sendTransaction({
                 ...txParams,
                 gas: gasEstimate.toString()
             });
@@ -365,7 +362,7 @@ class IntegrationTest {
         console.log(`\n⏳ Checking withdrawal status for ${wallet.name}...`);
 
         const request = await this.depositPool.methods.getWithdrawalRequest(wallet.account.address).call();
-        const currentBlock = await this.web3.zond.getBlockNumber();
+        const currentBlock = await this.web3.qrl.getBlockNumber();
 
         if (BigInt(request.shares) === 0n) {
             console.log(`   No pending withdrawal`);
@@ -400,7 +397,7 @@ class IntegrationTest {
             return { success: false, error: 'Waiting period not over', expected: true };
         }
 
-        const qrlBefore = await this.web3.zond.getBalance(wallet.account.address);
+        const qrlBefore = await this.web3.qrl.getBalance(wallet.account.address);
 
         try {
             const claimData = this.depositPool.methods.claimWithdrawal().encodeABI();
@@ -413,12 +410,12 @@ class IntegrationTest {
 
             const gasEstimate = await estimateGasWithBuffer(this.web3, txParams);
 
-            const tx = await this.web3.zond.sendTransaction({
+            const tx = await this.web3.qrl.sendTransaction({
                 ...txParams,
                 gas: gasEstimate.toString()
             });
 
-            const qrlAfter = await this.web3.zond.getBalance(wallet.account.address);
+            const qrlAfter = await this.web3.qrl.getBalance(wallet.account.address);
             const qrlReceived = BigInt(qrlAfter) - BigInt(qrlBefore);
 
             console.log(`   ✓ Withdrawal claimed!`);
@@ -509,12 +506,12 @@ class IntegrationTest {
             // Print all wallet balances
             console.log('\n💼 Wallet Balances:');
 
-            const mainQRL = await this.web3.zond.getBalance(this.mainAccount.address);
+            const mainQRL = await this.web3.qrl.getBalance(this.mainAccount.address);
             const mainStQRL = await this.stQRL.methods.balanceOf(this.mainAccount.address).call();
             console.log(`   MainWallet: ${formatQRL(mainQRL)} QRL, ${formatQRL(mainStQRL)} stQRL`);
 
             for (const wallet of this.testWallets) {
-                const qrl = await this.web3.zond.getBalance(wallet.account.address);
+                const qrl = await this.web3.qrl.getBalance(wallet.account.address);
                 const stQRL = await this.stQRL.methods.balanceOf(wallet.account.address).call();
                 console.log(`   ${wallet.name}: ${formatQRL(qrl)} QRL, ${formatQRL(stQRL)} stQRL`);
             }

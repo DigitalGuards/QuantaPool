@@ -1,5 +1,5 @@
 ---
-# Update gzond and qrysm clients
+# Update gqrl and qrysm clients
 # Usage: ansible-playbook playbooks/update-clients.yml -i inventory.ini
 
 - name: Update QuantaPool Node Clients
@@ -9,7 +9,7 @@
   vars_files:
     - ../group_vars/all.yml
   vars:
-    update_gzond: true
+    update_gqrl: true
     update_qrysm: true
 
   pre_tasks:
@@ -20,7 +20,7 @@
           Role: {{ 'PRIMARY' if 'primary' in group_names else 'BACKUP' }}
 
           Updates:
-          - gzond: {{ 'YES' if update_gzond else 'NO' }}
+          - gqrl: {{ 'YES' if update_gqrl else 'NO' }}
           - qrysm: {{ 'YES' if update_qrysm else 'NO' }}
 
     - name: Confirm update for primary node
@@ -38,33 +38,33 @@
       when: "'primary' in group_names"
       ignore_errors: yes
 
-    # Update gzond
-    - name: Stop gzond for update
+    # Update gqrl
+    - name: Stop gqrl for update
       systemd:
-        name: gzond
+        name: gqrl
         state: stopped
-      when: update_gzond
+      when: update_gqrl
 
-    - name: Pull latest gzond source
+    - name: Pull latest gqrl source
       git:
-        repo: "{{ gzond_repo }}"
-        dest: /opt/quantapool/gzond/source
+        repo: "{{ gqrl_repo }}"
+        dest: /opt/quantapool/gqrl/source
         version: main
         force: yes
-      when: update_gzond
+      when: update_gqrl
 
-    - name: Rebuild gzond
+    - name: Rebuild gqrl
       shell: |
-        cd /opt/quantapool/gzond/source
-        make gzond
-        cp build/bin/gzond /usr/local/bin/gzond
-      when: update_gzond
+        cd /opt/quantapool/gqrl/source
+        make gqrl
+        cp build/bin/gqrl /usr/local/bin/gqrl
+      when: update_gqrl
 
-    - name: Start gzond
+    - name: Start gqrl
       systemd:
-        name: gzond
+        name: gqrl
         state: started
-      when: update_gzond
+      when: update_gqrl
 
     # Update qrysm
     - name: Stop qrysm services for update
@@ -119,7 +119,7 @@
         name: "{{ item }}"
         state: started
       loop:
-        - gzond
+        - gqrl
         - qrysm-beacon
       register: service_check
 

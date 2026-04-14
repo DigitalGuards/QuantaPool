@@ -77,6 +77,6 @@ output "ansible_inventory" {
 
     [all:vars]
     environment=${var.environment}
-    zond_rpc_url=${var.zond_rpc_url}
+    qrl_rpc_url=${var.qrl_rpc_url}
   EOT
 }

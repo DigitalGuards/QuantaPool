@@ -4,7 +4,7 @@
 #
 # This script sets up the necessary monitoring components on the validator server:
 # 1. Installs and configures node_exporter for system metrics
-# 2. Provides instructions for enabling Prometheus metrics on go-zond and qrysm
+# 2. Provides instructions for enabling Prometheus metrics on go-qrl and qrysm
 #
 # Run this script on your validator server, not on the monitoring server.
 #
@@ -122,7 +122,7 @@ else
 fi
 
 # ============================================
-# Go-Zond and Qrysm Configuration
+# Go-QRL and Qrysm Configuration
 # ============================================
 
 echo ""
@@ -134,7 +134,7 @@ echo ""
 echo -e "${YELLOW}To enable Prometheus metrics, add these flags to your startup scripts:${NC}"
 echo ""
 
-echo -e "${GREEN}1. Go-Zond (gzond) - Add to startup command:${NC}"
+echo -e "${GREEN}1. Go-QRL (gqrl) - Add to startup command:${NC}"
 echo "   --metrics \\"
 echo "   --metrics.addr 0.0.0.0 \\"
 echo "   --metrics.port 6060"
@@ -167,7 +167,7 @@ echo ""
 
 echo -e "${YELLOW}If you have a firewall, allow these ports from your monitoring server:${NC}"
 echo ""
-echo "   Port 6060  - Go-Zond metrics"
+echo "   Port 6060  - Go-QRL metrics"
 echo "   Port 8080  - Beacon Chain metrics"
 echo "   Port 8081  - Validator metrics"
 echo "   Port 9100  - Node Exporter metrics"
@@ -205,7 +205,7 @@ echo ""
 echo -e "${YELLOW}After updating your validator startup scripts, verify metrics are exposed:${NC}"
 echo ""
 echo "   curl http://localhost:9100/metrics | head -20   # Node Exporter"
-echo "   curl http://localhost:6060/debug/metrics/prometheus | head -20   # Go-Zond"
+echo "   curl http://localhost:6060/debug/metrics/prometheus | head -20   # Go-QRL"
 echo "   curl http://localhost:8080/metrics | head -20   # Beacon Chain"
 echo "   curl http://localhost:8081/metrics | head -20   # Validator"
 echo ""
@@ -240,7 +240,7 @@ echo -e "${BLUE}  Setup Complete${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 echo "Next steps:"
-echo "  1. Update go-zond startup script with --metrics flags"
+echo "  1. Update go-qrl startup script with --metrics flags"
 echo "  2. Update beacon-chain startup script with --monitoring flags"
 echo "  3. Update validator startup script with --monitoring flags"
 echo "  4. Restart the services"

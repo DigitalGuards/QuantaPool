@@ -2,8 +2,8 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
-import "../contracts/solidity/stQRL-v2.sol";
-import "../contracts/solidity/DepositPool-v2.sol";
+import "../solidity/stQRL-v2.sol";
+import "../solidity/DepositPool-v2.sol";
 
 /**
  * @title DepositPool v2 Integration Tests

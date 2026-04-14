@@ -57,7 +57,7 @@ Using the deposit_data.json, submit the deposit transaction:
 ```javascript
 // Example using @theqrl/web3
 const Web3 = require('@theqrl/web3');
-const web3 = new Web3('https://qrlwallet.com/api/zond-rpc/testnet');
+const web3 = new Web3('https://qrlwallet.com/api/qrl-rpc/testnet');
 
 const depositData = require('./deposit_data.json');
 const BEACON_DEPOSIT_CONTRACT = '0x4242424242424242424242424242424242424242';

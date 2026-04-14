@@ -164,7 +164,7 @@ show_plan() {
     echo "Run Ansible:     $([[ "$SKIP_ANSIBLE" == "true" ]] && echo "No" || echo "Yes")"
     echo ""
     echo "This will deploy:"
-    echo "  • Primary validator node (gzond + qrysm)"
+    echo "  • Primary validator node (gqrl + qrysm)"
     echo "  • Backup node (hot standby)"
     echo "  • Monitoring server (Prometheus + Grafana)"
     echo ""
