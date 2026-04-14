@@ -20,7 +20,7 @@ const path = require('path');
 const { Web3 } = require('@theqrl/web3');
 
 const PUBKEY_HEX_LENGTH = 2592 * 2;       // 5184 hex chars
-const SIGNATURE_HEX_LENGTH = 4595 * 2;    // 9190 hex chars
+const SIGNATURE_HEX_LENGTH = 4627 * 2;    // 9254 hex chars (ML-DSA-87 sig per qrysm)
 const CREDENTIALS_HEX_LENGTH = 32 * 2;    // 64 hex chars
 const EXPECTED_PREFIX_HEX = '00';         // QRL ExecutionAddressWithdrawalPrefixByte
 const EXPECTED_ZERO_PADDING_HEX = '00'.repeat(11);
@@ -34,7 +34,7 @@ function die(msg) {
 
 function normHex(h) {
     if (typeof h !== 'string') die(`expected hex string, got ${typeof h}`);
-    return h.toLowerCase().replace(/^0x/, '');
+    return h.toLowerCase().replace(/^(0x|q)/i, '');
 }
 
 (async () => {

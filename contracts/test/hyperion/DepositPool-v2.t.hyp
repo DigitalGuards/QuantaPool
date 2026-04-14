@@ -1000,7 +1000,7 @@ contract DepositPoolV2Test is Test {
     // These lock in the QRL-specific bits of the beacon deposit call that
     // differ from Ethereum muscle memory: the 0x00 withdrawal-prefix byte
     // (ExecutionAddressWithdrawalPrefixByte in qrysm), the 2592-byte ML-DSA
-    // pubkey, and the 4595-byte Dilithium signature.
+    // pubkey, and the 4627-byte ML-DSA-87 signature.
 
     address constant DEPOSIT_CONTRACT_ADDR = Q4242424242424242424242424242424242424242;
 
@@ -1029,7 +1029,7 @@ contract DepositPoolV2Test is Test {
     }
 
     function _validSignature() internal pure returns (bytes memory) {
-        bytes memory sig = new bytes(4595);
+        bytes memory sig = new bytes(4627);
         sig[0] = 0xcd;
         return sig;
     }
@@ -1100,7 +1100,7 @@ contract DepositPoolV2Test is Test {
         _stubDepositContract();
         _fundBufferForValidator();
 
-        bytes memory shortSig = new bytes(4594);
+        bytes memory shortSig = new bytes(4626);
 
         vm.expectRevert(DepositPoolV2.InvalidSignatureLength.selector);
         pool.fundValidator(_validPubkey(), _validCredentials(), shortSig, bytes32(uint256(1)));
