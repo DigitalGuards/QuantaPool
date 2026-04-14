@@ -109,8 +109,14 @@ const VM_ABI = [
 // =============================================================
 const ONE_E18 = 1_000_000_000_000_000_000n;
 
-/** BigInt or string → floating-point QRL. Precision loss is acceptable for gauges. */
-function planckToQrl(v) {
+/**
+ * BigInt or string (Solidity 18-decimal "wei") → floating-point QRL.
+ * Note: this is the on-chain accounting unit (1e18-scaled), NOT QRL's beacon-chain
+ * "Planck" (1e9). The pool contract tracks balances in 18-decimal units; the deposit
+ * data's `amount` field that goes into the beacon contract is in 1e9 Planck. Different
+ * units, different layers. Precision loss in the float cast is acceptable for gauges.
+ */
+function weiToQrl(v) {
     const bi = typeof v === 'bigint' ? v : BigInt(v);
     const whole = Number(bi / ONE_E18);
     const frac = Number(bi % ONE_E18) / 1e18;
@@ -172,7 +178,7 @@ class ContractMonitor {
             this.metrics.blockHeight.set(Number(blockNumber));
 
             const poolBalance = await this.web3.qrl.getBalance(this.config.DEPOSIT_POOL_ADDRESS);
-            this.metrics.poolBalance.set(planckToQrl(poolBalance));
+            this.metrics.poolBalance.set(weiToQrl(poolBalance));
 
             // stQRL reads
             const [totalPooled, totalShares, exchangeRate, stQRLPaused] = await Promise.all([
@@ -182,8 +188,8 @@ class ContractMonitor {
                 this.safeCall(() => this.contracts.stQRL.methods.paused().call(), false, 'stQRL.paused')
             ]);
 
-            this.metrics.totalPooledQRL.set(planckToQrl(totalPooled));
-            this.metrics.totalShares.set(planckToQrl(totalShares));
+            this.metrics.totalPooledQRL.set(weiToQrl(totalPooled));
+            this.metrics.totalShares.set(weiToQrl(totalShares));
             this.metrics.exchangeRate.set(Number(exchangeRate));
             this.metrics.exchangeRateNormalized.set(Number(exchangeRate) / 1e18);
             this.metrics.stQRLPaused.set(stQRLPaused ? 1 : 0);
@@ -209,13 +215,13 @@ class ContractMonitor {
                 this.safeCall(() => this.contracts.pool.methods.paused().call(), false, 'pool.paused')
             ]);
 
-            this.metrics.bufferedQRL.set(planckToQrl(buffered));
+            this.metrics.bufferedQRL.set(weiToQrl(buffered));
             this.metrics.validatorCount.set(Number(validatorCount));
-            this.metrics.withdrawalReserve.set(planckToQrl(withdrawalReserve));
-            this.metrics.pendingWithdrawalShares.set(planckToQrl(totalWithdrawalShares));
-            this.metrics.totalRewards.set(planckToQrl(totalRewards));
-            this.metrics.totalSlashing.set(planckToQrl(totalSlashing));
-            this.metrics.minDeposit.set(planckToQrl(minDeposit));
+            this.metrics.withdrawalReserve.set(weiToQrl(withdrawalReserve));
+            this.metrics.pendingWithdrawalShares.set(weiToQrl(totalWithdrawalShares));
+            this.metrics.totalRewards.set(weiToQrl(totalRewards));
+            this.metrics.totalSlashing.set(weiToQrl(totalSlashing));
+            this.metrics.minDeposit.set(weiToQrl(minDeposit));
             this.metrics.poolPaused.set(poolPaused ? 1 : 0);
 
             // ValidatorManager reads
@@ -237,8 +243,8 @@ class ContractMonitor {
 
             console.log(
                 `Metrics collected in ${latency.toFixed(2)}s — ` +
-                `block=${blockNumber} pooled=${planckToQrl(totalPooled).toFixed(4)} QRL ` +
-                `shares=${planckToQrl(totalShares).toFixed(4)} rate=${(Number(exchangeRate) / 1e18).toFixed(6)} ` +
+                `block=${blockNumber} pooled=${weiToQrl(totalPooled).toFixed(4)} QRL ` +
+                `shares=${weiToQrl(totalShares).toFixed(4)} rate=${(Number(exchangeRate) / 1e18).toFixed(6)} ` +
                 `validators=${validatorCount}/${vmActive}a`
             );
         } catch (error) {
