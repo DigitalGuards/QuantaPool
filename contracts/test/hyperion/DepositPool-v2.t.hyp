@@ -1038,12 +1038,8 @@ contract DepositPoolV2Test is Test {
         _stubDepositContract();
         _fundBufferForValidator();
 
-        uint256 validatorId = pool.fundValidator(
-            _validPubkey(),
-            _validCredentials(),
-            _validSignature(),
-            bytes32(uint256(1))
-        );
+        uint256 validatorId =
+            pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
 
         assertEq(validatorId, 0);
         assertEq(pool.validatorCount(), 1);
