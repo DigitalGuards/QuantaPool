@@ -8,7 +8,7 @@ const { loadDeployer } = require('./lib/loadDeployer');
 
 const repoRoot = path.join(__dirname, '..');
 const configPath = process.env.HYPERION_CONFIG || path.join(repoRoot, 'config', 'testnet-hyperion.json');
-const manifestPath = path.join(repoRoot, 'hyperion', 'artifacts', 'manifest.json');
+const manifestPath = path.join(repoRoot, 'build', 'hyperion', 'manifest.json');
 
 function loadJson(filePath) {
     return JSON.parse(fs.readFileSync(filePath, 'utf8'));

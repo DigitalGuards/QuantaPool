@@ -5,8 +5,8 @@ const { execFileSync, spawnSync } = require('child_process');
 const { syncHyperionSources } = require('./sync-hyperion');
 
 const repoRoot = path.join(__dirname, '..');
-const hyperionContractsDir = path.join(repoRoot, 'hyperion', 'contracts');
-const hyperionArtifactsDir = path.join(repoRoot, 'hyperion', 'artifacts');
+const hyperionContractsDir = path.join(repoRoot, 'contracts', 'hyperion');
+const hyperionArtifactsDir = path.join(repoRoot, 'build', 'hyperion');
 const compilerBinary = process.env.HYPERION_COMPILER || process.env.HYPC_BIN || 'hypc';
 
 function ensureCompilerAvailable() {

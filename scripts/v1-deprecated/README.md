@@ -18,6 +18,6 @@ They are kept here for historical reference only. Do not run them against a v2 d
 The v2 deployment path is:
 
 1. `scripts/deploy-hyperion.js` — deploys all three v2 contracts and wires them.
-2. `scripts/sync-hyperion.js` + `scripts/compile-hyperion.js` — regenerate `hyperion/artifacts/`.
+2. `scripts/sync-hyperion.js` + `scripts/compile-hyperion.js` — regenerate `build/hyperion/`.
 
 A v2-correct integration test will be added under `scripts/` when written. Until then, see `test/` (Foundry) for behavioural coverage.

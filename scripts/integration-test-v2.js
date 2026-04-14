@@ -10,10 +10,10 @@ const { loadDeployer } = require('./lib/loadDeployer');
 const repoRoot = path.join(__dirname, '..');
 const config = require(path.join(repoRoot, 'config', 'testnet-hyperion.json'));
 
-const PHASES = ['status', 'smoke', 'rewards', 'withdraw', 'validator', 'errors', 'pause', 'lifecycle', 'claim-prep', 'claim', 'wait-claim', 'cancel', 'transfer-locked', 'all'];
+const PHASES = ['status', 'smoke', 'rewards', 'withdraw', 'validator', 'errors', 'pause', 'lifecycle', 'claim-prep', 'claim', 'wait-claim', 'cancel', 'transfer-locked', 'batch', 'approve', 'all'];
 
 function loadAbi(name) {
-    return JSON.parse(fs.readFileSync(path.join(repoRoot, 'hyperion', 'artifacts', `${name}.abi`), 'utf8'));
+    return JSON.parse(fs.readFileSync(path.join(repoRoot, 'build', 'hyperion', `${name}.abi`), 'utf8'));
 }
 
 function fmt(planck) {
@@ -549,6 +549,91 @@ async function main() {
         await tx(web3, stQRL.methods.transfer(account.address, unlocked.toString()), account, config.contracts.stQRLV2, `stQRL.transfer(self, unlocked=${fmt(unlocked)})`);
         const heldAfter = BigInt(await stQRL.methods.balanceOf(account.address).call());
         expect(heldAfter === held, 'self-transfer net-zero (balance unchanged)');
+    }
+
+    // ===== Phase 13: batch activate =====
+    if (phase === 'batch') {
+        console.log('\n[13] Batch register + activate (3 validators, one is a dup)');
+        // Register 3 unique placeholder pubkeys (2592 bytes each). Dedup by prefix.
+        const pks = ['11', '22', '33'].map(b => '0x' + b.repeat(2592));
+        const before = BigInt(await vm.methods.totalValidators().call());
+        const ids = [];
+        for (let i = 0; i < pks.length; i++) {
+            await tx(web3, vm.methods.registerValidator(pks[i]), account, config.contracts.validatorManager, `vm.registerValidator(#${i + 1})`);
+            ids.push(BigInt(await vm.methods.totalValidators().call()));
+        }
+        expect(ids.length === 3, `registered 3 new validators (ids ${ids.join(',')})`);
+
+        // Re-registering the same pubkey must revert
+        await expectRevert(
+            vm.methods.registerValidator(pks[0]),
+            account,
+            config.contracts.validatorManager,
+            'vm.registerValidator(duplicate)',
+            { match: 'ValidatorAlreadyExists' }
+        );
+
+        const activeBefore = BigInt((await vm.methods.getStats().call()).active);
+        await tx(web3, vm.methods.batchActivateValidators(ids.map(i => i.toString())), account, config.contracts.validatorManager, 'vm.batchActivateValidators([3])');
+        const activeAfter = BigInt((await vm.methods.getStats().call()).active);
+        expect(activeAfter === activeBefore + 3n, `active +3 (${activeBefore} → ${activeAfter})`);
+
+        // Confirm each validator is now Active
+        for (const id of ids) {
+            const v = await vm.methods.validators(id.toString()).call();
+            expect(Number(v.status) === 2, `validator[${id}].status == Active`);
+        }
+
+        // Batch on a non-pending set should be a silent no-op (does not revert)
+        await tx(web3, vm.methods.batchActivateValidators([ids[0].toString()]), account, config.contracts.validatorManager, `vm.batchActivateValidators([${ids[0]}]) (already active, no-op)`);
+        const activeStill = BigInt((await vm.methods.getStats().call()).active);
+        expect(activeStill === activeAfter, `batch on already-Active is a no-op (active still ${activeStill})`);
+    }
+
+    // ===== Phase 14: approve / transferFrom (QRC-20 allowance) =====
+    if (phase === 'approve') {
+        console.log('\n[14] Approve + transferFrom (self-spend, exercises allowance path)');
+        const held = BigInt(await stQRL.methods.balanceOf(account.address).call());
+        const amount = 1n * 10n ** 18n; // 1 share
+
+        if (held < amount) {
+            console.log(`  (skipping — balance=${fmt(held)} < 1 share)`);
+            return;
+        }
+
+        // Initial allowance should be 0
+        const allow0 = BigInt(await stQRL.methods.allowance(account.address, account.address).call());
+        expect(allow0 === 0n, `initial allowance(self,self) == 0`);
+
+        await tx(web3, stQRL.methods.approve(account.address, amount.toString()), account, config.contracts.stQRLV2, `stQRL.approve(self, ${fmt(amount)})`);
+        const allow1 = BigInt(await stQRL.methods.allowance(account.address, account.address).call());
+        expect(allow1 === amount, `allowance == ${fmt(amount)} after approve`);
+
+        // transferFrom consumes the allowance
+        await tx(web3, stQRL.methods.transferFrom(account.address, account.address, amount.toString()), account, config.contracts.stQRLV2, `stQRL.transferFrom(self, self, ${fmt(amount)})`);
+        const allow2 = BigInt(await stQRL.methods.allowance(account.address, account.address).call());
+        expect(allow2 === 0n, `allowance decremented to 0 after transferFrom`);
+
+        // transferFrom again without fresh approval should revert
+        await expectRevert(
+            stQRL.methods.transferFrom(account.address, account.address, amount.toString()),
+            account,
+            config.contracts.stQRLV2,
+            `stQRL.transferFrom(self, self, ${fmt(amount)}) without allowance`,
+            { match: 'InsufficientAllowance' }
+        );
+
+        // Infinite approval: type(uint256).max should NOT be decremented
+        const MAX = (1n << 256n) - 1n;
+        await tx(web3, stQRL.methods.approve(account.address, MAX.toString()), account, config.contracts.stQRLV2, 'stQRL.approve(self, MAX)');
+        await tx(web3, stQRL.methods.transferFrom(account.address, account.address, amount.toString()), account, config.contracts.stQRLV2, `stQRL.transferFrom(self, self, ${fmt(amount)}) with MAX allowance`);
+        const allowMax = BigInt(await stQRL.methods.allowance(account.address, account.address).call());
+        expect(allowMax === MAX, `infinite allowance NOT decremented (stayed MAX)`);
+
+        // Cleanup: revoke
+        await tx(web3, stQRL.methods.approve(account.address, '0'), account, config.contracts.stQRLV2, 'stQRL.approve(self, 0)');
+        const allowCleared = BigInt(await stQRL.methods.allowance(account.address, account.address).call());
+        expect(allowCleared === 0n, `allowance revoked to 0`);
     }
 
     // ===== Phase 10: wait-claim (poll until claimable, then claim) =====
