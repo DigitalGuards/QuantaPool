@@ -72,12 +72,45 @@
     openssl rand -hex 32 > {{ jwt_secret_path }}
   when: not jwt_stat.stat.exists
 
-- name: Set JWT secret permissions
+- name: Ensure qrysm group exists (so JWT secret can be shared)
+  group:
+    name: qrysm
+    system: yes
+    state: present
+
+- name: Set JWT secret permissions (readable by gqrl + qrysm)
   file:
     path: "{{ jwt_secret_path }}"
     owner: "{{ gqrl_user }}"
+    group: qrysm
+    mode: '0640'
+
+- name: Ensure /etc/quantapool exists
+  file:
+    path: /etc/quantapool
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Fetch testnetv2 chain config.yml
+  get_url:
+    url: "{{ testnetv2_metadata_base_url }}/config.yml"
+    dest: "{{ testnetv2_config_path }}"
+    owner: root
     group: "{{ gqrl_group }}"
-    mode: '0600'
+    mode: '0644'
+    force: yes
+
+- name: Fetch testnetv2 genesis.ssz
+  get_url:
+    url: "{{ testnetv2_metadata_base_url }}/genesis.ssz"
+    dest: "{{ testnetv2_genesis_path }}"
+    owner: root
+    group: "{{ gqrl_group }}"
+    mode: '0644'
+    checksum: "sha256:{{ testnetv2_genesis_sha256 }}"
+    force: yes
 
 - name: Create gqrl systemd service
   template:
@@ -109,7 +142,7 @@
     body_format: json
     body:
       jsonrpc: "2.0"
-      method: "eth_syncing"
+      method: "qrl_syncing"
       params: []
       id: 1
     return_content: yes
@@ -118,5 +151,5 @@
 
 - name: Display gqrl sync status
   debug:
-    msg: "gqrl sync status: {{ 'Synced' if sync_status.json.result == false else 'Syncing' }}"
-  when: sync_status is succeeded
+    msg: "gqrl sync status: {{ 'Synced' if (sync_status.json | default({})).get('result', true) == false else 'Syncing' }}"
+  when: sync_status is succeeded and sync_status.json is defined

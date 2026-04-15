@@ -134,12 +134,17 @@
     - restart qrysm-validator
 
 # Only enable and start on primary nodes
+# NOTE: fail_when=false — validator will fail-loop until keystore + wallet
+# password are imported manually (see docs/NODE-SETUP.md validator key flow).
+# Fixing this here would require the keystore, which is out of scope.
 - name: Enable and start qrysm-validator (primary only)
   systemd:
     name: qrysm-validator
     enabled: "{{ is_primary_validator }}"
     state: "{{ 'started' if is_primary_validator else 'stopped' }}"
     daemon_reload: yes
+  failed_when: false
+  register: validator_service_start
 
 - name: Display validator status message
   debug:
