@@ -9,11 +9,10 @@ qrl_chain_id: 1337
 qrl_network: testnet
 qrl_rpc_url: "https://qrlwallet.com/api/qrl-rpc/testnet"
 
-# Contract addresses (testnet)
-stqrl_address: "0x844A6eB87927780E938908743eA24a56A220Efe8"
-deposit_pool_address: "0x9E800e8271df4Ac91334C65641405b04584B57DC"
-rewards_oracle_address: "0x541b1f2c501956BCd7a4a6913180b2Fc27BdE17E"
-operator_registry_address: "0xD370e9505D265381e839f8289f46D02815d0FF95"
+# Contract addresses (testnet v2.2)
+stqrl_address: "QA2f23388d1e3986416A36d2Ef113850D6900b69C"
+deposit_pool_address: "Q109d7C528a67b80eb638D4C85e7C4545ef9Bb9aC"
+validator_manager_address: "QA5b6e85B7713670589e4eAf2F039380Ec2792c8C"
 
 # Client versions
 gqrl_version: "latest"

@@ -26,22 +26,24 @@ jwt_secret_path: "/etc/quantapool/jwt.hex"
 
 # P2P settings
 qrysm_p2p_max_peers: 45
-qrysm_min_sync_peers: 3
-
-# Checkpoint sync (speeds up initial sync dramatically)
-qrysm_checkpoint_sync_url: ""
-qrysm_genesis_beacon_api_url: ""
+qrysm_min_sync_peers: 1
 
 # Metrics
+# Manual host binds to 172.18.0.1 (docker bridge). In ansible we bind 0.0.0.0
+# since there's no docker bridge and the firewall does not expose the port.
 qrysm_metrics_enabled: true
 qrysm_metrics_port: 8080
 qrysm_metrics_addr: "0.0.0.0"
 
-# gRPC settings
+# gRPC / REST settings (match manual host)
+qrysm_rpc_host: "127.0.0.1"
 qrysm_grpc_gateway_host: "127.0.0.1"
 
-# Logging
-qrysm_log_level: "info"
+# Testnet v2 chain config + genesis (populated by gqrl role; referenced here)
+testnetv2_config_path: "/etc/quantapool/testnetv2-config.yml"
+testnetv2_genesis_path: "/etc/quantapool/testnetv2-genesis.ssz"
 
-# Fee recipient (receives priority fees and MEV)
-fee_recipient_address: ""
+# Bootstrap nodes: extracted from qrysm/config/params/mainnet_config.go:40-41
+qrysm_bootstrap_nodes:
+  - "qnr:-Me4QKAyB33PkhFM0zY3r5i9GC7aSP_Zm39U8Y2rOIzr6443SngB1yhgGh7eFwNK0WNvDWjUbNksuJqME3ZEnwS9qJSGAZ1Gb_3yh2F0dG5ldHOIAAAAAAAAAACJY29uc2Vuc3VzkJCnUX4gAACJ__________-CaWSCdjSCaXCEI7LKF4lzZWNwMjU2azGhA7Z8d7NnIyueM0N06PyRt8jcnKvuRkMTmtzoDOw081ouiHN5bmNuZXRzAIN0Y3CCMsiDdWRwgi7g"
+  - "qnr:-Me4QE7keK-7ViWaDwpa0GtR12qbe9ZiVvKX95z7A2hkJHA6L-2A0n8G6dn8M1kubmxAeVw7Nwaa6IBPCX9765zNi56GAZ1Gb-8uh2F0dG5ldHOIAAAAAAAAAACJY29uc2Vuc3VzkJCnUX4gAACJ__________-CaWSCdjSCaXCEDSlCUolzZWNwMjU2azGhA9t_KLMx2GyZcw7tncC7iLdJpKBS_tCp9CavD6LXd5ZaiHN5bmNuZXRzAIN0Y3CCMsiDdWRwgi7g"

@@ -16,39 +16,33 @@ gqrl_network: "testnet"
 gqrl_chain_id: 1337
 gqrl_port: 30303
 gqrl_http_port: 8545
-gqrl_ws_port: 8546
 gqrl_authrpc_port: 8551
 
-# P2P settings
-gqrl_max_peers: 50
-gqrl_bootnodes: []
-
-# API settings
-gqrl_http_api: "eth,net,web3,txpool"
+# API settings (manual host uses web3,net,qrl,engine)
+gqrl_http_api: "web3,net,qrl,engine"
 gqrl_http_addr: "127.0.0.1"
-# SECURITY: Restrict CORS to localhost only. Add specific domains if needed.
-gqrl_http_corsdomain: "localhost"
-gqrl_http_vhosts: "localhost"
 
 # Auth RPC (for beacon connection)
 gqrl_authrpc_addr: "127.0.0.1"
-gqrl_authrpc_vhosts: "localhost"
 
 # JWT secret path
 jwt_secret_path: "/etc/quantapool/jwt.hex"
 
+# Testnet v2 metadata (from github.com/theQRL/go-qrl-metadata/testnet/testnetv2)
+testnetv2_metadata_base_url: "https://raw.githubusercontent.com/theQRL/go-qrl-metadata/main/testnet/testnetv2"
+testnetv2_config_path: "/etc/quantapool/testnetv2-config.yml"
+testnetv2_genesis_path: "/etc/quantapool/testnetv2-genesis.ssz"
+testnetv2_genesis_sha256: "c0c3cfa3fbc5df0d873efedfdec6e07ed3152ae439b14a96cfb35069a02a1bde"
+
 # Metrics
+# Note: manual host binds to 172.18.0.1 (docker bridge). In ansible scenario
+# there's no docker bridge; bind to 0.0.0.0 — firewall blocks external access.
 gqrl_metrics_enabled: true
 gqrl_metrics_port: 6060
 gqrl_metrics_addr: "0.0.0.0"
 
-# Logging
-gqrl_log_level: "info"
-gqrl_verbosity: 3
+# Sync mode (manual host uses full)
+gqrl_syncmode: "full"
 
-# Cache and performance
-gqrl_cache: 4096  # MB
-
-# Pruning
-gqrl_gcmode: "full"
-gqrl_syncmode: "snap"
+# NAT external IP (default to ansible host for extip:<ip>)
+gqrl_nat_extip: "{{ ansible_host | default(inventory_hostname) }}"

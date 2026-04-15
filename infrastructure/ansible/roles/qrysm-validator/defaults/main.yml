@@ -20,30 +20,23 @@ validator_wallet_password_file: "/etc/quantapool/validator-wallet-password"
 # Slashing protection
 slashing_protection_db: "{{ qrysm_validator_data_dir }}/slashing-protection"
 
-# Beacon node connection
+# Beacon node connection (manual host uses both gRPC + REST gateway)
 qrysm_beacon_rpc_provider: "127.0.0.1:4000"
+qrysm_beacon_rpc_gateway_provider: "127.0.0.1:3500"
 
 # Metrics
+# Manual host binds to 172.18.0.1 (docker bridge). In ansible we bind 0.0.0.0
+# since there's no docker bridge and the firewall does not expose the port.
 qrysm_validator_metrics_enabled: true
 qrysm_validator_metrics_port: 8081
 qrysm_validator_metrics_addr: "0.0.0.0"
 
-# gRPC settings
-qrysm_validator_grpc_port: 7500
-qrysm_validator_grpc_gateway_port: 7501
+# Testnet v2 chain config (populated by gqrl role)
+testnetv2_config_path: "/etc/quantapool/testnetv2-config.yml"
 
-# Web interface (optional, for monitoring)
-qrysm_validator_web_enabled: false
-qrysm_validator_web_port: 7502
-
-# Fee recipient (receives priority fees)
-fee_recipient_address: ""
-
-# Graffiti (identifies your blocks)
-validator_graffiti: "QuantaPool"
-
-# Logging
-qrysm_log_level: "info"
+# Fee recipient: deployer address (see QuantaPool CLAUDE.md).
+# Override in inventory / group_vars if this node services a different pool.
+fee_recipient_address: "Q2E13b52fd3cda0a57f9037856B7Df971074e2489"
 
 # Primary/Backup role
 # CRITICAL: On backup nodes, this should be false
