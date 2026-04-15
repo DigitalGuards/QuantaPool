@@ -94,16 +94,6 @@ async function tx(web3, method, account, to, label, { value = 0n } = {}) {
         ? receipt.transactionHash
         : '0x' + Buffer.from(receipt.transactionHash).toString('hex');
     console.log(`  → ${label} : ${hash}`);
-    // The qrlwallet.com RPC proxy sometimes serves eth_call from a slightly
-    // stale node for ~1 block after a tx mines, which makes state reads right
-    // after a write return pre-tx values. Wait until head ≥ receipt.blockNumber
-    // before returning so downstream reads see the effect.
-    const receiptBlock = BigInt(receipt.blockNumber);
-    for (let i = 0; i < 30; i++) {
-        const head = BigInt(await web3.qrl.getBlockNumber());
-        if (head >= receiptBlock) break;
-        await new Promise(r => setTimeout(r, 500));
-    }
     return receipt;
 }
 
