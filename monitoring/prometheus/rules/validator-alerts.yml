@@ -32,24 +32,29 @@ groups:
           description: "The qrysm validator client has been unreachable for more than 2 minutes."
 
       # Low peer count - execution
+      # Testnet is small; 1 peer is a valid steady state while peer discovery
+      # backfills. Only alert when execution is effectively isolated.
       - alert: GqrlLowPeers
-        expr: p2p_peers{job="gqrl"} < 3
-        for: 5m
+        expr: p2p_peers{job="gqrl"} < 1
+        for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "Go-QRL has low peer count"
-          description: "Go-QRL has only {{ $value }} peers. Minimum recommended is 3."
+          summary: "Go-QRL has no peers"
+          description: "Go-QRL has {{ $value }} peers — node is effectively isolated."
 
       # Low peer count - consensus
+      # p2p_peer_count is split by state ("Connected", "Bad", "Disconnected", ...).
+      # Without the state filter the alert would match the always-low "Connecting"
+      # bucket and fire constantly.
       - alert: BeaconChainLowPeers
-        expr: p2p_peer_count{job="beacon-chain"} < 3
+        expr: p2p_peer_count{job="beacon-chain",state="Connected"} < 3
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Beacon chain has low peer count"
-          description: "Beacon chain has only {{ $value }} peers."
+          summary: "Beacon chain has low connected-peer count"
+          description: "Beacon has only {{ $value }} connected peers (minimum 3)."
 
       # Execution client syncing for too long
       - alert: GqrlSyncing

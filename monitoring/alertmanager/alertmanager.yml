@@ -1,11 +1,20 @@
 global:
   resolve_timeout: 5m
 
-# Notification templates
+# Alertmanager does not do env-var substitution in this file. To enable Discord
+# notifications, replace `null` in the receivers block with a `discord_configs`
+# entry containing your webhook URL, then `docker compose restart alertmanager`.
+# Example:
+#   receivers:
+#     - name: critical
+#       discord_configs:
+#         - webhook_url: https://discord.com/api/webhooks/<ID>/<TOKEN>
+#           title: '{{ template "discord.critical.title" . }}'
+#           message: '{{ template "discord.critical.message" . }}'
+
 templates:
   - '/etc/alertmanager/templates/*.tmpl'
 
-# Route tree
 route:
   group_by: ['alertname', 'severity']
   group_wait: 30s
@@ -13,87 +22,65 @@ route:
   repeat_interval: 4h
   receiver: 'default'
   routes:
-    # Critical alerts go immediately with shorter repeat
     - match:
         severity: critical
       receiver: 'critical'
       group_wait: 10s
       repeat_interval: 1h
-
-    # Warning alerts with normal timing
     - match:
         severity: warning
       receiver: 'warning'
       repeat_interval: 4h
-
-    # Info alerts (less frequent)
     - match:
         severity: info
       receiver: 'info'
       repeat_interval: 12h
 
-# Receivers
+# NOTE: receivers are intentionally null in the git-tracked file.
+# The deployed config on the validator host (/opt/quantapool/monitoring/alertmanager/
+# alertmanager.yml) overrides each entry with a `discord_configs` block containing
+# the real webhook URL. Webhook URLs are secrets and never live in git.
+# To wire alerts in a fresh deployment, edit the host file (NOT this one) and
+# `docker compose restart alertmanager`. See the example block at the top.
 receivers:
   - name: 'default'
-    discord_configs:
-      - webhook_url: 'DISCORD_WEBHOOK_URL'
-        title: '{{ template "discord.default.title" . }}'
-        message: '{{ template "discord.default.message" . }}'
-
   - name: 'critical'
-    discord_configs:
-      - webhook_url: 'DISCORD_WEBHOOK_URL'
-        title: '{{ template "discord.critical.title" . }}'
-        message: '{{ template "discord.critical.message" . }}'
-    # Uncomment to add Telegram for critical alerts
-    # telegram_configs:
-    #   - bot_token: 'TELEGRAM_BOT_TOKEN'
-    #     chat_id: TELEGRAM_CHAT_ID
-    #     message: '{{ template "telegram.default.message" . }}'
-
   - name: 'warning'
-    discord_configs:
-      - webhook_url: 'DISCORD_WEBHOOK_URL'
-        title: '{{ template "discord.warning.title" . }}'
-        message: '{{ template "discord.warning.message" . }}'
-
   - name: 'info'
-    discord_configs:
-      - webhook_url: 'DISCORD_WEBHOOK_URL'
-        title: '{{ template "discord.info.title" . }}'
-        message: '{{ template "discord.info.message" . }}'
 
-# Inhibition rules - suppress dependent alerts
+# Inhibition rules — suppress noisy downstream alerts when the upstream is known
+# to be broken. Alert names here must match the rules in
+# prometheus/rules/contract-alerts.yml / validator-alerts.yml / system-alerts.yml.
 inhibit_rules:
-  # If gqrl is down, don't alert about sync issues
+  # Execution client down → squelch sync / peer alerts
   - source_match:
       alertname: GqrlDown
-    target_match:
-      alertname: GqrlSyncing
+    target_match_re:
+      alertname: 'GqrlSyncing|GqrlLowPeers'
     equal: ['instance']
 
-  # If beacon-chain is down, don't alert about sync or validator issues
+  # Beacon chain down → squelch beacon / validator downstream alerts
   - source_match:
       alertname: BeaconChainDown
     target_match_re:
-      alertname: 'BeaconChainNotSynced|ValidatorClientDown|MissedAttestations|BeaconChainStalled'
+      alertname: 'BeaconChainNotSynced|BeaconChainLowPeers|ValidatorClientDown|MissedAttestations|BeaconChainStalled'
     equal: ['instance']
 
-  # If validator is down, don't alert about missed attestations
+  # Validator client down → squelch missed-attestation noise
   - source_match:
       alertname: ValidatorClientDown
     target_match:
       alertname: MissedAttestations
     equal: ['instance']
 
-  # If contract exporter is down, don't alert about contract metrics
+  # Contract exporter down → squelch all contract-derived alerts
   - source_match:
       alertname: ContractExporterDown
     target_match_re:
-      alertname: 'ExchangeRateAnomaly|OracleReportStale|LowLiquidReserve|DepositPoolPaused|ValidatorThresholdApproaching|ValidatorThresholdReached|TVLValidatorMismatch'
+      alertname: 'ExchangeRateAnomaly|DepositPoolPaused|StQRLPaused|ValidatorThresholdApproaching|ValidatorThresholdReached|WithdrawalReserveUnderfunded|SlashingDetected|TVLValidatorMismatch|HighRPCErrorRate'
     equal: ['instance']
 
-  # If node exporter is down, don't alert about system metrics
+  # Node exporter down → squelch all system-resource alerts
   - source_match:
       alertname: NodeExporterDown
     target_match_re:

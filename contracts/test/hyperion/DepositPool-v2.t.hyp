@@ -995,6 +995,146 @@ contract DepositPoolV2Test is Test {
     }
 
     // =========================================================================
+    //                    fundValidator() — REAL BEACON PATH
+    // =========================================================================
+    // These lock in the QRL-specific bits of the beacon deposit call that
+    // differ from Ethereum muscle memory: the 0x00 withdrawal-prefix byte
+    // (ExecutionAddressWithdrawalPrefixByte in qrysm), the 2592-byte ML-DSA
+    // pubkey, and the 4627-byte ML-DSA-87 signature.
+
+    address constant DEPOSIT_CONTRACT_ADDR = Q4242424242424242424242424242424242424242;
+
+    function _stubDepositContract() internal {
+        // Minimal bytecode at 0x4242...: STOP (0x00) — accepts any call, reverts
+        // none, returns nothing. Enough to satisfy IDepositContract.deposit()
+        // as long as we don't care about the receipt/event side-effects.
+        vm.etch(DEPOSIT_CONTRACT_ADDR, hex"00");
+    }
+
+    function _fundBufferForValidator() internal {
+        vm.deal(user1, 40000 quanta);
+        vm.prank(user1);
+        pool.deposit{value: 40000 quanta}();
+    }
+
+    function _validCredentials() internal view returns (bytes memory) {
+        // 0x00 prefix + 11 zero bytes + 20-byte pool address = 32 bytes total.
+        return abi.encodePacked(bytes1(0x00), bytes11(0), address(pool));
+    }
+
+    function _validPubkey() internal pure returns (bytes memory) {
+        bytes memory pk = new bytes(2592);
+        pk[0] = 0xab; // arbitrary non-zero so it's distinguishable
+        return pk;
+    }
+
+    function _validSignature() internal pure returns (bytes memory) {
+        bytes memory sig = new bytes(4627);
+        sig[0] = 0xcd;
+        return sig;
+    }
+
+    function test_FundValidator_AcceptsZeroPrefix() public {
+        _stubDepositContract();
+        _fundBufferForValidator();
+
+        uint256 validatorId =
+            pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+
+        assertEq(validatorId, 0);
+        assertEq(pool.validatorCount(), 1);
+        assertEq(pool.bufferedQRL(), 0);
+    }
+
+    function test_FundValidator_RejectsEthereumOnePrefix() public {
+        // Regression guard: Ethereum's 0x01 prefix (BLS_WITHDRAWAL_PREFIX +1)
+        // must NOT validate. Before the 0x00 fix, this test would have passed
+        // against the buggy contract.
+        _stubDepositContract();
+        _fundBufferForValidator();
+
+        bytes memory badCreds = abi.encodePacked(bytes1(0x01), bytes11(0), address(pool));
+
+        vm.expectRevert(DepositPoolV2.InvalidWithdrawalCredentials.selector);
+        pool.fundValidator(_validPubkey(), badCreds, _validSignature(), bytes32(uint256(1)));
+    }
+
+    function test_FundValidator_RejectsWrongContractAddress() public {
+        _stubDepositContract();
+        _fundBufferForValidator();
+
+        // Correct 0x00 prefix + 11 zero bytes, but a different 20-byte address.
+        // A user-controlled address here would redirect withdrawals away from
+        // the pool — the guard must catch it.
+        bytes memory badCreds = abi.encodePacked(bytes1(0x00), bytes11(0), address(0xdead));
+
+        vm.expectRevert(DepositPoolV2.InvalidWithdrawalCredentials.selector);
+        pool.fundValidator(_validPubkey(), badCreds, _validSignature(), bytes32(uint256(1)));
+    }
+
+    function test_FundValidator_RejectsShortCredentials() public {
+        _stubDepositContract();
+        _fundBufferForValidator();
+
+        bytes memory shortCreds = abi.encodePacked(bytes1(0x00), bytes11(0)); // only 12 bytes
+
+        vm.expectRevert(DepositPoolV2.InvalidCredentialsLength.selector);
+        pool.fundValidator(_validPubkey(), shortCreds, _validSignature(), bytes32(uint256(1)));
+    }
+
+    function test_FundValidator_RejectsWrongPubkeyLength() public {
+        _stubDepositContract();
+        _fundBufferForValidator();
+
+        bytes memory shortPubkey = new bytes(2591);
+
+        vm.expectRevert(DepositPoolV2.InvalidPubkeyLength.selector);
+        pool.fundValidator(shortPubkey, _validCredentials(), _validSignature(), bytes32(uint256(1)));
+    }
+
+    function test_FundValidator_RejectsWrongSignatureLength() public {
+        _stubDepositContract();
+        _fundBufferForValidator();
+
+        bytes memory shortSig = new bytes(4626);
+
+        vm.expectRevert(DepositPoolV2.InvalidSignatureLength.selector);
+        pool.fundValidator(_validPubkey(), _validCredentials(), shortSig, bytes32(uint256(1)));
+    }
+
+    function test_FundValidator_RequiresFullBuffer() public {
+        _stubDepositContract();
+        vm.deal(user1, 39999 quanta);
+        vm.prank(user1);
+        pool.deposit{value: 39999 quanta}();
+
+        vm.expectRevert(DepositPoolV2.InsufficientBuffer.selector);
+        pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+    }
+
+    function test_FundValidator_OnlyOwner() public {
+        _stubDepositContract();
+        _fundBufferForValidator();
+
+        vm.prank(user1);
+        vm.expectRevert(DepositPoolV2.NotOwner.selector);
+        pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+    }
+
+    function test_FundValidator_ForwardsStakeToDepositContract() public {
+        _stubDepositContract();
+        _fundBufferForValidator();
+
+        uint256 beaconBalanceBefore = DEPOSIT_CONTRACT_ADDR.balance;
+        uint256 poolBalanceBefore = address(pool).balance;
+
+        pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+
+        assertEq(DEPOSIT_CONTRACT_ADDR.balance - beaconBalanceBefore, 40000 quanta);
+        assertEq(poolBalanceBefore - address(pool).balance, 40000 quanta);
+    }
+
+    // =========================================================================
     //                       EVENT DECLARATIONS
     // =========================================================================
 

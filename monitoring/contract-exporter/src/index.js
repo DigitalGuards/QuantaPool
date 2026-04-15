@@ -110,8 +110,7 @@ async function main() {
             contracts: {
                 stQRL: config.STQRL_ADDRESS,
                 depositPool: config.DEPOSIT_POOL_ADDRESS,
-                rewardsOracle: config.REWARDS_ORACLE_ADDRESS,
-                operatorRegistry: config.OPERATOR_REGISTRY_ADDRESS
+                validatorManager: config.VALIDATOR_MANAGER_ADDRESS
             }
         });
     });
