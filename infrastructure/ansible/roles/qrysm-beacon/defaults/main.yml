@@ -5,6 +5,7 @@
 qrysm_version: "latest"
 qrysm_repo: "https://github.com/theQRL/qrysm"
 qrysm_beacon_binary_path: "/usr/local/bin/qrysm-beacon"
+staking_deposit_cli_binary_path: "/usr/local/bin/staking-deposit-cli"
 
 # Data directories
 qrysm_beacon_data_dir: "/var/lib/qrysm/beacon"
