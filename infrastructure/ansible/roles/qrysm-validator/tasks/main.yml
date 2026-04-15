@@ -2,6 +2,12 @@
 # qrysm validator client installation and configuration
 # CRITICAL: Implements slashing protection measures
 
+- name: Check if qrysm user exists
+  getent:
+    database: passwd
+    key: "{{ qrysm_user }}"
+    fail_key: no
+
 - name: Create qrysm user (if not exists)
   user:
     name: "{{ qrysm_user }}"
@@ -9,6 +15,7 @@
     shell: /bin/false
     home: "{{ qrysm_validator_data_dir }}"
     create_home: no
+  when: getent_passwd[qrysm_user] is none
 
 - name: Create validator directories
   file:
@@ -87,7 +94,6 @@
       # 5. Monitor for successful attestations
       #
       # WARNING: Running two validators with the same keys = SLASHING
-      # Created: {{ ansible_date_time.iso8601 }}
     dest: "{{ validator_lock_file }}"
     owner: root
     group: root
