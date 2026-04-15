@@ -95,7 +95,7 @@
 
 - name: Check beacon node health
   uri:
-    url: "http://127.0.0.1:{{ qrysm_grpc_gateway_port }}/eth/v1/node/health"
+    url: "http://127.0.0.1:{{ qrysm_grpc_gateway_port }}/qrl/v1/node/health"
     method: GET
     return_content: yes
     status_code: [200, 206]  # 200 = synced, 206 = syncing
