@@ -24,6 +24,15 @@ Persisted in `config/testnet-hyperion.json`. All 3 wired (`setStQRL`, `setDeposi
 - Local beacon (running on `REDACTED`) confirmed `beacon_processed_deposits_total = 1`
 - Validator `0xa40ca760bcc4…` is in the activation queue (`UNKNOWN_STATUS` → eventually `ACTIVE` after several epochs)
 
+**Scenario 2 — end-to-end test of terraform + ansible + user-driven pool + second validator (2026-04-15):**
+- Terraform provisioned 2 Hetzner VPS: primary `138.201.152.117`, backup `159.69.125.89` (fsn1, cpx32 / cpx22). Monitoring module disabled (Hetzner 2-primary-IP quota on new project; reusing node #1 monitoring).
+- Ansible deployed full stack on both (gqrl + qrysm-beacon + qrysm-validator). Drift fixes landed in commits `251e1db`, `ba18717`.
+- Funded 8 throwaway user wallets (mnemonics in `.env.scenario2`, gitignored) via `scripts/fanout-test-wallets.js` — 40100 QRL total.
+- 8 `pool.deposit()` calls (`scripts/scenario2-deposit.js`) → buffer 0 → 40092 QRL, shares 1:1 (8 txs, all green). Confirmed **overfund is benign**: 92 QRL sat safely alongside the 40k stake.
+- Keystore generated on primary `138.201.152.117` via rebuilt `staking-deposit-cli`. Mnemonic + seed persisted to `/etc/quantapool/validator-mnemonic.txt` (0600) on the host. `verify-deposit-data.js` passed all checks.
+- `pool.fundValidator(pubkey, creds, sig, root)` — tx `0x8fe035435c620faac48ea719d386d2b4b4b77741b576ee7b2274d5ad6d6b2b61`. On-chain: `validatorCount: 1 → 2`, `bufferedQRL: 40092 → 92 QRL`.
+- Keystore imported, `qrysm-validator.service` active. Validator `0xb86185d4fcf4…` now in `UNKNOWN_STATUS`, same ~24h eth1 voting window ahead as validator #1.
+
 ### Deprecated (v2.0 + v2.1) — DO NOT interact
 
 | Rev | Contract | Address | Why orphaned |
