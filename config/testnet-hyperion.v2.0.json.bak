@@ -1,0 +1,10 @@
+{
+  "provider": "https://qrlwallet.com/api/qrl-rpc/testnet",
+  "chainId": 1337,
+  "txConfirmations": 12,
+  "contracts": {
+    "stQRLV2": "Q09046968aF19E745F4aBa7A9fa5CD946b4E981DB",
+    "depositPoolV2": "Q38F73cb87c60d365fdFA7abF0e534fc1a9D5F9B9",
+    "validatorManager": "Q1b083D7Dc47212DcBc4595249D9384Fa16cE6FC5"
+  }
+}

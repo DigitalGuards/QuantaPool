@@ -74,8 +74,10 @@ contract DepositPoolV2 {
     /// @notice Dilithium pubkey length (bytes)
     uint256 private constant PUBKEY_LENGTH = 2592;
 
-    /// @notice Dilithium signature length (bytes)
-    uint256 private constant SIGNATURE_LENGTH = 4595;
+    /// @notice ML-DSA-87 signature length (bytes). qrysm enforces exactly
+    /// this value in crypto/ml_dsa_87/ml_dsa_87t/signature.go — any other
+    /// length will be rejected by the beacon deposit contract.
+    uint256 private constant SIGNATURE_LENGTH = 4627;
 
     /// @notice Withdrawal credentials length
     uint256 private constant CREDENTIALS_LENGTH = 32;
@@ -540,7 +542,7 @@ contract DepositPoolV2 {
      * @dev Only owner can call. Sends VALIDATOR_STAKE to beacon deposit contract.
      * @param pubkey Dilithium public key (2592 bytes)
      * @param withdrawal_credentials Must point to this contract (0x01 + 11 zero bytes + address)
-     * @param signature Dilithium signature (4595 bytes)
+     * @param signature ML-DSA-87 signature (4627 bytes)
      * @param deposit_data_root SSZ hash of deposit data
      * @return validatorId The new validator's ID
      */
@@ -555,10 +557,16 @@ contract DepositPoolV2 {
         if (signature.length != SIGNATURE_LENGTH) revert InvalidSignatureLength();
         if (withdrawal_credentials.length != CREDENTIALS_LENGTH) revert InvalidCredentialsLength();
 
-        // Verify withdrawal credentials point to this contract
-        // Format: 0x01 (1 byte) + 11 zero bytes + contract address (20 bytes) = 32 bytes
-        // This ensures validator withdrawals come to this contract
-        bytes32 expectedCredentials = bytes32(abi.encodePacked(bytes1(0x01), bytes11(0), address(this)));
+        // Verify withdrawal credentials point to this contract.
+        // Format: 0x00 (1 byte) + 11 zero bytes + contract address (20 bytes) = 32 bytes.
+        // The prefix byte 0x00 is `ExecutionAddressWithdrawalPrefixByte` in qrysm's
+        // beacon config (config/params/mainnet_config.go:74), i.e. "withdrawals
+        // are executed to the 20-byte address in bytes[12:32]". Ethereum's spec
+        // uses 0x01 for the same meaning; QRL v2 re-uses 0x00 because there is
+        // no BLS-key-withdrawal path to distinguish from. This prefix is what
+        // staking-deposit-cli emits for --execution-address deposits; mismatch
+        // here would make validators non-withdrawable (stuck stake).
+        bytes32 expectedCredentials = bytes32(abi.encodePacked(bytes1(0x00), bytes11(0), address(this)));
         bytes32 actualCredentials;
         assembly {
             actualCredentials := calldataload(withdrawal_credentials.offset)
