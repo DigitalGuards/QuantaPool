@@ -28,5 +28,10 @@
   },
   "devDependencies": {
     "solc": "^0.8.34"
+  },
+  "overrides": {
+    "tmp": "^0.2.6",
+    "follow-redirects": "^1.15.12",
+    "ws": "^8.20.1"
   }
 }
