@@ -30,8 +30,8 @@
     "solc": "^0.8.34"
   },
   "overrides": {
-    "tmp": "^0.2.6",
-    "follow-redirects": "^1.15.12",
-    "ws": "^8.20.1"
+    "tmp": "^0.2.7",
+    "follow-redirects": "^1.16.0",
+    "ws": "^8.21.0"
   }
 }
