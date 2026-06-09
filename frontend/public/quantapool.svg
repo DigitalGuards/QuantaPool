@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#030712"/>
+  <!-- droplet -->
+  <path d="M32 10c8 10.5 14 17.8 14 25.4C46 44.6 39.7 51 32 51s-14-6.4-14-15.6C18 27.8 24 20.5 32 10z"
+        fill="none" stroke="#f97316" stroke-width="3.5" stroke-linejoin="round"/>
+  <!-- quantum orbit -->
+  <ellipse cx="32" cy="36" rx="17" ry="6.5" fill="none" stroke="#4aafff" stroke-width="2.5" transform="rotate(-18 32 36)"/>
+  <circle cx="32" cy="36" r="3.5" fill="#f97316"/>
+</svg>
