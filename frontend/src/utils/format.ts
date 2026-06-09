@@ -52,6 +52,15 @@ export function formatRate(rate: bigint, fractionDigits = 4): string {
   return `${whole}.${fraction}`;
 }
 
+/** USD display: "$1,234.56". */
+export function formatUsd(value: number): string {
+  return value.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  });
+}
+
 /** Shorten a Q-address for display: "Q109d…b9aC". */
 export function shortenAddress(address: string, chars = 4): string {
   if (address.length <= 2 + chars * 2) return address;

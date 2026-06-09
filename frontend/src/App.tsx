@@ -37,9 +37,7 @@ const App = observer(() => {
             <AlertTriangle className="h-4 w-4 shrink-0" />
             <span className="flex-1">{poolStore.connectError}</span>
             <button
-              onClick={() => {
-                poolStore.connectError = null;
-              }}
+              onClick={() => poolStore.dismissConnectError()}
               className="cursor-pointer hover:text-foreground"
               aria-label="Dismiss"
             >

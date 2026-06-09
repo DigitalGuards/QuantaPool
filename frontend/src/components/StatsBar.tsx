@@ -1,17 +1,19 @@
 import { observer } from "mobx-react-lite";
 import { Skeleton } from "@/components/UI/Skeleton";
 import { useStore } from "@/stores/store";
-import { formatAmount, formatRate } from "@/utils/format";
+import { formatAmount, formatRate, formatUsd } from "@/utils/format";
 
 /** Compact protocol stats row shown under the stake widget (Lido-style). */
 export const StatsBar = observer(() => {
   const { poolStore } = useStore();
   const pool = poolStore.pool;
+  const tvlUsd = pool ? poolStore.usdValue(pool.totalPooled) : null;
 
   const stats = [
     {
       label: "Total staked",
       value: pool ? `${formatAmount(pool.totalPooled, 18, 0)} QRL` : null,
+      sub: tvlUsd !== null ? `≈ ${formatUsd(tvlUsd)}` : undefined,
     },
     {
       label: "stQRL exchange rate",
@@ -35,6 +37,9 @@ export const StatsBar = observer(() => {
           <dd className="mt-1 text-sm font-semibold">
             {stat.value ?? <Skeleton className="h-5 w-24" />}
           </dd>
+          {"sub" in stat && stat.sub && (
+            <p className="mt-0.5 text-xs text-muted-foreground">{stat.sub}</p>
+          )}
         </div>
       ))}
     </dl>

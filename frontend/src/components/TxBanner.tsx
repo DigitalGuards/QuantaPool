@@ -15,14 +15,14 @@ export const TxBanner = observer(() => {
     <div
       className={cn(
         "fixed bottom-4 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-center gap-3 rounded-lg border bg-background/95 p-4 shadow-lg backdrop-blur",
-        tx.state === "pending" && "border-l-4 border-l-[#4aafff]",
+        tx.state === "pending" && "border-l-4 border-l-blue-accent",
         tx.state === "confirmed" && "border-l-4 border-l-green-500",
         tx.state === "failed" && "border-l-4 border-l-destructive",
       )}
       role="status"
     >
       {tx.state === "pending" && (
-        <Loader2 className="h-5 w-5 shrink-0 animate-spin text-[#4aafff]" />
+        <Loader2 className="h-5 w-5 shrink-0 animate-spin text-blue-accent" />
       )}
       {tx.state === "confirmed" && (
         <CheckCircle2 className="h-5 w-5 shrink-0 text-green-500" />
@@ -45,7 +45,7 @@ export const TxBanner = observer(() => {
             href={getExplorerTxUrl(tx.txHash)}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 text-[#4aafff] hover:underline"
+            className="inline-flex items-center gap-1 text-blue-accent hover:underline"
           >
             View on explorer <ExternalLink className="h-3 w-3" />
           </a>

@@ -11,7 +11,7 @@ import {
   WalletNotFoundError,
   type ExtensionProvider,
 } from "@/utils/web3/extension";
-import { parseUnits } from "@/utils/format";
+import { formatUnits, parseUnits } from "@/utils/format";
 
 export interface PoolStats {
   totalPooled: bigint;
@@ -45,8 +45,11 @@ export interface AccountState {
 export interface WithdrawalRequestView {
   id: number;
   shares: bigint;
-  /** Current QRL value of the locked shares. */
-  qrlValue: bigint;
+  /**
+   * Exact QRL payout, snapshotted by the contract at request time.
+   * claimWithdrawal() pays this amount — not the current share value.
+   */
+  qrlPayout: bigint;
   requestBlock: bigint;
   canClaim: boolean;
   blocksRemaining: bigint;
@@ -85,6 +88,8 @@ interface DepositPoolMethods {
   paused(): ContractCall<unknown>;
   getWithdrawalRequestCount(address: string): ContractCall<Record<string, unknown>>;
   getWithdrawalRequest(address: string, requestId: number): ContractCall<Record<string, unknown>>;
+  /** Auto-generated public-mapping getter; returns the stored request struct. */
+  withdrawalRequests(address: string, requestId: number): ContractCall<Record<string, unknown>>;
 }
 
 interface StQrlMethods {
@@ -97,7 +102,16 @@ interface ValidatorManagerMethods {
   getStats(): ContractCall<Record<string, unknown>>;
 }
 
+interface Contracts {
+  pool: DepositPoolMethods;
+  stqrl: StQrlMethods;
+  validators: ValidatorManagerMethods;
+}
+
 const RATE_BASE = 10n ** 18n;
+
+/** Native QRL kept aside for gas when computing the max stakeable balance. */
+export const GAS_RESERVE = 5n * 10n ** 15n; // 0.005 QRL
 
 const asBig = (value: unknown): bigint =>
   typeof value === "bigint" ? value : BigInt(String(value ?? 0));
@@ -116,10 +130,13 @@ function errorMessage(error: unknown): string {
 export class PoolStore {
   network: NetworkConfig = ACTIVE_NETWORK;
 
-  isInitializing = true;
   rpcError: string | null = null;
 
   pool: PoolStats | null = null;
+
+  /** QRL/USD from the zondscan explorer API — cosmetic, may be unavailable. */
+  qrlPrice: number | null = null;
+  qrlPriceChange24h: number | null = null;
 
   isConnecting = false;
   connectError: string | null = null;
@@ -130,18 +147,22 @@ export class PoolStore {
   tx: TxStatus = IDLE_TX;
 
   private web3Instance: Web3Instance | null = null;
-  private refreshTimer: ReturnType<typeof setInterval> | null = null;
+  private contracts: Contracts | null = null;
+  private initStarted = false;
+  /**
+   * Claimed/cancelled requests are immutable on-chain — cache them so the
+   * periodic refresh only refetches requests that can still change.
+   */
+  private finalizedRequests = new Map<number, WithdrawalRequestView>();
 
   constructor() {
     makeAutoObservable(this, {
       provider: false,
       web3Instance: false,
-      refreshTimer: false,
+      contracts: false,
+      initStarted: false,
+      finalizedRequests: false,
     } as Parameters<typeof makeAutoObservable>[1]);
-  }
-
-  get isConnected(): boolean {
-    return this.account !== null;
   }
 
   get pendingWithdrawals(): WithdrawalRequestView[] {
@@ -150,6 +171,14 @@ export class PoolStore {
 
   get claimableWithdrawals(): WithdrawalRequestView[] {
     return this.withdrawals.filter((w) => !w.claimed && w.canClaim);
+  }
+
+  /** Max QRL the connected account can stake, keeping a little back for gas. */
+  get stakeableBalance(): bigint | null {
+    if (!this.account) return null;
+    return this.account.qrlBalance > GAS_RESERVE
+      ? this.account.qrlBalance - GAS_RESERVE
+      : 0n;
   }
 
   /** Convert a QRL amount into stQRL shares at the current rate (approximate). */
@@ -165,28 +194,27 @@ export class PoolStore {
   }
 
   async init(): Promise<void> {
-    try {
-      await this.refreshPool();
-      runInAction(() => {
-        this.rpcError = null;
-      });
-    } catch (error) {
-      runInAction(() => {
-        this.rpcError = errorMessage(error);
-      });
-    } finally {
-      runInAction(() => {
-        this.isInitializing = false;
-      });
-    }
-    if (!this.refreshTimer) {
-      this.refreshTimer = setInterval(() => {
-        void this.refresh();
-      }, 30_000);
-    }
+    if (this.initStarted) return;
+    this.initStarted = true;
+    await this.refresh();
+    // The store is a singleton living for the whole app session, so the
+    // interval is intentionally never cleared.
+    setInterval(() => {
+      // Skip background refreshes while the tab is hidden — the first
+      // interval tick after the user returns picks up fresh data.
+      if (typeof document !== "undefined" && document.hidden) return;
+      void this.refresh();
+    }, 30_000);
+  }
+
+  /** USD value of a QRL base-unit amount, or null when no price is known. */
+  usdValue(amount: bigint): number | null {
+    if (this.qrlPrice === null) return null;
+    return Number(formatUnits(amount)) * this.qrlPrice;
   }
 
   async refresh(): Promise<void> {
+    void this.fetchQrlPrice();
     try {
       await this.refreshPool();
       if (this.account) await this.refreshAccount(this.account.address);
@@ -206,6 +234,7 @@ export class PoolStore {
     try {
       const { address, provider } = await connectToExtension();
       this.provider = provider;
+      this.watchAccountChanges(provider);
       runInAction(() => {
         this.account = {
           address,
@@ -215,6 +244,7 @@ export class PoolStore {
           qrlValue: 0n,
         };
       });
+      this.finalizedRequests.clear();
       await this.refreshAccount(address);
     } catch (error) {
       this.provider = null;
@@ -237,7 +267,12 @@ export class PoolStore {
     this.account = null;
     this.withdrawals = [];
     this.connectError = null;
+    this.finalizedRequests.clear();
     this.tx = IDLE_TX;
+  }
+
+  dismissConnectError(): void {
+    this.connectError = null;
   }
 
   clearTx(): void {
@@ -246,45 +281,90 @@ export class PoolStore {
 
   /** Stake QRL: DepositPool.deposit() with msg.value. */
   async stake(amount: string): Promise<boolean> {
-    const value = parseUnits(amount);
-    const { pool } = await this.getContracts();
-    const data = pool.deposit().encodeABI();
-    return this.sendTx("Stake", {
-      to: this.network.contracts.depositPool,
-      value,
-      data,
+    return this.runTx("Stake", async () => {
+      const value = parseUnits(amount);
+      const { pool } = await this.getContracts();
+      return { to: this.network.contracts.depositPool, value, data: pool.deposit().encodeABI() };
     });
   }
 
   /** Request withdrawal of stQRL shares (starts the 128-block delay). */
   async requestUnstake(shares: string): Promise<boolean> {
-    const amount = parseUnits(shares);
-    const { pool } = await this.getContracts();
-    const data = pool.requestWithdrawal(amount).encodeABI();
-    return this.sendTx("Request withdrawal", {
-      to: this.network.contracts.depositPool,
-      data,
+    return this.runTx("Request withdrawal", async () => {
+      const amount = parseUnits(shares);
+      const { pool } = await this.getContracts();
+      return {
+        to: this.network.contracts.depositPool,
+        data: pool.requestWithdrawal(amount).encodeABI(),
+      };
     });
   }
 
   /** Claim the oldest ready withdrawal request (FIFO). */
   async claim(): Promise<boolean> {
-    const { pool } = await this.getContracts();
-    const data = pool.claimWithdrawal().encodeABI();
-    return this.sendTx("Claim withdrawal", {
-      to: this.network.contracts.depositPool,
-      data,
+    return this.runTx("Claim withdrawal", async () => {
+      const { pool } = await this.getContracts();
+      return { to: this.network.contracts.depositPool, data: pool.claimWithdrawal().encodeABI() };
     });
   }
 
   /** Cancel a pending withdrawal request and unlock its shares. */
   async cancel(requestId: number): Promise<boolean> {
-    const { pool } = await this.getContracts();
-    const data = pool.cancelWithdrawal(requestId).encodeABI();
-    return this.sendTx("Cancel withdrawal", {
-      to: this.network.contracts.depositPool,
-      data,
+    return this.runTx("Cancel withdrawal", async () => {
+      const { pool } = await this.getContracts();
+      return {
+        to: this.network.contracts.depositPool,
+        data: pool.cancelWithdrawal(requestId).encodeABI(),
+      };
     });
+  }
+
+  /**
+   * Handle account switches made inside the wallet extension. The provider
+   * may not support events — the listener is best-effort.
+   */
+  private watchAccountChanges(provider: ExtensionProvider): void {
+    provider.on?.("accountsChanged", (accounts) => {
+      const next = Array.isArray(accounts) ? (accounts[0] as string | undefined) : undefined;
+      if (!next) {
+        this.disconnect();
+        return;
+      }
+      if (this.account && next !== this.account.address) {
+        runInAction(() => {
+          this.account = {
+            address: next,
+            qrlBalance: 0n,
+            shares: 0n,
+            lockedShares: 0n,
+            qrlValue: 0n,
+          };
+          this.withdrawals = [];
+        });
+        this.finalizedRequests.clear();
+        void this.refreshAccount(next);
+      }
+    });
+  }
+
+  /** Same endpoint myqrlwallet-frontend uses for its USD figures. */
+  private async fetchQrlPrice(): Promise<void> {
+    try {
+      const res = await fetch(`${this.network.explorer}/api/overview`);
+      const data = (await res.json()) as {
+        currentPrice?: unknown;
+        priceChange24h?: unknown;
+      };
+      if (typeof data.currentPrice === "number" && data.currentPrice > 0) {
+        runInAction(() => {
+          this.qrlPrice = data.currentPrice as number;
+          this.qrlPriceChange24h =
+            typeof data.priceChange24h === "number" ? data.priceChange24h : null;
+        });
+      }
+    } catch {
+      // Price is cosmetic — keep the last known value on failure.
+    }
   }
 
   private async getWeb3(): Promise<Web3Instance> {
@@ -297,33 +377,36 @@ export class PoolStore {
     return this.web3Instance;
   }
 
-  private async getContracts() {
-    const web3 = await this.getWeb3();
-    const { contracts } = this.network;
-    return {
-      pool: new web3.qrl.Contract(
-        DepositPoolV2ABI as unknown as ContractAbi,
-        contracts.depositPool,
-      ).methods as unknown as DepositPoolMethods,
-      stqrl: new web3.qrl.Contract(
-        StQRLV2ABI as unknown as ContractAbi,
-        contracts.stQRL,
-      ).methods as unknown as StQrlMethods,
-      validators: new web3.qrl.Contract(
-        ValidatorManagerABI as unknown as ContractAbi,
-        contracts.validatorManager,
-      ).methods as unknown as ValidatorManagerMethods,
-    };
+  private async getContracts(): Promise<Contracts> {
+    if (!this.contracts) {
+      const web3 = await this.getWeb3();
+      const { contracts } = this.network;
+      this.contracts = {
+        pool: new web3.qrl.Contract(
+          DepositPoolV2ABI as unknown as ContractAbi,
+          contracts.depositPool,
+        ).methods as unknown as DepositPoolMethods,
+        stqrl: new web3.qrl.Contract(
+          StQRLV2ABI as unknown as ContractAbi,
+          contracts.stQRL,
+        ).methods as unknown as StQrlMethods,
+        validators: new web3.qrl.Contract(
+          ValidatorManagerABI as unknown as ContractAbi,
+          contracts.validatorManager,
+        ).methods as unknown as ValidatorManagerMethods,
+      };
+    }
+    return this.contracts;
   }
 
   private async refreshPool(): Promise<void> {
     const { pool, validators } = await this.getContracts();
     const [status, rewards, minDeposit, paused, validatorStats] = await Promise.all([
-      pool.getPoolStatus().call() as Promise<Record<string, unknown>>,
-      pool.getRewardStats().call() as Promise<Record<string, unknown>>,
+      pool.getPoolStatus().call(),
+      pool.getRewardStats().call(),
       pool.minDeposit().call(),
       pool.paused().call(),
-      validators.getStats().call() as Promise<Record<string, unknown>>,
+      validators.getStats().call(),
     ]);
 
     runInAction(() => {
@@ -346,6 +429,32 @@ export class PoolStore {
     });
   }
 
+  private async fetchWithdrawalRequest(
+    pool: DepositPoolMethods,
+    address: string,
+    id: number,
+  ): Promise<WithdrawalRequestView> {
+    const cached = this.finalizedRequests.get(id);
+    if (cached) return cached;
+
+    const [live, stored] = await Promise.all([
+      pool.getWithdrawalRequest(address, id).call(),
+      pool.withdrawalRequests(address, id).call(),
+    ]);
+    const view: WithdrawalRequestView = {
+      id,
+      shares: asBig(live.shares),
+      qrlPayout: asBig(stored.qrlAmount),
+      requestBlock: asBig(live.requestBlock),
+      canClaim: Boolean(live.canClaim),
+      blocksRemaining: asBig(live.blocksRemaining),
+      claimed: Boolean(live.claimed),
+    };
+    // Claimed requests (and cancelled ones, zeroed with shares=0) never change.
+    if (view.claimed || view.shares === 0n) this.finalizedRequests.set(id, view);
+    return view;
+  }
+
   private async refreshAccount(address: string): Promise<void> {
     const web3 = await this.getWeb3();
     const { pool, stqrl } = await this.getContracts();
@@ -355,21 +464,20 @@ export class PoolStore {
       stqrl.balanceOf(address).call(),
       stqrl.lockedSharesOf(address).call(),
       stqrl.getQRLValue(address).call(),
-      pool.getWithdrawalRequestCount(address).call() as Promise<
-        Record<string, unknown>
-      >,
+      pool.getWithdrawalRequestCount(address).call(),
     ]);
 
     const total = Number(asBig(counts.total));
     const requests = await Promise.all(
       Array.from({ length: total }, (_, id) =>
-        (pool.getWithdrawalRequest(address, id).call() as Promise<
-          Record<string, unknown>
-        >).then((r) => ({ id, r })),
+        this.fetchWithdrawalRequest(pool, address, id),
       ),
     );
 
     runInAction(() => {
+      // The user may have disconnected or switched accounts while we were
+      // fetching — don't resurrect stale state.
+      if (!this.account || this.account.address !== address) return;
       this.account = {
         address,
         qrlBalance: asBig(qrlBalance),
@@ -377,25 +485,18 @@ export class PoolStore {
         lockedShares: asBig(lockedShares),
         qrlValue: asBig(qrlValue),
       };
-      this.withdrawals = requests
-        .map(({ id, r }) => ({
-          id,
-          shares: asBig(r.shares),
-          qrlValue: asBig(r.currentQRLValue),
-          requestBlock: asBig(r.requestBlock),
-          canClaim: Boolean(r.canClaim),
-          blocksRemaining: asBig(r.blocksRemaining),
-          claimed: Boolean(r.claimed),
-        }))
-        // Cancelled requests are zeroed out on-chain — hide them.
-        .filter((w) => w.shares > 0n);
+      // Cancelled requests are zeroed on-chain — hide them.
+      this.withdrawals = requests.filter((w) => w.shares > 0n);
     });
   }
 
-  private async sendTx(
+  /** Build and send a transaction, owning the shared tx-status slot. */
+  private async runTx(
     label: string,
-    params: { to: string; value?: bigint; data: string },
+    build: () => Promise<{ to: string; value?: bigint; data: string }>,
   ): Promise<boolean> {
+    if (this.tx.state === "pending") return false; // one transaction at a time
+
     const provider = this.provider;
     const from = this.account?.address;
     if (!provider || !from) {
@@ -405,6 +506,7 @@ export class PoolStore {
 
     this.tx = { state: "pending", label, txHash: null, error: null };
     try {
+      const params = await build();
       const web3 = await this.getWeb3();
       const value = params.value ?? 0n;
 
@@ -468,9 +570,9 @@ export class PoolStore {
 
   private async waitForReceipt(txHash: string): Promise<unknown | null> {
     const web3 = await this.getWeb3();
-    // QRL blocks are ~60 s; poll every 5 s for up to 10 minutes.
-    for (let attempt = 0; attempt < 120; attempt++) {
-      await new Promise((resolve) => setTimeout(resolve, 5_000));
+    // QRL blocks are ~60 s; poll every 10 s for up to 10 minutes.
+    for (let attempt = 0; attempt < 60; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 10_000));
       try {
         const receipt = await web3.qrl.getTransactionReceipt(txHash);
         if (receipt) return receipt;
