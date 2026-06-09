@@ -1245,8 +1245,11 @@ contract DepositPoolV2Test is Test {
         // though stakedQRL inflates totalPooledQRL.
         vm.deal(address(pool), 5 ether);
 
-        pool.emergencyWithdraw(owner, 5 ether);
+        // Recover to a fresh EOA (starts at zero balance, can receive ETH).
+        address recipient = address(0xBEEF);
+        pool.emergencyWithdraw(recipient, 5 ether);
         assertEq(address(pool).balance, 0);
+        assertEq(recipient.balance, 5 ether);
     }
 
     // =========================================================================
