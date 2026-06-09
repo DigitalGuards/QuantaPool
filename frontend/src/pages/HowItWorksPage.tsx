@@ -28,13 +28,13 @@ function Section({
   return (
     <Card
       className={
-        accent === "secondary" ? "border-l-2 border-l-secondary" : "border-l-2 border-l-[#4aafff]"
+        accent === "secondary" ? "border-l-2 border-l-secondary" : "border-l-2 border-l-blue-accent"
       }
     >
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
           <Icon
-            className={accent === "secondary" ? "h-5 w-5 text-secondary" : "h-5 w-5 text-[#4aafff]"}
+            className={accent === "secondary" ? "h-5 w-5 text-secondary" : "h-5 w-5 text-blue-accent"}
           />
           {title}
         </CardTitle>
@@ -144,7 +144,7 @@ export function HowItWorksPage() {
           </li>
         </ul>
         <p>
-          You can audit all three at any time on the <Link to="/stats" className="text-[#4aafff] hover:underline">Stats page</Link> or
+          You can audit all three at any time on the <Link to="/stats" className="text-blue-accent hover:underline">Stats page</Link> or
           directly on the block explorer.
         </p>
       </Section>
@@ -181,7 +181,7 @@ export function HowItWorksPage() {
             href="https://qrlwallet.com"
             target="_blank"
             rel="noreferrer"
-            className="text-[#4aafff] hover:underline"
+            className="text-blue-accent hover:underline"
           >
             MyQRLWallet
           </a>

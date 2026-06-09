@@ -7,10 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/UI/Card";
 import { AmountInput } from "@/components/AmountInput";
 import { StatsBar } from "@/components/StatsBar";
 import { useStore } from "@/stores/store";
-import { formatAmount, formatRate, parseUnits } from "@/utils/format";
-
-/** Keep a little native QRL aside for gas when the user hits Max. */
-const GAS_RESERVE = 5n * 10n ** 15n; // 0.005 QRL
+import { formatAmount, formatRate, formatUsd, parseUnits } from "@/utils/format";
 
 const FAQ_ITEMS: { question: string; answer: string }[] = [
   {
@@ -61,11 +58,7 @@ export const StakePage = observer(() => {
     }
   }, [amount]);
 
-  const stakeBalance = account
-    ? account.qrlBalance > GAS_RESERVE
-      ? account.qrlBalance - GAS_RESERVE
-      : 0n
-    : null;
+  const stakeBalance = poolStore.stakeableBalance;
 
   const validationError = useMemo(() => {
     if (!account || !amount) return null;
@@ -185,7 +178,7 @@ export const StakePage = observer(() => {
 
         {/* Position */}
         {account && (
-          <Card className="border-l-2 border-l-[#4aafff]">
+          <Card className="border-l-2 border-l-blue-accent">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Your position</CardTitle>
             </CardHeader>
@@ -196,12 +189,22 @@ export const StakePage = observer(() => {
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Current value</span>
-                <span className="font-medium">{formatAmount(account.qrlValue)} QRL</span>
+                <span className="font-medium">
+                  {formatAmount(account.qrlValue)} QRL
+                  {(() => {
+                    const usd = poolStore.usdValue(account.qrlValue);
+                    return usd !== null ? (
+                      <span className="ml-1 text-xs font-normal text-muted-foreground">
+                        ≈ {formatUsd(usd)}
+                      </span>
+                    ) : null;
+                  })()}
+                </span>
               </div>
               {account.lockedShares > 0n && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Locked in withdrawals</span>
-                  <Link to="/withdrawals" className="text-[#4aafff] hover:underline">
+                  <Link to="/withdrawals" className="text-blue-accent hover:underline">
                     {formatAmount(account.lockedShares)} stQRL
                   </Link>
                 </div>
@@ -219,7 +222,7 @@ export const StakePage = observer(() => {
       <section className="mx-auto max-w-3xl pb-8">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-semibold">FAQ</h2>
-          <Link to="/how-it-works" className="text-sm text-[#4aafff] hover:underline">
+          <Link to="/how-it-works" className="text-sm text-blue-accent hover:underline">
             Read the full guide →
           </Link>
         </div>

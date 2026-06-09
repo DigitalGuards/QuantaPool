@@ -43,7 +43,8 @@ export const WithdrawalsPage = observer(() => {
     parsedShares !== null &&
     parsedShares > 0n &&
     !validationError &&
-    poolStore.tx.state !== "pending";
+    poolStore.tx.state !== "pending" &&
+    !(poolStore.pool?.paused ?? false);
 
   const onRequest = async () => {
     if (!canRequest) return;
@@ -124,6 +125,12 @@ export const WithdrawalsPage = observer(() => {
                 </div>
               </div>
 
+              {poolStore.pool?.paused && (
+                <p className="text-sm text-secondary">
+                  Withdrawal requests are temporarily paused by the protocol.
+                </p>
+              )}
+
               <Button
                 className="w-full"
                 size="lg"
@@ -141,7 +148,7 @@ export const WithdrawalsPage = observer(() => {
 
         {/* Claim */}
         <TabsContent value="claim">
-          <Card className="border-l-2 border-l-[#4aafff]">
+          <Card className="border-l-2 border-l-blue-accent">
             <CardHeader className="pb-4">
               <CardTitle className="text-xl">Claim</CardTitle>
               <CardDescription>
@@ -162,8 +169,8 @@ export const WithdrawalsPage = observer(() => {
                     >
                       <div>
                         <p className="font-medium">
-                          {formatAmount(request.shares)} stQRL → ≈{" "}
-                          {formatAmount(request.qrlValue)} QRL
+                          {formatAmount(request.shares)} stQRL →{" "}
+                          {formatAmount(request.qrlPayout)} QRL
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {request.canClaim ? (

@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/UI/Card";
 import { Skeleton } from "@/components/UI/Skeleton";
 import { useStore } from "@/stores/store";
 import { getExplorerAddressUrl, VALIDATOR_STAKE_QRL } from "@/config/networks";
-import { formatAmount, formatRate, shortenAddress } from "@/utils/format";
+import { formatAmount, formatRate, formatUsd, shortenAddress } from "@/utils/format";
 
 function Row({ label, value }: { label: string; value: React.ReactNode | null }) {
   return (
@@ -35,7 +35,14 @@ export const StatsPage = observer(() => {
           <CardContent className="space-y-2">
             <Row
               label="Total pooled QRL"
-              value={pool ? `${formatAmount(pool.totalPooled)} QRL` : null}
+              value={
+                pool
+                  ? `${formatAmount(pool.totalPooled)} QRL${(() => {
+                      const usd = poolStore.usdValue(pool.totalPooled);
+                      return usd !== null ? ` (≈ ${formatUsd(usd)})` : "";
+                    })()}`
+                  : null
+              }
             />
             <Row
               label="Total stQRL shares"
@@ -68,7 +75,7 @@ export const StatsPage = observer(() => {
           </CardContent>
         </Card>
 
-        <Card className="border-l-2 border-l-[#4aafff]">
+        <Card className="border-l-2 border-l-blue-accent">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Validators</CardTitle>
           </CardHeader>
@@ -91,7 +98,7 @@ export const StatsPage = observer(() => {
           </CardContent>
         </Card>
 
-        <Card className="border-l-2 border-l-[#4aafff]">
+        <Card className="border-l-2 border-l-blue-accent">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Rewards</CardTitle>
           </CardHeader>
@@ -131,7 +138,7 @@ export const StatsPage = observer(() => {
                     href={getExplorerAddressUrl(address)}
                     target="_blank"
                     rel="noreferrer"
-                    className="font-mono text-xs text-[#4aafff] hover:underline"
+                    className="font-mono text-xs text-blue-accent hover:underline"
                   >
                     {shortenAddress(address, 6)}
                   </a>
