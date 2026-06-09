@@ -91,9 +91,25 @@ Handles deposits, withdrawals, and reward synchronization.
 
 **Trustless Reward Sync:**
 - No oracle needed for reward detection
-- `_syncRewards()` compares contract balance to expected
+- `_syncRewards()` reconciles `address(this).balance + stakedQRL` against `totalPooledQRL`
 - Balance increase = rewards, decrease = slashing
 - EIP-4895 withdrawals automatically credit the contract
+- `stakedQRL` tracks principal forwarded to the beacon deposit contract by the
+  real `fundValidator()` path, so the outgoing 40k stake is not misread as a
+  slashing event. When exit proceeds return, the owner calls
+  `recordValidatorExit(amount)` to settle that principal back into the
+  on-contract balance (otherwise the next sync would double-count it as rewards).
+
+> **Known limitation (production):** the balance-diff sync is fully trustless
+> only while staked QRL sits in the contract (`fundValidatorMVP`) or while a
+> validator's funds are entirely off-contract (`fundValidator` + `stakedQRL`).
+> It cannot observe a *live* validator's accruing beacon balance, inactivity
+> leak, or slashing until those amounts are swept on-chain via EIP-4895 — and
+> the principal/reward split on return depends on the owner calling
+> `recordValidatorExit()`. A fully self-custodial production reward mechanism
+> over live beacon balances will require either periodic beacon-state input or
+> an automated exit-settlement path. This is acceptable for the MVP/testnet
+> trust model (single trusted operator) but must be hardened before mainnet.
 
 **Key Parameters:**
 - `WITHDRAWAL_DELAY`: 128 blocks (~2 hours on QRL v2 testnet at ~60s/block, verified)
@@ -157,13 +173,13 @@ When slashing occurs:
 | Block time | ~12s | ~60s |
 | Signature scheme | ECDSA | Dilithium (ML-DSA-87) |
 | Pubkey size | 48 bytes | 2,592 bytes |
-| Signature size | 96 bytes | 4,595 bytes |
+| Signature size | 96 bytes | 4,627 bytes |
 
 ## Test Coverage
 
-**Unit (Foundry, `contracts/test/`):** 178 tests, all green.
+**Unit (Foundry, `contracts/test/`):** 195 tests, all green.
 - `stQRL-v2.t.sol`: 55 tests (shares, conversions, rewards, slashing)
-- `DepositPool-v2.t.sol`: 68 tests (deposits, withdrawals, sync, access control)
+- `DepositPool-v2.t.sol`: 85 tests (deposits, withdrawals, sync, off-contract stake accounting, access control)
 - `ValidatorManager.t.sol`: 55 tests (lifecycle, slashing, batch operations)
 
 **Integration (live testnet, `scripts/integration-test-v2.js`):** 16 phases, all verified against the deployed contracts on chainId 1337. Covers deposit/mint, reward sync via EIP-4895-style balance donation, withdrawal request → 128-block delay → reserve funding → claim, pause/unpause, revert paths, validator lifecycle, QRC-20 allowance, batch activation, cancel. See `docs/V2-DEPLOYMENT-STATUS.md` for the phase matrix and current live state.

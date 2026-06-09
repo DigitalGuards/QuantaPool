@@ -24,16 +24,21 @@ pragma hyperion >=0.0;
  *   the difference to rewards (positive) or slashing (negative).
  *
  * Balance Accounting:
- *   contractBalance = totalPooledQRL + withdrawalReserve
+ *   contractBalance + stakedQRL = totalPooledQRL + withdrawalReserve
  *
- *   - totalPooledQRL: All QRL under pool management (buffered + rewards)
+ *   - totalPooledQRL: All QRL under pool management (buffered + staked + rewards)
  *     This is what stQRL token tracks. Includes buffered deposits waiting
- *     to fund validators, plus any rewards that arrive via EIP-4895.
+ *     to fund validators, principal staked off-contract, plus any rewards
+ *     that arrive via EIP-4895.
+ *   - stakedQRL: principal forwarded to the beacon deposit contract by the
+ *     real fundValidator() path. It lives off-contract but is still pooled,
+ *     so _syncRewards() adds it back when reconciling the balance.
  *   - withdrawalReserve: QRL earmarked for pending withdrawals (not pooled)
  *
- * For MVP (testnet), funded validators keep QRL in this contract.
- * For production, QRL goes to beacon deposit contract and returns
- * when validators exit.
+ * For MVP (testnet), fundValidatorMVP keeps QRL in this contract and stakedQRL
+ * stays zero. For production, fundValidator sends QRL to the beacon deposit
+ * contract (incrementing stakedQRL); it returns when validators exit, at which
+ * point the owner calls recordValidatorExit() to settle the accounting.
  */
 
 interface IstQRL {
@@ -153,6 +158,17 @@ contract DepositPoolV2 {
     /// @notice Total slashing losses (cumulative, for stats)
     uint256 public totalSlashingLosses;
 
+    /// @notice QRL principal forwarded to the beacon deposit contract that is
+    /// staked off-contract (not in address(this).balance) but still under
+    /// protocol management.
+    /// @dev Only the real beacon path (fundValidator) moves QRL off-contract,
+    ///      so only it increments this. fundValidatorMVP keeps QRL in the
+    ///      contract and leaves stakedQRL untouched. _syncRewards() adds this
+    ///      back when reconciling balance against totalPooledQRL, otherwise
+    ///      funding a validator would look like a slashing event. The owner
+    ///      decrements it via recordValidatorExit() when exit proceeds return.
+    uint256 public stakedQRL;
+
     // =============================================================
     //                          EVENTS
     // =============================================================
@@ -168,6 +184,8 @@ contract DepositPoolV2 {
     event SlashingDetected(uint256 lossAmount, uint256 newTotalPooled, uint256 blockNumber);
 
     event ValidatorFunded(uint256 indexed validatorId, bytes pubkey, uint256 amount);
+
+    event ValidatorExitRecorded(uint256 amount, uint256 remainingStaked);
 
     event WithdrawalReserveFunded(uint256 amount);
     event WithdrawalCancelled(address indexed user, uint256 indexed requestId, uint256 shares);
@@ -205,6 +223,7 @@ contract DepositPoolV2 {
     error StQRLAlreadySet();
     error InvalidWithdrawalIndex();
     error ExceedsRecoverableAmount();
+    error ExceedsStakedAmount();
 
     // =============================================================
     //                         MODIFIERS
@@ -484,24 +503,33 @@ contract DepositPoolV2 {
      * @dev Internal reward sync logic
      *
      * Balance accounting:
-     *   The contract holds: bufferedQRL + rewards/staked QRL + withdrawalReserve
+     *   On-contract QRL = bufferedQRL + rewards + withdrawalReserve
+     *   Off-contract QRL = stakedQRL (principal sent to the beacon deposit
+     *     contract via fundValidator; still under protocol management)
      *   withdrawalReserve is earmarked for pending withdrawals (not pooled)
-     *   actualTotalPooled = balance - withdrawalReserve
+     *   actualTotalPooled = balance + stakedQRL - withdrawalReserve
      *
      * If actualTotalPooled > previousPooled → rewards arrived
      * If actualTotalPooled < previousPooled → slashing occurred
      *
-     * Note: For MVP (fundValidatorMVP), staked QRL stays in contract.
-     * For production (fundValidator), staked QRL goes to beacon deposit contract
-     * and returns via EIP-4895 withdrawals when validators exit.
+     * Note: For MVP (fundValidatorMVP), staked QRL stays in the contract and
+     * stakedQRL is zero, so this reduces to balance - withdrawalReserve.
+     * For production (fundValidator), staked QRL leaves for the beacon deposit
+     * contract; adding stakedQRL back keeps the funding from registering as a
+     * slashing event. When exit proceeds return via EIP-4895, the owner calls
+     * recordValidatorExit() to move that principal back from stakedQRL into the
+     * on-contract balance so it is not double-counted as rewards.
      */
     function _syncRewards() internal {
         if (address(stQRL) == address(0)) return;
 
-        uint256 currentBalance = address(this).balance;
+        // Include off-contract staked principal so beacon deposits are not
+        // mistaken for slashing. bufferedQRL + rewards live in balance;
+        // stakedQRL lives at the beacon deposit contract.
+        uint256 currentBalance = address(this).balance + stakedQRL;
 
         // Total pooled = everything except withdrawal reserve
-        // This includes: bufferedQRL + any rewards that arrived via EIP-4895
+        // This includes: bufferedQRL + stakedQRL + any rewards via EIP-4895
         uint256 actualTotalPooled;
         if (currentBalance > withdrawalReserve) {
             actualTotalPooled = currentBalance - withdrawalReserve;
@@ -541,7 +569,7 @@ contract DepositPoolV2 {
      * @notice Fund a validator with beacon chain deposit
      * @dev Only owner can call. Sends VALIDATOR_STAKE to beacon deposit contract.
      * @param pubkey Dilithium public key (2592 bytes)
-     * @param withdrawal_credentials Must point to this contract (0x01 + 11 zero bytes + address)
+     * @param withdrawal_credentials Must point to this contract (0x00 + 11 zero bytes + address)
      * @param signature ML-DSA-87 signature (4627 bytes)
      * @param deposit_data_root SSZ hash of deposit data
      * @return validatorId The new validator's ID
@@ -574,6 +602,10 @@ contract DepositPoolV2 {
         if (actualCredentials != expectedCredentials) revert InvalidWithdrawalCredentials();
 
         bufferedQRL -= VALIDATOR_STAKE;
+        // Principal leaves the contract for the beacon deposit contract but
+        // stays under protocol management. Track it so _syncRewards() does not
+        // read the outgoing transfer as a slashing loss.
+        stakedQRL += VALIDATOR_STAKE;
         validatorId = validatorCount++;
 
         // Call beacon deposit contract
@@ -599,6 +631,32 @@ contract DepositPoolV2 {
         // QRL stays in contract, simulating staked funds
         emit ValidatorFunded(validatorId, "", VALIDATOR_STAKE);
         return validatorId;
+    }
+
+    /**
+     * @notice Record that staked principal has returned from the beacon chain
+     * @dev Validator exit proceeds (principal) arrive via EIP-4895 and land in
+     *      address(this).balance. Without this call, the next _syncRewards()
+     *      would see both the higher balance AND the still-elevated stakedQRL,
+     *      double-counting the principal as fresh rewards. The owner calls this
+     *      to move `amount` from the off-contract stakedQRL accumulator back
+     *      into on-contract accounting, leaving totalPooledQRL unchanged.
+     *
+     *      Any beacon rewards earned on top of the principal are NOT recorded
+     *      here — they remain on the balance and are correctly attributed as
+     *      rewards by the next _syncRewards().
+     *
+     *      MVP note: fundValidatorMVP never increments stakedQRL, so this is
+     *      only relevant once the real beacon path (fundValidator) is in use.
+     * @param amount Principal returned from the beacon chain (<= stakedQRL)
+     */
+    function recordValidatorExit(uint256 amount) external onlyOwner {
+        if (amount == 0) revert ZeroAmount();
+        if (amount > stakedQRL) revert ExceedsStakedAmount();
+
+        stakedQRL -= amount;
+
+        emit ValidatorExitRecorded(amount, stakedQRL);
     }
 
     /**
@@ -751,8 +809,12 @@ contract DepositPoolV2 {
         if (to == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
 
-        // Calculate recoverable amount: balance - pooled funds - withdrawal reserve
-        uint256 totalProtocolFunds = (address(stQRL) != address(0) ? stQRL.totalPooledQRL() : 0) + withdrawalReserve;
+        // Calculate recoverable amount: balance - on-contract pooled funds - withdrawal reserve.
+        // totalPooledQRL includes stakedQRL, which lives off-contract at the beacon
+        // deposit contract, so it must be excluded when comparing against this balance.
+        uint256 pooled = address(stQRL) != address(0) ? stQRL.totalPooledQRL() : 0;
+        uint256 onContractPooled = pooled > stakedQRL ? pooled - stakedQRL : 0;
+        uint256 totalProtocolFunds = onContractPooled + withdrawalReserve;
         uint256 currentBalance = address(this).balance;
         uint256 recoverableAmount = currentBalance > totalProtocolFunds ? currentBalance - totalProtocolFunds : 0;
 
