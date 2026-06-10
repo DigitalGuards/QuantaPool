@@ -1,6 +1,18 @@
 .env
+.env.*
 .claude
 CLAUDE.md
+
+# Terraform state and secrets — never commit
+*.tfvars
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Generated from terraform output (real host IPs); template is tracked
+infrastructure/ansible/inventory.ini
+
 node_modules/
 artifacts/
 build/

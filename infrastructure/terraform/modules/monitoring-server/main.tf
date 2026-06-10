@@ -1,3 +1,12 @@
+terraform {
+  required_providers {
+    hcloud = {
+      source  = "hetznercloud/hcloud"
+      version = "~> 1.45"
+    }
+  }
+}
+
 # QuantaPool Monitoring Server Module
 # Deploys Prometheus + Grafana + Alertmanager
 
@@ -81,22 +90,17 @@ variable "qrl_rpc_url" {
 }
 
 variable "stqrl_address" {
-  description = "stQRL contract address"
+  description = "stQRLv2 contract address"
   type        = string
 }
 
 variable "deposit_pool_address" {
-  description = "DepositPool contract address"
+  description = "DepositPoolV2 contract address"
   type        = string
 }
 
-variable "rewards_oracle_address" {
-  description = "RewardsOracle contract address"
-  type        = string
-}
-
-variable "operator_registry_address" {
-  description = "OperatorRegistry contract address"
+variable "validator_manager_address" {
+  description = "ValidatorManager contract address"
   type        = string
 }
 
@@ -136,8 +140,7 @@ data "template_file" "cloud_init" {
           QRL_RPC_URL=${var.qrl_rpc_url}
           STQRL_ADDRESS=${var.stqrl_address}
           DEPOSIT_POOL_ADDRESS=${var.deposit_pool_address}
-          REWARDS_ORACLE_ADDRESS=${var.rewards_oracle_address}
-          OPERATOR_REGISTRY_ADDRESS=${var.operator_registry_address}
+          VALIDATOR_MANAGER_ADDRESS=${var.validator_manager_address}
 
       - path: /etc/ssh/sshd_config.d/hardening.conf
         permissions: '0644'
@@ -190,7 +193,7 @@ resource "hcloud_server" "monitoring" {
   name        = var.name
   server_type = var.server_type
   image       = local.image
-  datacenter  = var.datacenter
+  location    = var.datacenter
   ssh_keys    = var.ssh_key_ids
   labels      = var.labels
   user_data   = data.template_file.cloud_init.rendered
