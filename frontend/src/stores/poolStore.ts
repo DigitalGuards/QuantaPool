@@ -38,6 +38,13 @@ export interface AccountState {
   shares: bigint;
   /** Shares locked by pending withdrawal requests. */
   lockedShares: bigint;
+  /** Shares that have not yet reached the maturity lock period (v2.3+). */
+  immatureShares: bigint;
+  /**
+   * Block number at which the current immature bucket matures.
+   * 0n if never deposited or the contract does not support this feature.
+   */
+  matureAtBlock: bigint;
   /** Current QRL value of all shares. */
   qrlValue: bigint;
   /**
@@ -112,6 +119,8 @@ interface DepositPoolMethods {
 interface StQrlMethods {
   balanceOf(address: string): ContractCall<unknown>;
   lockedSharesOf(address: string): ContractCall<unknown>;
+  immatureSharesOf(address: string): ContractCall<unknown>;
+  matureAtBlockOf(address: string): ContractCall<unknown>;
   getQRLValue(address: string): ContractCall<unknown>;
 }
 
@@ -178,6 +187,9 @@ export class PoolStore {
   /** The account's staking history, newest first (from DepositPool events). */
   activity: StakingActivity[] = [];
   activityError: string | null = null;
+
+  /** Latest known chain block number, updated on each account refresh (0n when unknown). */
+  currentBlock: bigint = 0n;
 
   tx: TxStatus = IDLE_TX;
 
@@ -276,6 +288,8 @@ export class PoolStore {
           qrlBalance: 0n,
           shares: 0n,
           lockedShares: 0n,
+          immatureShares: 0n,
+          matureAtBlock: 0n,
           qrlValue: 0n,
           completedWithdrawalsCount: 0,
         };
@@ -375,6 +389,8 @@ export class PoolStore {
             qrlBalance: 0n,
             shares: 0n,
             lockedShares: 0n,
+            immatureShares: 0n,
+            matureAtBlock: 0n,
             qrlValue: 0n,
             completedWithdrawalsCount: 0,
           };
@@ -559,13 +575,27 @@ export class PoolStore {
     const { pool, stqrl } = await this.getContracts();
     void this.fetchActivity(address);
 
-    const [qrlBalance, shares, lockedShares, qrlValue, counts] = await Promise.all([
-      web3.qrl.getBalance(address),
-      stqrl.balanceOf(address).call(),
-      stqrl.lockedSharesOf(address).call(),
-      stqrl.getQRLValue(address).call(),
-      pool.getWithdrawalRequestCount(address).call(),
-    ]);
+    // Fetch immature-shares data defensively: v2.2 contract lacks these
+    // methods and will revert, so each call is individually try/catch'd.
+    const safeImmatureShares = stqrl.immatureSharesOf(address)
+      .call()
+      .catch(() => 0n);
+    const safeMatureAtBlock = stqrl.matureAtBlockOf(address)
+      .call()
+      .catch(() => 0n);
+    const safeBlockNumber = web3.qrl.getBlockNumber().catch(() => 0n);
+
+    const [qrlBalance, shares, lockedShares, qrlValue, counts, immatureShares, matureAtBlock, blockNumber] =
+      await Promise.all([
+        web3.qrl.getBalance(address),
+        stqrl.balanceOf(address).call(),
+        stqrl.lockedSharesOf(address).call(),
+        stqrl.getQRLValue(address).call(),
+        pool.getWithdrawalRequestCount(address).call(),
+        safeImmatureShares,
+        safeMatureAtBlock,
+        safeBlockNumber,
+      ]);
 
     const total = Number(asBig(counts.total));
     const pending = Number(asBig(counts.pending));
@@ -589,9 +619,12 @@ export class PoolStore {
         qrlBalance: asBig(qrlBalance),
         shares: asBig(shares),
         lockedShares: asBig(lockedShares),
+        immatureShares: asBig(immatureShares),
+        matureAtBlock: asBig(matureAtBlock),
         qrlValue: asBig(qrlValue),
         completedWithdrawalsCount: nextIndex,
       };
+      this.currentBlock = asBig(blockNumber);
       // Cancelled requests are zeroed on-chain - hide them.
       this.withdrawals = requests.filter((w) => w.shares > 0n);
     });

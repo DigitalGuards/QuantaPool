@@ -14,7 +14,9 @@ export const WithdrawalsPage = observer(() => {
   const [shares, setShares] = useState("");
 
   const account = poolStore.account;
-  const unlockedShares = account ? account.shares - account.lockedShares : null;
+  const unlockedShares = account
+    ? account.shares - account.lockedShares - account.immatureShares
+    : null;
 
   const parsedShares = useMemo(() => {
     if (!shares) return null;
@@ -95,6 +97,20 @@ export const WithdrawalsPage = observer(() => {
                   Available: {unlockedShares !== null ? formatAmount(unlockedShares) : "-"} stQRL
                 </span>
               </div>
+              {account && account.immatureShares > 0n && (() => {
+                const blocksLeft =
+                  poolStore.currentBlock > 0n && account.matureAtBlock > poolStore.currentBlock
+                    ? account.matureAtBlock - poolStore.currentBlock
+                    : null;
+                return (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {formatAmount(account.immatureShares)} stQRL still maturing
+                    {blocksLeft !== null
+                      ? `, available in ${blocksToTime(blocksLeft, BLOCK_TIME_SECONDS)}`
+                      : ""}
+                  </p>
+                );
+              })()}
               <CardDescription>
                 Withdrawals unlock after {WITHDRAWAL_DELAY_BLOCKS} blocks (
                 {blocksToTime(WITHDRAWAL_DELAY_BLOCKS, BLOCK_TIME_SECONDS)}).

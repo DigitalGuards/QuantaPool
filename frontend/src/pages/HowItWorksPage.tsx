@@ -113,6 +113,11 @@ export function HowItWorksPage() {
       </Section>
 
       <Section icon={Clock} title="Step 3: Unstake whenever you want">
+        <p>
+          Fresh deposits mature for about a day (1536 blocks) before they can be unstaked or
+          transferred, as protection against deposit/withdraw griefing. Top-up deposits fold any
+          not-yet-matured shares into a new bucket and restart that timer for that portion only.
+        </p>
         <ol className="space-y-3">
           {WITHDRAWAL_STEPS.map((step, index) => (
             <li key={step.title} className="flex gap-3">
@@ -164,8 +169,8 @@ export function HowItWorksPage() {
             balance changes; your stQRL is yours, in your own wallet.
           </li>
           <li>
-            <strong>Tested contracts.</strong> The protocol ships with a 178-test Foundry suite
-            covering deposits, withdrawals, reward sync, and slashing scenarios.
+            <strong>Tested contracts.</strong> The protocol ships with an extensive Foundry suite
+            (200+ tests) covering deposits, withdrawals, reward sync, and slashing scenarios.
           </li>
         </ul>
         <p>
