@@ -5,6 +5,7 @@ import { Zap } from "lucide-react";
 import { Button } from "@/components/UI/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/UI/Card";
 import { AmountInput } from "@/components/AmountInput";
+import { ActivityCard } from "@/components/ActivityCard";
 import { StatsBar } from "@/components/StatsBar";
 import { useStore } from "@/stores/store";
 import { formatAmount, formatRate, formatUsd, parseUnits } from "@/utils/format";
@@ -212,6 +213,8 @@ export const StakePage = observer(() => {
             </CardContent>
           </Card>
         )}
+
+        <ActivityCard />
       </section>
 
       <section className="mx-auto max-w-3xl">
