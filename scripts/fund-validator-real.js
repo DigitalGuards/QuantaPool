@@ -1,4 +1,4 @@
-// fund-validator-real.js — broadcast the real pool.fundValidator(...)
+// fund-validator-real.js - broadcast the real pool.fundValidator(...)
 //
 // Prereqs:
 //   1. Run `node scripts/verify-deposit-data.js <deposit_data.json>` first

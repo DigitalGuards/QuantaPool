@@ -38,7 +38,7 @@ const POOL_ABI = [
     view('totalSlashingLosses', 'uint256'),
     view('minDeposit', 'uint256'),
     view('paused', 'bool'),
-    // Events (subset — enough to drive counters)
+    // Events (subset - enough to drive counters)
     evt('Deposited', [
         { name: 'user', type: 'address', indexed: true },
         { name: 'qrlAmount', type: 'uint256', indexed: false },
@@ -242,7 +242,7 @@ class ContractMonitor {
             this.metrics.lastUpdateTimestamp.set(Math.floor(Date.now() / 1000));
 
             console.log(
-                `Metrics collected in ${latency.toFixed(2)}s — ` +
+                `Metrics collected in ${latency.toFixed(2)}s - ` +
                 `block=${blockNumber} pooled=${weiToQrl(totalPooled).toFixed(4)} QRL ` +
                 `shares=${weiToQrl(totalShares).toFixed(4)} rate=${(Number(exchangeRate) / 1e18).toFixed(6)} ` +
                 `validators=${validatorCount}/${vmActive}a`

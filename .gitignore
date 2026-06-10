@@ -3,7 +3,7 @@
 .claude
 CLAUDE.md
 
-# Terraform state and secrets — never commit
+# Terraform state and secrets - never commit
 *.tfvars
 *.tfstate
 *.tfstate.*

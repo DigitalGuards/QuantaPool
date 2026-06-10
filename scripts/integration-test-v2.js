@@ -190,7 +190,7 @@ async function main() {
         const beforeRate = BigInt(await stQRL.methods.getExchangeRate().call());
         const beforeRewards = BigInt((await pool.methods.getRewardStats().call()).totalRewards);
         const donate = 1n * 10n ** 18n;
-        // Send raw QRL to pool address — triggers receive(), bumps balance only
+        // Send raw QRL to pool address - triggers receive(), bumps balance only
         const baseGasPrice = BigInt((await web3.qrl.getGasPrice()) || 1_000_000_000);
         await web3.qrl.sendTransaction({
             type: '0x2',
@@ -216,7 +216,7 @@ async function main() {
         const balShares = BigInt(await stQRL.methods.balanceOf(account.address).call());
         const reqShares = balShares / 2n;
         if (reqShares === 0n) {
-            console.log('  (skipping — no shares to withdraw)');
+            console.log('  (skipping - no shares to withdraw)');
         } else {
             const lockedBefore = BigInt(await stQRL.methods.lockedSharesOf(account.address).call());
             await tx(web3, pool.methods.requestWithdrawal(reqShares.toString()), account, config.contracts.depositPoolV2, `pool.requestWithdrawal(${fmt(reqShares)})`);
@@ -235,7 +235,7 @@ async function main() {
 
     // ===== Phase 4: validator MVP funding (40,000 QRL) =====
     if (phase === 'validator' || phase === 'all') {
-        console.log('\n[4] Validator MVP funding (40,000 QRL — large deposit + register + fund)');
+        console.log('\n[4] Validator MVP funding (40,000 QRL - large deposit + register + fund)');
         const VALIDATOR_STAKE = 40_000n * 10n ** 18n;
         const buffered = BigInt(await pool.methods.bufferedQRL().call());
         const balQRL = BigInt(await web3.qrl.getBalance(account.address));
@@ -369,7 +369,7 @@ async function main() {
         console.log('\n[7] Validator lifecycle (request-exit → mark-exited)');
         const stats0 = await vm.methods.getStats().call();
         if (BigInt(stats0.active) === 0n) {
-            console.log('  (skipping — no active validators; run `validator` phase first)');
+            console.log('  (skipping - no active validators; run `validator` phase first)');
         } else {
             // Grab the first Active validator id by scanning totalValidators.
             const total = BigInt(await vm.methods.totalValidators().call());
@@ -409,13 +409,13 @@ async function main() {
         const counts = await pool.methods.getWithdrawalRequestCount(account.address).call();
         const total = Number(counts.total);
         if (total === 0) {
-            console.log('  (skipping — no withdrawal requests; run `withdraw` phase first)');
+            console.log('  (skipping - no withdrawal requests; run `withdraw` phase first)');
         } else {
             // Fund reserve for the next pending request.
             const nextIdx = Number(await pool.methods.nextWithdrawalIndex(account.address).call());
             const req = await pool.methods.getWithdrawalRequest(account.address, nextIdx.toString()).call();
             if (req.claimed) {
-                console.log(`  (skipping — next request (idx=${nextIdx}) already claimed)`);
+                console.log(`  (skipping - next request (idx=${nextIdx}) already claimed)`);
             } else {
                 const need = BigInt(req.currentQRLValue);
                 const reserveBefore = BigInt(await pool.methods.withdrawalReserve().call());
@@ -447,7 +447,7 @@ async function main() {
                         { match: 'WithdrawalNotReady' }
                     );
                 } else {
-                    ok(`${blocksRemaining} blocks remain — claim would succeed`);
+                    ok(`${blocksRemaining} blocks remain - claim would succeed`);
                 }
             }
         }
@@ -461,7 +461,7 @@ async function main() {
         const counts = await pool.methods.getWithdrawalRequestCount(account.address).call();
         const total = Number(counts.total);
         if (total === 0 || nextIdx >= total) {
-            console.log('  (skipping — no pending claimable request)');
+            console.log('  (skipping - no pending claimable request)');
         } else {
             const req = await pool.methods.getWithdrawalRequest(account.address, nextIdx.toString()).call();
             console.log(`  target: request[${nextIdx}] shares=${fmt(BigInt(req.shares))} qrlAmount=${fmt(BigInt(req.currentQRLValue))} canClaim=${req.canClaim} blocksRemaining=${req.blocksRemaining}`);
@@ -496,7 +496,7 @@ async function main() {
                        - BigInt(await stQRL.methods.lockedSharesOf(account.address).call());
         const amount = 1n * 10n ** 18n; // 1 share
         if (unlocked < amount) {
-            console.log(`  (skipping — need ≥1 unlocked share, have ${fmt(unlocked)})`);
+            console.log(`  (skipping - need ≥1 unlocked share, have ${fmt(unlocked)})`);
             return;
         }
         const lockedBefore = BigInt(await stQRL.methods.lockedSharesOf(account.address).call());
@@ -532,7 +532,7 @@ async function main() {
         const held = BigInt(await stQRL.methods.balanceOf(account.address).call());
         const locked = BigInt(await stQRL.methods.lockedSharesOf(account.address).call());
         if (locked === 0n) {
-            console.log('  (skipping — no locked shares; run `withdraw` phase first)');
+            console.log('  (skipping - no locked shares; run `withdraw` phase first)');
             return;
         }
         const unlocked = held - locked;
@@ -597,7 +597,7 @@ async function main() {
         const amount = 1n * 10n ** 18n; // 1 share
 
         if (held < amount) {
-            console.log(`  (skipping — balance=${fmt(held)} < 1 share)`);
+            console.log(`  (skipping - balance=${fmt(held)} < 1 share)`);
             return;
         }
 

@@ -54,7 +54,7 @@ if (!FUNDER) {
     }
 
     const lines = [
-        `# Scenario 2 test wallets — generated ${new Date().toISOString()}`,
+        `# Scenario 2 test wallets - generated ${new Date().toISOString()}`,
         `# Funder: ${funder.address}`,
         `# Each wallet: ${PER} QRL`,
         '',

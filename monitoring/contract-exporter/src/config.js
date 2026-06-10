@@ -9,7 +9,7 @@ const config = {
     QRL_RPC_URL: process.env.QRL_RPC_URL || 'https://qrlwallet.com/api/qrl-rpc/testnet',
 
     // Contract addresses (Q-prefix format for QRL).
-    // Live v2 testnet deployment (chainId 1337) — override via env in prod.
+    // Live v2 testnet deployment (chainId 1337) - override via env in prod.
     STQRL_ADDRESS: process.env.STQRL_ADDRESS || 'Q09046968aF19E745F4aBa7A9fa5CD946b4E981DB',
     DEPOSIT_POOL_ADDRESS: process.env.DEPOSIT_POOL_ADDRESS || 'Q38F73cb87c60d365fdFA7abF0e534fc1a9D5F9B9',
     VALIDATOR_MANAGER_ADDRESS: process.env.VALIDATOR_MANAGER_ADDRESS || 'Q1b083D7Dc47212DcBc4595249D9384Fa16cE6FC5',
