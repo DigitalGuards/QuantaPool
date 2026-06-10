@@ -1,6 +1,6 @@
-# QuantaPool v2 Testnet Deployment — Status & Handoff
+# QuantaPool v2 Testnet Deployment - Status & Handoff
 
-**Last updated:** 2026-04-14
+**Last updated:** 2026-06-10
 **Branch:** `dev`
 **Network:** QRL v2 testnet, chainId `1337`
 **Deployment revision:** v2.2 (ML-DSA-87 signature length fix; supersedes v2.1 + v2.0, see `REDEPLOY-PLAN.md`)
@@ -18,22 +18,22 @@
 Persisted in `config/testnet-hyperion.json`. All 3 wired (`setStQRL`, `setDepositPool` ×2). Deployer / sole owner: `Q2E13b52fd3cda0a57f9037856B7Df971074e2489`.
 
 **Real validator deposit executed 2026-04-14:**
-- Buffer top-up `pool.deposit(40000)` — tx `0x12e2b96b8f4ac2e80b8246a32af92d047dfdf6dcc3416e52a1dce5751c3fc8c6`
-- `pool.fundValidator(pubkey, creds, sig, root)` — tx `0x61d6f48c7b17187abc3527577f65e6f100eda4ab50161d382e370321fbbd81c0`
+- Buffer top-up `pool.deposit(40000)` - tx `0x12e2b96b8f4ac2e80b8246a32af92d047dfdf6dcc3416e52a1dce5751c3fc8c6`
+- `pool.fundValidator(pubkey, creds, sig, root)` - tx `0x61d6f48c7b17187abc3527577f65e6f100eda4ab50161d382e370321fbbd81c0`
 - 40 000 QRL forwarded to beacon deposit contract `Q4242…`
 - Local beacon (running on `REDACTED`) confirmed `beacon_processed_deposits_total = 1`
 - Validator `0xa40ca760bcc4…` is in the activation queue (`UNKNOWN_STATUS` → eventually `ACTIVE` after several epochs)
 
-**Scenario 2 — end-to-end test of terraform + ansible + user-driven pool + second validator (2026-04-15):**
+**Scenario 2 - end-to-end test of terraform + ansible + user-driven pool + second validator (2026-04-15):**
 - Terraform provisioned 2 Hetzner VPS: primary `138.201.152.117`, backup `159.69.125.89` (fsn1, cpx32 / cpx22). Monitoring module disabled (Hetzner 2-primary-IP quota on new project; reusing node #1 monitoring).
 - Ansible deployed full stack on both (gqrl + qrysm-beacon + qrysm-validator). Drift fixes landed in commits `251e1db`, `ba18717`.
-- Funded 8 throwaway user wallets (mnemonics in `.env.scenario2`, gitignored) via `scripts/fanout-test-wallets.js` — 40100 QRL total.
+- Funded 8 throwaway user wallets (mnemonics in `.env.scenario2`, gitignored) via `scripts/fanout-test-wallets.js` - 40100 QRL total.
 - 8 `pool.deposit()` calls (`scripts/scenario2-deposit.js`) → buffer 0 → 40092 QRL, shares 1:1 (8 txs, all green). Confirmed **overfund is benign**: 92 QRL sat safely alongside the 40k stake.
 - Keystore generated on primary `138.201.152.117` via rebuilt `staking-deposit-cli`. Mnemonic + seed persisted to `/etc/quantapool/validator-mnemonic.txt` (0600) on the host. `verify-deposit-data.js` passed all checks.
-- `pool.fundValidator(pubkey, creds, sig, root)` — tx `0x8fe035435c620faac48ea719d386d2b4b4b77741b576ee7b2274d5ad6d6b2b61`. On-chain: `validatorCount: 1 → 2`, `bufferedQRL: 40092 → 92 QRL`.
+- `pool.fundValidator(pubkey, creds, sig, root)` - tx `0x8fe035435c620faac48ea719d386d2b4b4b77741b576ee7b2274d5ad6d6b2b61`. On-chain: `validatorCount: 1 → 2`, `bufferedQRL: 40092 → 92 QRL`.
 - Keystore imported, `qrysm-validator.service` active. Validator `0xb86185d4fcf4…` now in `UNKNOWN_STATUS`, same ~24h eth1 voting window ahead as validator #1.
 
-### Deprecated (v2.0 + v2.1) — DO NOT interact
+### Deprecated (v2.0 + v2.1) - DO NOT interact
 
 | Rev | Contract | Address | Why orphaned |
 |-----|----------|---------|--------------|
@@ -78,39 +78,41 @@ All phases pass green on live testnet. Run any phase independently.
 | `approve` | `approve` + `transferFrom` (self-spend); infinite-allowance non-decrement | ✓ |
 | `all` | Runs every phase sequentially | use with care (adds state each run) |
 
-Net protocol validation: **the claim paid exactly `qrlAmount=50.5` (the snapshot captured at request time), not the reduced `currentQRLValue=50.436` that the reserve-carve-out briefly implied.** Remaining shareholders kept their rate. The protocol preserves each claimer's original entitlement without diluting the rest — the virtual-offset + request-snapshot design works.
+Net protocol validation: **the claim paid exactly `qrlAmount=50.5` (the snapshot captured at request time), not the reduced `currentQRLValue=50.436` that the reserve-carve-out briefly implied.** Remaining shareholders kept their rate. The protocol preserves each claimer's original entitlement without diluting the rest - the virtual-offset + request-snapshot design works.
 
 ---
 
 ## What's blocked / deferred
 
-### 1. ~~`DEPOSIT_CONTRACT = Q4242…` unverified~~ — **verified** (2026-04-14)
+### 1. ~~`DEPOSIT_CONTRACT = Q4242…` unverified~~ - **verified** (2026-04-14)
 
 Confirmed against `qrysm/config/params/testnet_e2e_config.go:8` and `testdata/e2e_config.yaml:57`. Bytecode is pre-deployed at genesis (`qrysm/runtime/interop/genesis.go`). See `docs/UPSTREAM-FINDINGS.md` for details, including the mainnet address (`Q00000000219ab540356cBB839Cbe05303d7705Fa`).
 
-### 2. ~~Withdrawal-credential prefix byte was wrong~~ — **fixed in v2.1, kept in v2.2**
+### 2. ~~Withdrawal-credential prefix byte was wrong~~ - **fixed in v2.1, kept in v2.2**
 
 Qrysm uses `ExecutionAddressWithdrawalPrefixByte = byte(0)` (`mainnet_config.go:74`). Our `DepositPool-v2.sol` originally hardcoded `bytes1(0x01)` from Ethereum-spec muscle memory. Any real `staking-deposit-cli` deposit would have reverted with `InvalidWithdrawalCredentials` and stuck the stake. Locked in by 9 Foundry tests (`test_FundValidator_AcceptsZeroPrefix` / `RejectsEthereumOnePrefix` / `RejectsWrongContractAddress` / etc.).
 
-### 2b. ~~`SIGNATURE_LENGTH` was wrong~~ — **fixed + redeployed as v2.2 2026-04-14**
+### 2b. ~~`SIGNATURE_LENGTH` was wrong~~ - **fixed + redeployed as v2.2 2026-04-14**
 
 `DepositPool-v2.sol:78` hardcoded `SIGNATURE_LENGTH = 4595`, but qrysm's `crypto/ml_dsa_87/ml_dsa_87t/signature.go` enforces ML-DSA-87 signatures at exactly **4627 bytes**. Any real `fundValidator()` on v2.1 would have reverted with `InvalidSignatureLength` before reaching the beacon contract. Fix bumped the constant to 4627 and updated the 4 Foundry tests that hardcoded the old length. Full suite still **187 pass**. v2.2 live addresses ship the fixed bytecode and have already executed a real `fundValidator()` end-to-end (see "Real validator deposit executed" above).
 
-### 3. ~~Real validator deployment~~ — **done 2026-04-14**
+### 3. ~~Real validator deployment~~ - **done 2026-04-14**
 gqrl + qrysm beacon + qrysm validator running on `REDACTED` under systemd as user `qrlnode`. Beacon fully synced, validator key imported and listening for activation. See `docs/NODE-SETUP.md` for the runbook.
 
-### 4. ~~Monitoring contract-exporter rewrite~~ — **done 2026-04-14**
+### 4. ~~Monitoring contract-exporter rewrite~~ - **done 2026-04-14**
 Rewritten for v2 ABIs. Running on `REDACTED` (docker-compose under `/opt/quantapool/monitoring`). Dashboards live at `https://grafana.REDACTED.nip.io`. After v2.2 redeploy: `pooled=40000 shares=40000 rate=1.0 validators=1`. Discord webhook wired for critical/warning/info receivers; `monitoring/prometheus/rules/*.yml` tuned this session to suppress false positives (`BeaconChainLowPeers` was matching the always-zero `state="Connecting"` bucket; `NetworkInterfaceDown` was firing on the unplugged secondary NIC).
 
 ### 5. Slashing path
-Not testable on the testnet (can't force a validator to be slashed externally). Foundry unit tests in `contracts/test/` cover the `markValidatorSlashed` accounting at the Solidity level. Current qrysm slashing constants are **placeholders** per the QRL team (Discord, 2026-01-25) — snapshot captured in `docs/UPSTREAM-FINDINGS.md` §4 for later diffing.
+Not testable on the testnet (can't force a validator to be slashed externally). Foundry unit tests in `contracts/test/` cover the `markValidatorSlashed` accounting at the Solidity level. Current qrysm slashing constants are **placeholders** per the QRL team (Discord, 2026-01-25) - snapshot captured in `docs/UPSTREAM-FINDINGS.md` §4 for later diffing.
 
 ### 6. Validator activation observation
 Validator `0xa40ca760bcc4…` is in the activation queue. Once it transitions to `ACTIVE`, the validator client will start signing attestations. Need a follow-up integration test that, after activation, polls `validator_statuses{}` and confirms the pool's `_syncRewards()` picks up beacon-chain rewards routed back via the withdrawal address.
 
-### 7. Off-contract stake accounting (`stakedQRL`) — **fixed in source, REQUIRES v2.3 redeploy**
+### 7. Off-contract stake accounting (`stakedQRL`) - **fixed in source, REQUIRES v2.3 redeploy**
 
-The deployed v2.2 `DepositPoolV2` decrements only `bufferedQRL` when `fundValidator()` forwards the 40k stake to the beacon deposit contract; it never adds the off-contract principal back inside `_syncRewards()`. `_syncRewards()` computes `actualTotalPooled = balance − withdrawalReserve`, so the moment a real `fundValidator()` runs, the contract balance is 40k below `totalPooledQRL`. The next `syncRewards()` call (permissionless, and also triggered inside every `requestWithdrawal`/`claimWithdrawal`) emits `SlashingDetected(40000)` and collapses the exchange rate — after which a dust deposit can mint a near-unbounded share count and capture the pool when the stake/rewards return.
+**Update 2026-06-10:** the fix (including the phantom-reward front-run gating below) is merged to `dev` via PR #20 (`c6bae32`, `f4c8d68`). The live v2.2 pool still runs the old bytecode, so the v2.3 redeploy action at the end of this section stands.
+
+The deployed v2.2 `DepositPoolV2` decrements only `bufferedQRL` when `fundValidator()` forwards the 40k stake to the beacon deposit contract; it never adds the off-contract principal back inside `_syncRewards()`. `_syncRewards()` computes `actualTotalPooled = balance − withdrawalReserve`, so the moment a real `fundValidator()` runs, the contract balance is 40k below `totalPooledQRL`. The next `syncRewards()` call (permissionless, and also triggered inside every `requestWithdrawal`/`claimWithdrawal`) emits `SlashingDetected(40000)` and collapses the exchange rate - after which a dust deposit can mint a near-unbounded share count and capture the pool when the stake/rewards return.
 
 **This is the current live state of the v2.2 pool:** the real `fundValidator()` executed on 2026-04-14 means a `syncRewards()` against the live v2.2 `DepositPoolV2` will report a phantom 40k slashing. Do **not** call `syncRewards()` (or trigger it via withdraw) on the live v2.2 pool until redeployed.
 
@@ -122,9 +124,22 @@ The deployed v2.2 `DepositPoolV2` decrements only `bufferedQRL` when `fundValida
 - **Phantom-reward front-run protection:** reward sync is permissionless only while `stakedQRL == 0`. Once principal is off-contract (`stakedQRL > 0`), `syncRewards()` and the implicit sync inside `requestWithdrawal`/`claimWithdrawal` are owner-only. Without this, an exit sweep lands principal in the balance a block before the owner can call `recordValidatorExit()`; an unrestricted sync in that window would book the principal as a phantom *reward* (the inverse of the slashing bug above), spike the exchange rate, and let a front-runner snapshot the inflated value into a withdrawal and drain the pool. Gating sync during that window makes settlement + reward recognition owner-sequenced and un-frontrunnable. The MVP path (`stakedQRL == 0`) stays fully permissionless.
 - 13 new Foundry regression tests in `DepositPool-v2.t.sol`: the `OFF-CONTRACT STAKE ACCOUNTING` block (no-phantom-slashing after funding, rewards-while-staked, exit settlement, access control, emergency-withdraw carve-out) plus a `PHANTOM-REWARD FRONT-RUN PROTECTION` block (permissionless-when-unstaked, owner-only-while-staked, front-run blocked during exit, permissionless resumes after settlement, owner still recognizes genuine rewards). Suite now **200 pass**.
 
-`fundValidatorMVP()` is unaffected — it keeps QRL in the contract and never touches `stakedQRL`, so its sync stays permissionless.
+`fundValidatorMVP()` is unaffected - it keeps QRL in the contract and never touches `stakedQRL`, so its sync stays permissionless.
 
-**Action:** redeploy as v2.3 (same 5-tx deploy+wire flow) before exercising the real beacon path again — i.e. before the QRL-software-upgrade validator testing. The MVP-mode testnet flows on v2.2 remain safe in the meantime as long as `fundValidator()` (real path) is not used.
+**Action:** redeploy as v2.3 (same 5-tx deploy+wire flow) before exercising the real beacon path again - i.e. before the QRL-software-upgrade validator testing. The MVP-mode testnet flows on v2.2 remain safe in the meantime as long as `fundValidator()` (real path) is not used.
+
+---
+
+## Frontend (live 2026-06-10)
+
+`frontend/` (React 19 + Vite 7 + MobX, merged via PR #21) serves at **https://quantapool.com** and **https://quantapool.io**, both Cloudflare-proxied with SSL mode Full (strict).
+
+- Host: the zondscan box `ops@REDACTED`. Webroot `/var/www/quantapool`, vhost `/etc/nginx/sites-enabled/quantapool.conf`, Cloudflare Origin CA certs (valid to 2041) in `/home/ops/ssl/quantapool.{com,io}/`.
+- Deploy: `cd frontend && npm run build`, then `tar -C frontend/dist -czf - . | ssh ops@REDACTED 'rm -rf ~/quantapool-dist && mkdir -p ~/quantapool-dist && tar -xzf - -C ~/quantapool-dist && sudo cp -rf ~/quantapool-dist/. /var/www/quantapool/'`. No CI hook; manual only.
+- CORS coupling: the app reads chain state through the qrlwallet RPC proxy and the QRL price through the zondscan API. Both allowlists must include the four quantapool origins or the app shows "Could not reach the QRL network":
+  - `ops@REDACTED:~/myqrlwallet-backend/.env` `ALLOWED_ORIGINS` (restart `pm2 restart myqrlwallet-backend --update-env`)
+  - `ops@REDACTED:~/zondscan/backendAPI/.env` `CORS_ALLOW_ORIGINS` (restart pm2 process `handler`)
+- Defaults in `frontend/src/config/networks.ts` mirror the v2.2 addresses above; override via `VITE_*` env vars.
 
 ---
 
@@ -153,21 +168,21 @@ The `validator` phase locks 40,000 QRL into the pool per run. Recover via the `c
 - Integration test runs + MVP validator funding orphaned ~120k QRL in v2.0 pool, ~40k in v2.1 pool.
 - v2.2: deployer funded one real validator (40k forwarded to beacon `Q4242…`).
 - Testnet refills required: 60k + 10k = 70k QRL above the original 50k seed.
-- All testnet QRL — no real-money cost.
+- All testnet QRL - no real-money cost.
 
 ## Files of interest
-- `config/testnet-hyperion.json` — provider URL, chainId, live addresses
-- `scripts/deploy-hyperion.js` — deploy + wire (works)
-- `scripts/integration-test-v2.js` — all 16 test phases (works)
-- `scripts/sync-hyperion.js` — Solidity → Hyperion dialect translator
-- `scripts/lib/loadDeployer.js` — wallet.js v3 loader (34-word mnemonic, registers seed on `web3.qrl.wallet`)
-- `contracts/solidity/` — canonical .sol sources
-- `contracts/hyperion/` — generated .hyp mirrors (regenerate with `sync-hyperion`)
-- `contracts/test/` — Foundry suite (200 tests, all pass)
-- `scripts/verify-deposit-data.js` — safety gate; validates a `deposit_data-*.json` against the live pool
-- `scripts/fund-validator-real.js` — broadcasts `pool.fundValidator()` (real beacon path)
-- `docs/NODE-SETUP.md` — gqrl + qrysm runbook for the validator host
-- `build/hyperion/{stQRLv2,DepositPoolV2,ValidatorManager}.{abi,bin}` — compiled artifacts (gitignored)
-- `.env` — `TESTNET_SEED` (gitignored)
-- `scripts/v1-deprecated/` — archived v1 scripts (do not run against v2)
-- `contracts/hyperion/README.md` — Hyperion dialect + hypc workflow notes
+- `config/testnet-hyperion.json` - provider URL, chainId, live addresses
+- `scripts/deploy-hyperion.js` - deploy + wire (works)
+- `scripts/integration-test-v2.js` - all 16 test phases (works)
+- `scripts/sync-hyperion.js` - Solidity → Hyperion dialect translator
+- `scripts/lib/loadDeployer.js` - wallet.js v3 loader (34-word mnemonic, registers seed on `web3.qrl.wallet`)
+- `contracts/solidity/` - canonical .sol sources
+- `contracts/hyperion/` - generated .hyp mirrors (regenerate with `sync-hyperion`)
+- `contracts/test/` - Foundry suite (200 tests, all pass)
+- `scripts/verify-deposit-data.js` - safety gate; validates a `deposit_data-*.json` against the live pool
+- `scripts/fund-validator-real.js` - broadcasts `pool.fundValidator()` (real beacon path)
+- `docs/NODE-SETUP.md` - gqrl + qrysm runbook for the validator host
+- `build/hyperion/{stQRLv2,DepositPoolV2,ValidatorManager}.{abi,bin}` - compiled artifacts (gitignored)
+- `.env` - `TESTNET_SEED` (gitignored)
+- `scripts/v1-deprecated/` - archived v1 scripts (do not run against v2)
+- `contracts/hyperion/README.md` - Hyperion dialect + hypc workflow notes

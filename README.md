@@ -15,6 +15,7 @@ QuantaPool enables QRL holders to participate in Proof-of-Stake validation witho
 - **Post-Quantum Secure**: Built on QRL's Dilithium ML-DSA-87 signature scheme
 - **Production Infrastructure**: Terraform + Ansible for automated validator deployment
 - **Monitoring Stack**: Prometheus, Grafana dashboards, and Alertmanager with Discord/Telegram alerts
+- **Web Frontend**: React staking app live at [quantapool.com](https://quantapool.com) and [quantapool.io](https://quantapool.io)
 
 ## Architecture
 
@@ -73,7 +74,8 @@ QuantaPool/
 │       ├── DepositPool-v2.t.sol  # 90 deposit/withdrawal tests
 │       ├── ValidatorManager.t.sol # 55 validator lifecycle tests
 │       └── hyperion/         #     Generated .t.hyp mirrors (reference only)
-├── build/hyperion/           # hypc output (ABI, bin, manifest.json) — gitignored
+├── build/hyperion/           # hypc output (ABI, bin, manifest.json) - gitignored
+├── frontend/                 # React staking app (quantapool.com / quantapool.io)
 ├── infrastructure/           # Production validator deployment
 │   ├── terraform/            #   Hetzner Cloud provisioning
 │   ├── ansible/              #   Node configuration (gqrl, qrysm)
@@ -118,9 +120,9 @@ If slashing occurs (pool drops to 950 QRL):
 Production-ready validator infrastructure using Terraform and Ansible.
 
 **Components provisioned:**
-- **Primary validator node** — gqrl (execution) + qrysm-beacon + qrysm-validator
-- **Backup validator node** — hot standby with failover script
-- **Monitoring server** — Prometheus, Grafana, Alertmanager
+- **Primary validator node** - gqrl (execution) + qrysm-beacon + qrysm-validator
+- **Backup validator node** - hot standby with failover script
+- **Monitoring server** - Prometheus, Grafana, Alertmanager
 
 **Key management scripts** handle the full Dilithium key lifecycle: generation, encryption, backup, restore, and import to the validator client.
 
@@ -131,7 +133,7 @@ See `infrastructure/docs/DEPLOYMENT.md` for the step-by-step deployment guide an
 Docker Compose stack providing full observability:
 
 - **Prometheus**: Scrapes metrics from gqrl, qrysm-beacon, qrysm-validator, and the custom contract exporter
-- **Grafana**: Three dashboards — Validator Overview, Contract State, System Resources
+- **Grafana**: Three dashboards - Validator Overview, Contract State, System Resources
 - **Alertmanager**: Routes alerts by severity (Critical/Warning/Info) to Discord and Telegram
 - **Contract Exporter**: Custom Node.js service exposing on-chain metrics (stQRL exchange rate, TVL, deposit queue, validator count)
 
@@ -188,7 +190,7 @@ GitHub Actions runs `forge fmt --check`, `forge build --sizes`, and `forge test 
 
 ## Status
 
-**v2 contracts ready** — infrastructure and monitoring built, awaiting QRL v2 testnet deployment.
+**v2.2 live on QRL v2 testnet** with two funded validators, full integration test coverage, and the staking frontend serving at [quantapool.com](https://quantapool.com) and [quantapool.io](https://quantapool.io). A v2.3 redeploy is pending to ship the off-contract stake accounting fix (PR #20); until then the real `fundValidator()` beacon path stays off-limits on the live pool. Addresses and operational detail: `docs/V2-DEPLOYMENT-STATUS.md`.
 
 ### Roadmap
 
@@ -196,7 +198,9 @@ GitHub Actions runs `forge fmt --check`, `forge build --sizes`, and `forge test 
 - [x] Validator infrastructure (Terraform + Ansible)
 - [x] Monitoring and alerting stack
 - [x] Key management tooling
-- [ ] Deploy v2 contracts to QRL v2 testnet
+- [x] Deploy v2 contracts to QRL v2 testnet (v2.2, two validators funded)
+- [x] Staking frontend live at quantapool.com and quantapool.io
+- [ ] Redeploy as v2.3 with the off-contract stake accounting fix
 - [ ] Integrate staking UI into [qrlwallet.com](https://qrlwallet.com)
 
 ## Security

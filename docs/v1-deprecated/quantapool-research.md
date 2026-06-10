@@ -1,8 +1,8 @@
 # Building QuantaPool: A Roadmap for Post-Quantum Liquid Staking on QRL Zond
 
-**QuantaPool can become the world's first post-quantum secure liquid staking protocol**, leveraging QRL Zond's EVM compatibility and NIST-approved cryptography. The **40,000 QRL minimum stake** creates a significant barrier for retail holders—much higher than Ethereum's 32 ETH equivalent—making pooled staking essential for broader network participation. With Zond's Testnet V1 now live and mainnet expected after Q1 2026 audits, there's a strategic window to build, test, and position for ecosystem support through QRL Foundation grants of up to 30,000 CHF.
+**QuantaPool can become the world's first post-quantum secure liquid staking protocol**, leveraging QRL Zond's EVM compatibility and NIST-approved cryptography. The **40,000 QRL minimum stake** creates a significant barrier for retail holders-much higher than Ethereum's 32 ETH equivalent-making pooled staking essential for broader network participation. With Zond's Testnet V1 now live and mainnet expected after Q1 2026 audits, there's a strategic window to build, test, and position for ecosystem support through QRL Foundation grants of up to 30,000 CHF.
 
-The Rocket Pool architecture provides an excellent template—its minipool system, rETH exchange-rate model, and modular contract design can be adapted for Zond's quantum-resistant environment. Zond's ~95-98% Solidity compatibility via the Hyperion compiler means most Ethereum liquid staking patterns port directly, though the 60-second block times and larger post-quantum signatures require thoughtful UX adjustments.
+The Rocket Pool architecture provides an excellent template-its minipool system, rETH exchange-rate model, and modular contract design can be adapted for Zond's quantum-resistant environment. Zond's ~95-98% Solidity compatibility via the Hyperion compiler means most Ethereum liquid staking patterns port directly, though the 60-second block times and larger post-quantum signatures require thoughtful UX adjustments.
 
 ---
 
@@ -22,14 +22,14 @@ Zond uses a dual-client architecture: **go-zond** (execution client/ZVM) and **q
 | Finalization | 4-6 hours | ~16 minutes |
 | Withdrawal unlock | End of current epoch (~50-100 min) | Variable queue |
 
-Withdrawals work via sending a stake transaction with 0 amount—funds unlock at epoch end rather than joining a lengthy queue. This faster, more predictable unlock model simplifies pool withdrawal UX compared to Ethereum.
+Withdrawals work via sending a stake transaction with 0 amount-funds unlock at epoch end rather than joining a lengthy queue. This faster, more predictable unlock model simplifies pool withdrawal UX compared to Ethereum.
 
 ### Post-Quantum Cryptography Considerations
 
-All validators **must use ML-DSA-87 (Dilithium)** for consensus operations—no alternative. The SPHINCS+ integration planned post-mainnet will add stateless hash-based signatures for wallets, but pools will work with Dilithium. Key implications for smart contracts:
+All validators **must use ML-DSA-87 (Dilithium)** for consensus operations-no alternative. The SPHINCS+ integration planned post-mainnet will add stateless hash-based signatures for wallets, but pools will work with Dilithium. Key implications for smart contracts:
 
-- **No `ecrecover`** function—replaced with quantum-safe verification primitives
-- **Larger transaction sizes** (~2.5KB signatures vs 64 bytes)—affects gas calculations
+- **No `ecrecover`** function-replaced with quantum-safe verification primitives
+- **Larger transaction sizes** (~2.5KB signatures vs 64 bytes)-affects gas calculations
 - **Native signature verification** in Hyperion compiler for on-chain validation
 - Smart contracts can verify quantum-secure signatures directly
 
@@ -48,7 +48,7 @@ Adapting Rocket Pool's model to QRL's 40,000 QRL validator requirement:
 | Quarter Bond | 10,000 QRL | 30,000 QRL | 10-15% on pooled rewards |
 | Half Bond | 20,000 QRL | 20,000 QRL | 10-15% on pooled rewards |
 
-**The Quarter Bond model** is most attractive for capital efficiency—operators stake 10k QRL and borrow 30k from the pool, earning commission on the pooled portion's rewards. This creates strong incentives for node operators while keeping the barrier reasonable.
+**The Quarter Bond model** is most attractive for capital efficiency-operators stake 10k QRL and borrow 30k from the pool, earning commission on the pooled portion's rewards. This creates strong incentives for node operators while keeping the barrier reasonable.
 
 **Commission economics example** (Quarter Bond at 10% commission):
 - Validator earns 1,000 QRL annually in rewards
@@ -59,7 +59,7 @@ Adapting Rocket Pool's model to QRL's 40,000 QRL validator requirement:
 
 ### rETH's Exchange Rate Model
 
-Rocket Pool's liquid staking token uses an **exchange rate model** rather than rebasing—your token balance stays constant while its QRL value increases over time. This provides tax advantages and simpler DeFi integrations:
+Rocket Pool's liquid staking token uses an **exchange rate model** rather than rebasing-your token balance stays constant while its QRL value increases over time. This provides tax advantages and simpler DeFi integrations:
 
 ```
 stQRL:QRL ratio = total QRL staked / total stQRL supply
@@ -89,7 +89,7 @@ Zond achieves **95-98% Solidity compatibility** through the Hyperion compiler (a
 
 ### What Doesn't Work Yet
 
-Hardhat and Foundry lack native support—deployment currently requires raw Node.js scripts with @theqrl/web3. The recommended deployment flow:
+Hardhat and Foundry lack native support-deployment currently requires raw Node.js scripts with @theqrl/web3. The recommended deployment flow:
 
 ```javascript
 // config.json
@@ -125,7 +125,7 @@ Based on analysis of Lido, Rocket Pool, and Frax patterns, the **ERC-4626 vault 
 
 ### Four Core Contracts in Priority Order
 
-**1. Liquid Staking Token (stQRL)** — Week 1-2
+**1. Liquid Staking Token (stQRL)** - Week 1-2
 ```solidity
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 
@@ -136,13 +136,13 @@ contract StakedQRL is ERC4626, Ownable, ReentrancyGuard {
 }
 ```
 
-**2. Deposit Pool Contract** — Week 3-4
+**2. Deposit Pool Contract** - Week 3-4
 Entry point that accepts QRL, mints stQRL, and manages the queue for validator creation. Accumulates deposits until reaching the **40,000 QRL threshold**.
 
-**3. Rewards Oracle** — Week 5-6
+**3. Rewards Oracle** - Week 5-6
 Initially centralized: operator submits validator balances off-chain, contract updates exchange rate. Decentralize later with multiple oracle nodes.
 
-**4. Operator Registry** — Week 7-8 (simplified)
+**4. Operator Registry** - Week 7-8 (simplified)
 For MVP, use a single trusted operator (yourself). Track validator public keys and their associated minipool contracts.
 
 ### Testing Strategy
@@ -173,7 +173,7 @@ Key contacts: Jack Matier (@jackalyst), James Gordon (@fr1t2), JP Lomas (@jploma
 
 ### myqrlwallet Integration Path
 
-**Primary integration**: Zond Chrome Extension Wallet supports EIP-6963 standard—users connect like MetaMask.
+**Primary integration**: Zond Chrome Extension Wallet supports EIP-6963 standard-users connect like MetaMask.
 
 **Secondary integration**: Your myqrlwallet can add a dedicated staking tab that interacts with QuantaPool contracts directly, keeping users in a self-custodial flow throughout.
 
@@ -230,7 +230,7 @@ Key contacts: Jack Matier (@jackalyst), James Gordon (@fr1t2), JP Lomas (@jploma
 
 **Smart contract risk**: Use battle-tested OpenZeppelin patterns, minimize custom logic, get audit before significant TVL. Start with deposit caps.
 
-**Validator slashing**: Implement operator collateral requirements—operators stake additional QRL (e.g., 5,000 QRL bond) that can be slashed to compensate pool losses.
+**Validator slashing**: Implement operator collateral requirements-operators stake additional QRL (e.g., 5,000 QRL bond) that can be slashed to compensate pool losses.
 
 **Oracle manipulation**: Start with trusted single-operator oracle, upgrade to multi-party threshold signatures (3-of-5 minimum) before scaling.
 
@@ -240,8 +240,8 @@ Key contacts: Jack Matier (@jackalyst), James Gordon (@fr1t2), JP Lomas (@jploma
 
 ## Conclusion
 
-QuantaPool is technically feasible using proven Ethereum liquid staking patterns adapted for Zond's quantum-resistant environment. The **40,000 QRL validator minimum** creates genuine, strong demand for pooled staking—this is a bigger barrier than Ethereum's 32 ETH, making your service more valuable.
+QuantaPool is technically feasible using proven Ethereum liquid staking patterns adapted for Zond's quantum-resistant environment. The **40,000 QRL validator minimum** creates genuine, strong demand for pooled staking-this is a bigger barrier than Ethereum's 32 ETH, making your service more valuable.
 
-Start immediately with testnet development—the ~95% Solidity compatibility means your skills transfer directly from Ethereum tutorials. Target a grant application once you have a working testnet demo, positioning as the "world's first post-quantum liquid staking protocol."
+Start immediately with testnet development-the ~95% Solidity compatibility means your skills transfer directly from Ethereum tutorials. Target a grant application once you have a working testnet demo, positioning as the "world's first post-quantum liquid staking protocol."
 
 **Realistic timeline: 12-17 weeks to testnet MVP**, followed by security hardening during Testnet V2 (Q1 2026). This positions QuantaPool for mainnet launch alongside Zond itself.
