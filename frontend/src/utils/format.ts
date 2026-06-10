@@ -71,8 +71,11 @@ export function shortenAddress(address: string, chars = 4): string {
 export function blocksToTime(blocks: bigint | number, blockTimeSeconds: number): string {
   const totalSeconds = Number(blocks) * blockTimeSeconds;
   if (totalSeconds <= 0) return "now";
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.ceil((totalSeconds % 3600) / 60);
+  // Round up to whole minutes first, then split — rounding hours and minutes
+  // independently can yield "≈ 60m" or "1h 60m".
+  const totalMinutes = Math.ceil(totalSeconds / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
   if (hours > 0) return `≈ ${hours}h ${minutes}m`;
   return `≈ ${minutes}m`;
 }

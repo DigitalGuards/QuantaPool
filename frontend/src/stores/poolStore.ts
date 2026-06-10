@@ -40,6 +40,12 @@ export interface AccountState {
   lockedShares: bigint;
   /** Current QRL value of all shares. */
   qrlValue: bigint;
+  /**
+   * Number of withdrawal requests already processed (claimed or cancelled).
+   * Equals the contract's nextWithdrawalIndex (total - pending); lets us show
+   * a completed count without fetching the immutable historical requests.
+   */
+  completedWithdrawalsCount: number;
 }
 
 export interface WithdrawalRequestView {
@@ -271,6 +277,7 @@ export class PoolStore {
           shares: 0n,
           lockedShares: 0n,
           qrlValue: 0n,
+          completedWithdrawalsCount: 0,
         };
       });
       this.finalizedRequests.clear();
@@ -369,6 +376,7 @@ export class PoolStore {
             shares: 0n,
             lockedShares: 0n,
             qrlValue: 0n,
+            completedWithdrawalsCount: 0,
           };
           this.withdrawals = [];
           this.activity = [];
@@ -560,9 +568,15 @@ export class PoolStore {
     ]);
 
     const total = Number(asBig(counts.total));
+    const pending = Number(asBig(counts.pending));
+    // Requests at indices [0, nextIndex) are already processed (claimed or
+    // cancelled-and-skipped) and immutable, so only fetch the live tail
+    // [nextIndex, total). This keeps the fan-out bounded by pending requests
+    // rather than a user's entire withdrawal history.
+    const nextIndex = total - pending;
     const requests = await Promise.all(
-      Array.from({ length: total }, (_, id) =>
-        this.fetchWithdrawalRequest(pool, address, id),
+      Array.from({ length: pending }, (_, i) =>
+        this.fetchWithdrawalRequest(pool, address, nextIndex + i),
       ),
     );
 
@@ -576,6 +590,7 @@ export class PoolStore {
         shares: asBig(shares),
         lockedShares: asBig(lockedShares),
         qrlValue: asBig(qrlValue),
+        completedWithdrawalsCount: nextIndex,
       };
       // Cancelled requests are zeroed on-chain — hide them.
       this.withdrawals = requests.filter((w) => w.shares > 0n);
