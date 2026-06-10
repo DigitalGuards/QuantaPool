@@ -12,7 +12,7 @@ groups:
           description: "Cannot collect system metrics from validator node."
 
       # High CPU usage
-      # Beacon initial sync drives 80–95% CPU for ~30 min — raise threshold
+      # Beacon initial sync drives 80–95% CPU for ~30 min - raise threshold
       # and window so we don't page during first-boot sync.
       - alert: HighCPUUsage
         expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[15m])) * 100) > 95

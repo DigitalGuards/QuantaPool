@@ -36,7 +36,7 @@ testnetv2_genesis_sha256: "c0c3cfa3fbc5df0d873efedfdec6e07ed3152ae439b14a96cfb35
 
 # Metrics
 # Note: manual host binds to 172.18.0.1 (docker bridge). In ansible scenario
-# there's no docker bridge; bind to 0.0.0.0 — firewall blocks external access.
+# there's no docker bridge; bind to 0.0.0.0 - firewall blocks external access.
 gqrl_metrics_enabled: true
 gqrl_metrics_port: 6060
 gqrl_metrics_addr: "0.0.0.0"

@@ -53,10 +53,10 @@ if (!FUNDER) {
     console.log();
     const expected = BigInt(amount);
     if (immediate - before === expected) {
-        console.log('✅ RACE FIXED — immediate read already reflects the deposit.');
+        console.log('✅ RACE FIXED - immediate read already reflects the deposit.');
     } else if (later - before === expected && immediate - before !== expected) {
-        console.log('❌ RACE STILL PRESENT — immediate read was stale, +10s read caught up.');
+        console.log('❌ RACE STILL PRESENT - immediate read was stale, +10s read caught up.');
     } else {
-        console.log('⚠️  unexpected deltas — check manually.');
+        console.log('⚠️  unexpected deltas - check manually.');
     }
 })();

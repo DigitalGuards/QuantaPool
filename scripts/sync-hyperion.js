@@ -24,7 +24,7 @@ function toHyperionSource(source, sourceFile, sourceDirLabel) {
 
     // Rewrite imports:
     //   Production .sol at contracts/solidity/*.sol generates to
-    //   contracts/hyperion/*.hyp — same-directory imports need no path rewrite.
+    //   contracts/hyperion/*.hyp - same-directory imports need no path rewrite.
     //   Test .sol at contracts/test/*.sol imports ../solidity/Foo.sol;
     //   its .hyp mirror at contracts/test/hyperion/*.t.hyp needs ../../hyperion/Foo.hyp.
     const importsUpdated = pragmaUpdated

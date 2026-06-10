@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "QuantaPool — post-quantum liquid staking for QRL",
+  "description": "QuantaPool - post-quantum liquid staking for QRL",
   "scripts": {
     "dev": "vite",
     "dev:lan": "vite --host 0.0.0.0",

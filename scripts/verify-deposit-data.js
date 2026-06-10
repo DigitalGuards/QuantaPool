@@ -1,17 +1,17 @@
-// verify-deposit-data.js — safety gate for pool.fundValidator()
+// verify-deposit-data.js - safety gate for pool.fundValidator()
 //
 // Parses a deposit_data-*.json produced by staking-deposit-cli / qrysmctl,
 // validates every field against the live v2.1 DepositPoolV2 contract, and
 // refuses to print a "ready to broadcast" marker unless everything checks
-// out. Run this before ever calling pool.fundValidator() — a mismatch on
+// out. Run this before ever calling pool.fundValidator() - a mismatch on
 // withdrawal_credentials means the validator's stake becomes unwithdrawable
 // (stuck forever), which the v2.0 -> v2.1 redeploy was all about.
 //
 // Usage: node scripts/verify-deposit-data.js <path-to-deposit_data-*.json>
 //
 // Exit codes:
-//   0 — every check passed; safe to paste fields into fundValidator()
-//   1 — validation failure (details printed to stderr)
+//   0 - every check passed; safe to paste fields into fundValidator()
+//   1 - validation failure (details printed to stderr)
 //
 // This is deliberately a standalone script with no mutating operations.
 require('dotenv').config({ path: '.env' });
@@ -112,14 +112,14 @@ function normHex(h) {
         const onChainDepositContract = await pool.methods.DEPOSIT_CONTRACT().call();
         console.log(`  pool.DEPOSIT_CONTRACT = ${onChainDepositContract}`);
         if (normHex(onChainDepositContract) !== '4242424242424242424242424242424242424242') {
-            die(`pool.DEPOSIT_CONTRACT differs from Q4242... — something is wrong`);
+            die(`pool.DEPOSIT_CONTRACT differs from Q4242... - something is wrong`);
         }
         const stake = await pool.methods.VALIDATOR_STAKE().call();
         const buffered = await pool.methods.bufferedQRL().call();
         console.log(`  pool.VALIDATOR_STAKE = ${BigInt(stake) / 10n ** 18n} QRL`);
         console.log(`  pool.bufferedQRL     = ${BigInt(buffered) / 10n ** 18n} QRL`);
         if (BigInt(buffered) < BigInt(stake)) {
-            console.log(`  ⚠  buffer is below stake — fundValidator() would revert InsufficientBuffer.`);
+            console.log(`  ⚠  buffer is below stake - fundValidator() would revert InsufficientBuffer.`);
             console.log(`     Deposit more to the pool first, or this deposit_data is safe to sit on.`);
         } else {
             console.log(`  ✓ buffer is sufficient to fund this validator now`);

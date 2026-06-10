@@ -30,7 +30,7 @@ validator_wallet_dir: "/var/lib/qrysm/validator/wallet"
 slashing_protection_db: "/var/lib/qrysm/validator/slashing-protection"
 
 # Fee recipient (set to your address to receive priority fees). Must NOT be
-# empty — qrysm-validator exits with "default fileConfig fee recipient is not
+# empty - qrysm-validator exits with "default fileConfig fee recipient is not
 # a valid qrl address" otherwise. Default is the QuantaPool deployer; override
 # in inventory if this node services a different pool.
 fee_recipient_address: "Q2E13b52fd3cda0a57f9037856B7Df971074e2489"

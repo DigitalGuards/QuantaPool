@@ -32,7 +32,7 @@ export default defineConfig(({ mode }) => ({
       output: {
         manualChunks(id: string) {
           if (id.includes("@radix-ui")) return "vendor-radix";
-          // ~600 KB of post-quantum crypto — keep out of the initial chunk
+          // ~600 KB of post-quantum crypto - keep out of the initial chunk
           if (id.includes("@theqrl/web3")) return "vendor-qrl-web3";
           if (id.includes("mobx")) return "vendor-mobx";
           if (id.includes("react-dom/")) return "vendor-react-dom";
