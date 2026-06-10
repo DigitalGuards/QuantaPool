@@ -1,6 +1,6 @@
 /**
  * BigInt-based fixed-point helpers for 18-decimal QRL / stQRL amounts.
- * Kept dependency-free on purpose — this app never needs arbitrary-precision
+ * Kept dependency-free on purpose - this app never needs arbitrary-precision
  * decimal math beyond unit conversion and display formatting.
  */
 
@@ -71,7 +71,7 @@ export function shortenAddress(address: string, chars = 4): string {
 export function blocksToTime(blocks: bigint | number, blockTimeSeconds: number): string {
   const totalSeconds = Number(blocks) * blockTimeSeconds;
   if (totalSeconds <= 0) return "now";
-  // Round up to whole minutes first, then split — rounding hours and minutes
+  // Round up to whole minutes first, then split - rounding hours and minutes
   // independently can yield "≈ 60m" or "1h 60m".
   const totalMinutes = Math.ceil(totalSeconds / 60);
   const hours = Math.floor(totalMinutes / 60);

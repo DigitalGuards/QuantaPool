@@ -1,4 +1,4 @@
-// Lazy singleton for @theqrl/web3 — keeps the ~600 KB post-quantum crypto
+// Lazy singleton for @theqrl/web3 - keeps the ~600 KB post-quantum crypto
 // bundle out of the initial parse graph and loads it only once.
 type QrlWeb3Module = typeof import("@theqrl/web3");
 
