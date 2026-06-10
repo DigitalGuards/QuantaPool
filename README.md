@@ -68,9 +68,9 @@ QuantaPool/
 │   │   └── ValidatorManager.sol #  Validator lifecycle tracking
 │   ├── hyperion/             #   Auto-synced Hyperion mirrors (.hyp)
 │   │   └── README.md         #     Dialect rules and hypc workflow
-│   └── test/                 #   Foundry test suite (178 tests)
+│   └── test/                 #   Foundry test suite (200 tests)
 │       ├── stQRL-v2.t.sol    #     55 core token tests
-│       ├── DepositPool-v2.t.sol  # 68 deposit/withdrawal tests
+│       ├── DepositPool-v2.t.sol  # 90 deposit/withdrawal tests
 │       ├── ValidatorManager.t.sol # 55 validator lifecycle tests
 │       └── hyperion/         #     Generated .t.hyp mirrors (reference only)
 ├── build/hyperion/           # hypc output (ABI, bin, manifest.json) — gitignored
@@ -95,7 +95,7 @@ QuantaPool/
 | Contract | LOC | Purpose |
 |----------|-----|---------|
 | `stQRL-v2.sol` | 496 | Fixed-balance liquid staking token (shares-based) |
-| `DepositPool-v2.sol` | 773 | User entry point, deposits/withdrawals, trustless reward sync |
+| `DepositPool-v2.sol` | 885 | User entry point, deposits/withdrawals, trustless reward sync |
 | `ValidatorManager.sol` | 349 | Validator lifecycle: Pending → Active → Exiting → Exited |
 
 All on-chain code lives under `contracts/`. Solidity sources in `contracts/solidity/` are the canonical editing target; Hyperion mirrors in `contracts/hyperion/` are generated from them (never hand-edit). Foundry tests live in `contracts/test/` with a parallel `contracts/test/hyperion/` tree of reference `.t.hyp` mirrors. Compiled Hyperion artifacts land in `build/hyperion/` (gitignored).
@@ -178,7 +178,7 @@ GitHub Actions runs `forge fmt --check`, `forge build --sizes`, and `forge test 
 
 ## Test Coverage
 
-- **178 tests passing** (55 stQRL-v2 + 68 DepositPool-v2 + 55 ValidatorManager)
+- **200 tests passing** (55 stQRL-v2 + 90 DepositPool-v2 + 55 ValidatorManager)
 - Share/QRL conversion math, multi-user rewards, slashing scenarios
 - Withdrawal flow with 128-block delay enforcement
 - Validator lifecycle (registration, activation, exit, slashing)
