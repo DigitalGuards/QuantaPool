@@ -32,7 +32,7 @@ export const TxBanner = observer(() => {
       <div className="min-w-0 flex-1 text-sm">
         <p className="font-medium">
           {tx.label}
-          {tx.state === "pending" && " — waiting for confirmation…"}
+          {tx.state === "pending" && ", waiting for confirmation…"}
           {tx.state === "confirmed" && " confirmed"}
           {tx.state === "failed" && " failed"}
         </p>

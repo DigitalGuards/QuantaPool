@@ -8,7 +8,7 @@ export interface ExtensionProvider {
     method: string;
     params?: unknown[] | object;
   }) => Promise<T>;
-  /** EIP-1193 event subscription — optional, not all providers support it. */
+  /** EIP-1193 event subscription - optional, not all providers support it. */
   on?: (event: string, listener: (payload: unknown) => void) => void;
 }
 

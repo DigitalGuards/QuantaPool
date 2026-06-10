@@ -24,7 +24,7 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
   {
     question: "How do rewards work?",
     answer:
-      "Rewards are detected trustlessly from validator balance increases — no oracle involved. They raise the stQRL/QRL exchange rate, so the QRL value of your shares increases over time. The protocol currently charges no fees.",
+      "Rewards are detected trustlessly from validator balance increases, with no oracle involved. They raise the stQRL/QRL exchange rate, so the QRL value of your shares increases over time. The protocol currently charges no fees.",
   },
   {
     question: "How do I unstake?",
@@ -101,7 +101,7 @@ export const StakePage = observer(() => {
           Liquid staking for <span className="text-secondary">QRL</span>
         </h1>
         <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
-          Stake QRL, receive stQRL, and earn validator rewards automatically — secured by
+          Stake QRL, receive stQRL, and earn validator rewards automatically, secured by
           post-quantum cryptography.
         </p>
       </section>
@@ -136,16 +136,16 @@ export const StakePage = observer(() => {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">You will receive</span>
                 <span className="font-medium">
-                  {previewShares !== null ? `≈ ${formatAmount(previewShares)} stQRL` : "—"}
+                  {previewShares !== null ? `≈ ${formatAmount(previewShares)} stQRL` : "-"}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Exchange rate</span>
-                <span>{pool ? `1 stQRL = ${formatRate(pool.exchangeRate)} QRL` : "—"}</span>
+                <span>{pool ? `1 stQRL = ${formatRate(pool.exchangeRate)} QRL` : "-"}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Minimum deposit</span>
-                <span>{pool ? `${formatAmount(pool.minDeposit)} QRL` : "—"}</span>
+                <span>{pool ? `${formatAmount(pool.minDeposit)} QRL` : "-"}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Protocol fee</span>

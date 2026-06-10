@@ -53,7 +53,7 @@ export interface WithdrawalRequestView {
   shares: bigint;
   /**
    * Exact QRL payout, snapshotted by the contract at request time.
-   * claimWithdrawal() pays this amount — not the current share value.
+   * claimWithdrawal() pays this amount - not the current share value.
    */
   qrlPayout: bigint;
   requestBlock: bigint;
@@ -166,7 +166,7 @@ export class PoolStore {
 
   pool: PoolStats | null = null;
 
-  /** QRL/USD from the zondscan explorer API — cosmetic, may be unavailable. */
+  /** QRL/USD from the zondscan explorer API - cosmetic, may be unavailable. */
   qrlPrice: number | null = null;
   qrlPriceChange24h: number | null = null;
 
@@ -185,7 +185,7 @@ export class PoolStore {
   private contracts: Contracts | null = null;
   private initStarted = false;
   /**
-   * Claimed/cancelled requests are immutable on-chain — cache them so the
+   * Claimed/cancelled requests are immutable on-chain - cache them so the
    * periodic refresh only refetches requests that can still change.
    */
   private finalizedRequests = new Map<number, WithdrawalRequestView>();
@@ -235,7 +235,7 @@ export class PoolStore {
     // The store is a singleton living for the whole app session, so the
     // interval is intentionally never cleared.
     setInterval(() => {
-      // Skip background refreshes while the tab is hidden — the first
+      // Skip background refreshes while the tab is hidden - the first
       // interval tick after the user returns picks up fresh data.
       if (typeof document !== "undefined" && document.hidden) return;
       void this.refresh();
@@ -359,7 +359,7 @@ export class PoolStore {
 
   /**
    * Handle account switches made inside the wallet extension. The provider
-   * may not support events — the listener is best-effort.
+   * may not support events - the listener is best-effort.
    */
   private watchAccountChanges(provider: ExtensionProvider): void {
     provider.on?.("accountsChanged", (accounts) => {
@@ -403,7 +403,7 @@ export class PoolStore {
         });
       }
     } catch {
-      // Price is cosmetic — keep the last known value on failure.
+      // Price is cosmetic - keep the last known value on failure.
     }
   }
 
@@ -547,7 +547,7 @@ export class PoolStore {
         this.activityError = null;
       });
     } catch (error) {
-      // Some RPC proxies don't expose log queries — degrade gracefully.
+      // Some RPC proxies don't expose log queries - degrade gracefully.
       runInAction(() => {
         this.activityError = errorMessage(error);
       });
@@ -582,7 +582,7 @@ export class PoolStore {
 
     runInAction(() => {
       // The user may have disconnected or switched accounts while we were
-      // fetching — don't resurrect stale state.
+      // fetching - don't resurrect stale state.
       if (!this.account || this.account.address !== address) return;
       this.account = {
         address,
@@ -592,7 +592,7 @@ export class PoolStore {
         qrlValue: asBig(qrlValue),
         completedWithdrawalsCount: nextIndex,
       };
-      // Cancelled requests are zeroed on-chain — hide them.
+      // Cancelled requests are zeroed on-chain - hide them.
       this.withdrawals = requests.filter((w) => w.shares > 0n);
     });
   }
@@ -627,7 +627,7 @@ export class PoolStore {
         });
         gasLimit = Number((asBig(estimated) * 130n) / 100n);
       } catch {
-        // Estimation can fail on some RPC proxies — fall back to a safe limit.
+        // Estimation can fail on some RPC proxies - fall back to a safe limit.
       }
       const gasPrice = asBig(await web3.qrl.getGasPrice());
 

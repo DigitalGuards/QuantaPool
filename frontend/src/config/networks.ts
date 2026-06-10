@@ -55,11 +55,11 @@ export const getExplorerTxUrl = (txHash: string): string =>
 export const getExplorerAddressUrl = (address: string): string =>
   `${ACTIVE_NETWORK.explorer}/address/${address}`;
 
-/** QRL block time — used to translate withdrawal-delay blocks into wall time. */
+/** QRL block time - used to translate withdrawal-delay blocks into wall time. */
 export const BLOCK_TIME_SECONDS = 60;
 
 /** DepositPool WITHDRAWAL_DELAY constant (blocks). */
 export const WITHDRAWAL_DELAY_BLOCKS = 128;
 
-/** DepositPool VALIDATOR_STAKE constant — QRL needed to fund one validator. */
+/** DepositPool VALIDATOR_STAKE constant - QRL needed to fund one validator. */
 export const VALIDATOR_STAKE_QRL = 40_000n * 10n ** 18n;

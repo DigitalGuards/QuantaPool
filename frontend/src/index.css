@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Theme customization for Tailwind v4 — token values mirror myqrlwallet-frontend
+/* Theme customization for Tailwind v4 - token values mirror myqrlwallet-frontend
    so QuantaPool reads as part of the same product family. */
 @theme {
   /* Border radius */

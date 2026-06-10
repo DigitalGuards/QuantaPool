@@ -78,12 +78,12 @@ export function HowItWorksPage() {
         <p>
           Running your own QRL validator requires 40,000 QRL and a server that stays online
           around the clock. QuantaPool pools deposits from many stakers, runs the validators for
-          you, and shares the rewards — so you can stake any amount above the minimum and stay
+          you, and shares the rewards, so you can stake any amount above the minimum and stay
           liquid the whole time.
         </p>
       </Section>
 
-      <Section icon={Wallet} title="Step 1 — Stake QRL, receive stQRL">
+      <Section icon={Wallet} title="Step 1: Stake QRL, receive stQRL">
         <p>
           When you deposit QRL into the pool you receive <strong>stQRL</strong>, a token that
           represents your share of everything the pool holds. Deposits go into a buffer, and every
@@ -92,27 +92,27 @@ export function HowItWorksPage() {
         <p>
           stQRL is a <strong>fixed-balance</strong> token: your share count stays constant (which
           keeps accounting and taxes simple), while the <em>QRL value</em> of each share grows as
-          rewards come in. You can hold, transfer, or eventually trade stQRL like any other token —
-          your underlying stake keeps earning either way.
+          rewards come in. You can hold, transfer, or eventually trade stQRL like any other token.
+          Your underlying stake keeps earning either way.
         </p>
       </Section>
 
-      <Section icon={TrendingUp} title="Step 2 — Rewards grow the exchange rate" accent="blue">
+      <Section icon={TrendingUp} title="Step 2: Rewards grow the exchange rate" accent="blue">
         <p>
           Validators earn rewards for proposing and attesting blocks. Those rewards flow back to
           the pool and raise the <strong>stQRL → QRL exchange rate</strong>. Example: you stake
-          1,000 QRL at a rate of 1.00 and receive 1,000 stQRL. A year later the rate is 1.05 —
-          your same 1,000 stQRL is now worth 1,050 QRL.
+          1,000 QRL at a rate of 1.00 and receive 1,000 stQRL. A year later the rate is 1.05,
+          and your same 1,000 stQRL is now worth 1,050 QRL.
         </p>
         <p>
           Reward detection is <strong>trustless</strong>: the contract reads its own balance
           increases on-chain instead of relying on a price oracle or an operator's word. Anyone
-          can trigger a reward sync. The protocol currently takes <strong>no fee</strong> — 100%
+          can trigger a reward sync. The protocol currently takes <strong>no fee</strong>: 100%
           of rewards go to stakers.
         </p>
       </Section>
 
-      <Section icon={Clock} title="Step 3 — Unstake whenever you want">
+      <Section icon={Clock} title="Step 3: Unstake whenever you want">
         <ol className="space-y-3">
           {WITHDRAWAL_STEPS.map((step, index) => (
             <li key={step.title} className="flex gap-3">
@@ -132,14 +132,14 @@ export function HowItWorksPage() {
         <p>Pooled QRL only ever sits in three places, all visible on-chain:</p>
         <ul className="list-disc space-y-1 pl-5">
           <li>
-            <strong>Validators</strong> — 40,000 QRL each, staked on the QRL beacon chain earning
+            <strong>Validators</strong>: 40,000 QRL each, staked on the QRL beacon chain earning
             rewards.
           </li>
           <li>
-            <strong>Buffer</strong> — deposits accumulating toward the next validator.
+            <strong>Buffer</strong>: deposits accumulating toward the next validator.
           </li>
           <li>
-            <strong>Withdrawal reserve</strong> — QRL set aside to pay out pending withdrawal
+            <strong>Withdrawal reserve</strong>: QRL set aside to pay out pending withdrawal
             requests.
           </li>
         </ul>

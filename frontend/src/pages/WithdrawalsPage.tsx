@@ -92,7 +92,7 @@ export const WithdrawalsPage = observer(() => {
               <div className="flex items-center justify-between">
                 <CardTitle className="text-xl">Unstake</CardTitle>
                 <span className="text-xs text-muted-foreground">
-                  Available: {unlockedShares !== null ? formatAmount(unlockedShares) : "—"} stQRL
+                  Available: {unlockedShares !== null ? formatAmount(unlockedShares) : "-"} stQRL
                 </span>
               </div>
               <CardDescription>
@@ -115,7 +115,7 @@ export const WithdrawalsPage = observer(() => {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">You will receive</span>
                   <span className="font-medium">
-                    {previewQrl !== null ? `≈ ${formatAmount(previewQrl)} QRL` : "—"}
+                    {previewQrl !== null ? `≈ ${formatAmount(previewQrl)} QRL` : "-"}
                   </span>
                 </div>
                 <div className="flex justify-between">

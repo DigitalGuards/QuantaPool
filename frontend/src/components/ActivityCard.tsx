@@ -45,7 +45,7 @@ export const ActivityCard = observer(() => {
         {rows.length === 0 ? (
           <p className="py-3 text-center text-sm text-muted-foreground">
             {poolStore.activityError
-              ? "Activity is unavailable right now — use the Zondscan link above."
+              ? "Activity is unavailable right now. Use the Zondscan link above."
               : "No staking activity yet for this address."}
           </p>
         ) : (
@@ -93,7 +93,7 @@ export const ActivityCard = observer(() => {
         )}
         {poolStore.activity.length > MAX_ROWS && (
           <p className="pt-2 text-center text-xs text-muted-foreground">
-            Showing the latest {MAX_ROWS} of {poolStore.activity.length} — full history on
+            Showing the latest {MAX_ROWS} of {poolStore.activity.length}. Full history on
             Zondscan.
           </p>
         )}

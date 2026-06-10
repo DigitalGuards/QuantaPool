@@ -16,7 +16,7 @@ npm run build     # type-check + production build
 npm run lint      # ESLint, zero-warnings policy
 ```
 
-Configuration is optional — testnet defaults are baked in. Copy `.env.example`
+Configuration is optional - testnet defaults are baked in. Copy `.env.example`
 to `.env` to override the RPC endpoint, explorer, or contract addresses.
 
 ## Architecture
@@ -42,7 +42,7 @@ src/
 ### Wallet connectivity
 
 - **QRL Wallet extension** via EIP-6963 discovery (`theqrl.org` rdns) and the
-  `qrl_requestAccounts` / `qrl_sendTransaction` provider methods — the same
+  `qrl_requestAccounts` / `qrl_sendTransaction` provider methods - the same
   flow myqrlwallet-frontend uses.
 - **MyQRLWallet mobile app**: detected via User-Agent. Designed so the
   myqrlwallet-connect SDK can slot in as an additional provider source later.
@@ -52,8 +52,8 @@ src/
 | Action | Contract call |
 |---|---|
 | Stake | `DepositPool.deposit()` (payable) |
-| Request withdrawal | `DepositPool.requestWithdrawal(shares)` — locks shares, 128-block delay |
-| Claim | `DepositPool.claimWithdrawal()` — FIFO, oldest request first |
+| Request withdrawal | `DepositPool.requestWithdrawal(shares)` - locks shares, 128-block delay |
+| Claim | `DepositPool.claimWithdrawal()` - FIFO, oldest request first |
 | Cancel | `DepositPool.cancelWithdrawal(requestId)` |
 | Pool data | `getPoolStatus()`, `getRewardStats()`, `ValidatorManager.getStats()` |
 
