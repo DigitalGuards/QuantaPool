@@ -12,23 +12,23 @@ module "quantapool" {
 
   hcloud_token        = var.hcloud_token
   environment         = "testnet"
-  datacenter          = "fsn1"  # Falkenstein
+  datacenter          = "fsn1" # Falkenstein
   ssh_public_key_path = var.ssh_public_key_path
 
-  # Server types (testnet can use smaller instances)
-  primary_server_type    = "cpx31"  # 4 vCPU, 8GB RAM
-  backup_server_type     = "cpx21"  # 3 vCPU, 4GB RAM
-  monitoring_server_type = "cpx11"  # 2 vCPU, 2GB RAM
+  # Server types (testnet can use smaller instances). CPX line phased out;
+  # current x86 generation is CX (Intel). ARM (CAX) would need binary rebuild.
+  primary_server_type    = "cpx32" # 4 vCPU, 8 GB, 160 GB local (new AMD gen)
+  backup_server_type     = "cpx22" # 2 vCPU, 4 GB, 80 GB local
+  monitoring_server_type = "cpx22" # 2 vCPU, 4 GB, 80 GB local
 
   enable_backup_node = true
-  enable_monitoring  = true
+  enable_monitoring  = false # Hetzner quota: 2 primary IPs. Reuse node #1 monitoring for now.
 
-  # Testnet contract addresses
-  stqrl_address             = "0x844A6eB87927780E938908743eA24a56A220Efe8"
-  deposit_pool_address      = "0x9E800e8271df4Ac91334C65641405b04584B57DC"
-  rewards_oracle_address    = "0x541b1f2c501956BCd7a4a6913180b2Fc27BdE17E"
-  operator_registry_address = "0xD370e9505D265381e839f8289f46D02815d0FF95"
-  qrl_rpc_url              = "https://qrlwallet.com/api/qrl-rpc/testnet"
+  # Testnet v2.2 contract addresses (see config/testnet-hyperion.json)
+  stqrl_address             = "QA2f23388d1e3986416A36d2Ef113850D6900b69C"
+  deposit_pool_address      = "Q109d7C528a67b80eb638D4C85e7C4545ef9Bb9aC"
+  validator_manager_address = "QA5b6e85B7713670589e4eAf2F039380Ec2792c8C"
+  qrl_rpc_url               = "https://qrlwallet.com/api/qrl-rpc/testnet"
 
   # Alerting (optional)
   discord_webhook_url = var.discord_webhook_url
