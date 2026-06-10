@@ -54,7 +54,6 @@ export const WithdrawalsPage = observer(() => {
 
   const pending = poolStore.pendingWithdrawals;
   const claimableCount = poolStore.claimableWithdrawals.length;
-  const claimed = poolStore.withdrawals.filter((w) => w.claimed);
 
   if (!account) {
     return (
@@ -214,9 +213,10 @@ export const WithdrawalsPage = observer(() => {
                     : "Nothing to claim yet"}
               </Button>
 
-              {claimed.length > 0 && (
+              {account.completedWithdrawalsCount > 0 && (
                 <p className="text-center text-xs text-muted-foreground">
-                  {claimed.length} completed withdrawal{claimed.length === 1 ? "" : "s"}
+                  {account.completedWithdrawalsCount} completed withdrawal
+                  {account.completedWithdrawalsCount === 1 ? "" : "s"}
                 </p>
               )}
             </CardContent>
