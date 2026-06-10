@@ -47,6 +47,10 @@ contract stQRLv2 {
     uint256 private constant VIRTUAL_SHARES = 1e3;
     uint256 private constant VIRTUAL_ASSETS = 1e3;
 
+    /// @notice Upper bound for the minimum stake lock (about 30 days at ~56s blocks)
+    /// @dev Caps owner power: deposits can never be locked longer than this.
+    uint256 public constant MAX_MIN_STAKE_BLOCKS = 46500;
+
     // =============================================================
     //                       SHARE STORAGE
     // =============================================================
@@ -63,6 +67,24 @@ contract stQRLv2 {
 
     /// @notice Shares locked for pending withdrawals (cannot be transferred)
     mapping(address => uint256) private _lockedShares;
+
+    /// @notice Minimum stake lock applied to fresh deposits, in blocks (0 disables)
+    /// @dev Anti-griefing: prevents deposit/withdraw yo-yo cycles that force the
+    ///      operator to bridge liquidity or exit validators at no cost to the
+    ///      attacker. Owner deposits are exempt (bridge capital stays nimble).
+    uint256 public minStakeBlocks = 1536;
+
+    /// @notice Shares from recent deposits that have not matured yet
+    /// @dev Immature shares cannot be transferred or queued for withdrawal.
+    ///      Matures lazily: immatureSharesOf() reports 0 once _matureAtBlock
+    ///      passes, no storage write needed. A new deposit folds any remaining
+    ///      immature shares into the new bucket and resets the maturity block;
+    ///      already-matured shares are unaffected. Transfers never write to the
+    ///      recipient's bucket, so third parties cannot extend someone's lock.
+    mapping(address => uint256) private _immatureShares;
+
+    /// @notice Block at which an account's immature bucket matures
+    mapping(address => uint256) private _matureAtBlock;
 
     // =============================================================
     //                       POOL STORAGE
@@ -100,6 +122,7 @@ contract stQRLv2 {
 
     // Admin events
     event DepositPoolSet(address indexed previousPool, address indexed newPool);
+    event MinStakeBlocksUpdated(uint256 previousValue, uint256 newValue);
     event Paused(address account);
     event Unpaused(address account);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
@@ -117,6 +140,8 @@ contract stQRLv2 {
     error InsufficientAllowance();
     error DepositPoolAlreadySet();
     error InsufficientUnlockedShares();
+    error InsufficientMaturedShares();
+    error MinStakeBlocksTooHigh();
 
     // =============================================================
     //                         MODIFIERS
@@ -328,6 +353,15 @@ contract stQRLv2 {
         _totalShares += shares;
         _shares[to] += shares;
 
+        // Apply the minimum stake lock to fresh deposits. The owner (operator)
+        // is exempt so bridge capital can enter and exit without the maturity
+        // wait. Remaining immature shares fold into the new bucket and the
+        // maturity block resets; matured shares are unaffected.
+        if (minStakeBlocks > 0 && to != owner) {
+            _immatureShares[to] = immatureSharesOf(to) + shares;
+            _matureAtBlock[to] = block.number + minStakeBlocks;
+        }
+
         // Note: totalPooledQRL is updated separately via updateTotalPooledQRL
         // This allows DepositPool to batch updates
 
@@ -413,6 +447,46 @@ contract stQRLv2 {
     }
 
     // =============================================================
+    //                  STAKE MATURITY FUNCTIONS
+    // =============================================================
+
+    /**
+     * @notice Returns the not-yet-matured shares for an account
+     * @dev Immature shares cannot be transferred or queued for withdrawal.
+     *      Matures lazily: returns 0 once the maturity block has passed.
+     * @param account The address to query
+     * @return The number of immature shares
+     */
+    function immatureSharesOf(address account) public view returns (uint256) {
+        if (block.number >= _matureAtBlock[account]) {
+            return 0;
+        }
+        return _immatureShares[account];
+    }
+
+    /**
+     * @notice Returns the block at which an account's immature bucket matures
+     * @dev 0 if the account never deposited. May be in the past (bucket matured).
+     * @param account The address to query
+     * @return The maturity block number
+     */
+    function matureAtBlockOf(address account) external view returns (uint256) {
+        return _matureAtBlock[account];
+    }
+
+    /**
+     * @notice Set the minimum stake lock applied to fresh deposits
+     * @dev Capped at MAX_MIN_STAKE_BLOCKS. 0 disables the lock entirely.
+     *      Only affects future deposits; existing buckets keep their maturity.
+     * @param _minStakeBlocks The new lock duration in blocks
+     */
+    function setMinStakeBlocks(uint256 _minStakeBlocks) external onlyOwner {
+        if (_minStakeBlocks > MAX_MIN_STAKE_BLOCKS) revert MinStakeBlocksTooHigh();
+        emit MinStakeBlocksUpdated(minStakeBlocks, _minStakeBlocks);
+        minStakeBlocks = _minStakeBlocks;
+    }
+
+    // =============================================================
     //                    INTERNAL FUNCTIONS
     // =============================================================
 
@@ -425,6 +499,12 @@ contract stQRLv2 {
         if (amount == 0) revert ZeroAmount();
         if (_shares[from] < amount) revert InsufficientBalance();
         if (_shares[from] - _lockedShares[from] < amount) revert InsufficientUnlockedShares();
+        // After sending, what remains unlocked must still cover the immature
+        // bucket: immature shares are non-transferable. This closes the lock
+        // bypass of moving fresh shares to an address with no lock state.
+        if (_shares[from] - _lockedShares[from] - amount < immatureSharesOf(from)) {
+            revert InsufficientMaturedShares();
+        }
 
         _shares[from] -= amount;
         _shares[to] += amount;

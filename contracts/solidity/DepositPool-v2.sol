@@ -49,6 +49,7 @@ interface IstQRL {
     function totalShares() external view returns (uint256);
     function sharesOf(address account) external view returns (uint256);
     function lockedSharesOf(address account) external view returns (uint256);
+    function immatureSharesOf(address account) external view returns (uint256);
     function getSharesByPooledQRL(uint256 qrlAmount) external view returns (uint256);
     function getPooledQRLByShares(uint256 sharesAmount) external view returns (uint256);
 }
@@ -318,7 +319,10 @@ contract DepositPoolV2 {
         returns (uint256 requestId, uint256 qrlAmount)
     {
         if (shares == 0) revert ZeroAmount();
-        uint256 unlockedShares = stQRL.sharesOf(msg.sender) - stQRL.lockedSharesOf(msg.sender);
+        // Spendable shares exclude pending-withdrawal locks and the minimum
+        // stake lock on fresh deposits (anti-griefing, see stQRLv2).
+        uint256 unlockedShares =
+            stQRL.sharesOf(msg.sender) - stQRL.lockedSharesOf(msg.sender) - stQRL.immatureSharesOf(msg.sender);
         if (unlockedShares < shares) revert InsufficientShares();
 
         // Refresh the rate before snapshotting the withdrawal value — but only
