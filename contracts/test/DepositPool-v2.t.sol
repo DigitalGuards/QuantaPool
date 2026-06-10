@@ -36,6 +36,10 @@ contract DepositPoolV2Test is Test {
         pool.setStQRL(address(token));
         token.setDepositPool(address(pool));
 
+        // Legacy tests deposit and withdraw in the same block. The minimum
+        // stake lock has its own dedicated test section, which re-enables it.
+        token.setMinStakeBlocks(0);
+
         // Fund test users
         vm.deal(user1, 1000 ether);
         vm.deal(user2, 1000 ether);
@@ -1349,6 +1353,64 @@ contract DepositPoolV2Test is Test {
         pool.syncRewards();
         assertEq(token.totalPooledQRL(), 40050 ether);
         assertEq(pool.totalRewardsReceived(), 50 ether);
+    }
+
+    // =========================================================================
+    //                      MINIMUM STAKE LOCK TESTS
+    // =========================================================================
+
+    uint256 internal constant LOCK_BLOCKS = 1536;
+
+    function test_MinStakeLock_RequestWithdrawal_ImmatureReverts() public {
+        token.setMinStakeBlocks(LOCK_BLOCKS);
+
+        vm.prank(user1);
+        pool.deposit{value: 100 ether}();
+
+        // Fresh deposit cannot be queued for withdrawal
+        vm.prank(user1);
+        vm.expectRevert(DepositPoolV2.InsufficientShares.selector);
+        pool.requestWithdrawal(100 ether);
+
+        // After maturity the same request goes through
+        vm.roll(block.number + LOCK_BLOCKS);
+        vm.prank(user1);
+        (uint256 requestId, uint256 qrlAmount) = pool.requestWithdrawal(100 ether);
+        assertEq(requestId, 0);
+        assertEq(qrlAmount, 100 ether);
+    }
+
+    function test_MinStakeLock_OnlyMaturedSharesSpendable() public {
+        token.setMinStakeBlocks(LOCK_BLOCKS);
+
+        // First deposit matures, top-up stays immature
+        vm.prank(user1);
+        pool.deposit{value: 100 ether}();
+        vm.roll(block.number + LOCK_BLOCKS);
+
+        vm.prank(user1);
+        pool.deposit{value: 100 ether}();
+
+        // The matured 100 can be requested, the immature 100 cannot
+        vm.prank(user1);
+        pool.requestWithdrawal(100 ether);
+
+        vm.prank(user1);
+        vm.expectRevert(DepositPoolV2.InsufficientShares.selector);
+        pool.requestWithdrawal(1 ether);
+    }
+
+    function test_MinStakeLock_OwnerBridgeExempt() public {
+        token.setMinStakeBlocks(LOCK_BLOCKS);
+        vm.deal(address(this), 200 ether);
+
+        // Operator bridge capital: deposit and request back out immediately
+        pool.deposit{value: 100 ether}();
+        assertEq(token.immatureSharesOf(address(this)), 0);
+
+        (uint256 requestId, uint256 qrlAmount) = pool.requestWithdrawal(100 ether);
+        assertEq(requestId, 0);
+        assertEq(qrlAmount, 100 ether);
     }
 
     // =========================================================================

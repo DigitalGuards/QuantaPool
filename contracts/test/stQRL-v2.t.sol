@@ -28,6 +28,11 @@ contract stQRLv2Test is Test {
 
         token = new stQRLv2();
         token.setDepositPool(depositPool);
+
+        // Legacy tests assume freshly minted shares are immediately spendable.
+        // The minimum stake lock has its own dedicated test section below,
+        // which re-enables it per test.
+        token.setMinStakeBlocks(0);
     }
 
     // =========================================================================
@@ -778,9 +783,201 @@ contract stQRLv2Test is Test {
     }
 
     // =========================================================================
+    //                      MINIMUM STAKE LOCK TESTS
+    // =========================================================================
+
+    uint256 internal constant LOCK_BLOCKS = 1536;
+
+    /// @dev Enable the lock and mint shares to an account in one step
+    function _mintWithLock(address to, uint256 qrlAmount) internal {
+        token.setMinStakeBlocks(LOCK_BLOCKS);
+        vm.startPrank(depositPool);
+        token.mintShares(to, qrlAmount);
+        token.updateTotalPooledQRL(token.totalPooledQRL() + qrlAmount);
+        vm.stopPrank();
+    }
+
+    function test_MinStakeLock_DefaultValue() public {
+        // setUp() zeroes the lock for legacy tests; a fresh deploy carries it
+        stQRLv2 freshToken = new stQRLv2();
+        assertEq(freshToken.minStakeBlocks(), 1536);
+    }
+
+    function test_MinStakeLock_ImmatureSharesTracked() public {
+        _mintWithLock(user1, 100 ether);
+
+        assertEq(token.immatureSharesOf(user1), 100 ether);
+        assertEq(token.matureAtBlockOf(user1), block.number + LOCK_BLOCKS);
+    }
+
+    function test_MinStakeLock_TransferImmature_Reverts() public {
+        _mintWithLock(user1, 100 ether);
+
+        vm.prank(user1);
+        vm.expectRevert(stQRLv2.InsufficientMaturedShares.selector);
+        token.transfer(user2, 1 ether);
+    }
+
+    function test_MinStakeLock_TransferAfterMaturity() public {
+        _mintWithLock(user1, 100 ether);
+
+        vm.roll(block.number + LOCK_BLOCKS);
+        assertEq(token.immatureSharesOf(user1), 0);
+
+        vm.prank(user1);
+        token.transfer(user2, 100 ether);
+        assertEq(token.balanceOf(user2), 100 ether);
+    }
+
+    function test_MinStakeLock_MaturedPortionTransferable() public {
+        // First deposit matures, second stays locked
+        _mintWithLock(user1, 100 ether);
+        vm.roll(block.number + LOCK_BLOCKS);
+
+        vm.prank(depositPool);
+        token.mintShares(user1, 50 ether);
+        assertEq(token.immatureSharesOf(user1), 50 ether);
+
+        // The matured 100 can move, the immature 50 cannot
+        vm.prank(user1);
+        token.transfer(user2, 100 ether);
+        assertEq(token.balanceOf(user1), 50 ether);
+
+        vm.prank(user1);
+        vm.expectRevert(stQRLv2.InsufficientMaturedShares.selector);
+        token.transfer(user2, 1 ether);
+    }
+
+    function test_MinStakeLock_TopUpResetsMaturity() public {
+        uint256 startBlock = block.number;
+        _mintWithLock(user1, 60 ether);
+
+        // Top up 700 blocks in: immature bucket accumulates, maturity resets
+        vm.roll(startBlock + 700);
+        vm.prank(depositPool);
+        token.mintShares(user1, 40 ether);
+
+        assertEq(token.immatureSharesOf(user1), 100 ether);
+        assertEq(token.matureAtBlockOf(user1), startBlock + 700 + LOCK_BLOCKS);
+
+        // Original maturity block has passed but the bucket was reset
+        vm.roll(startBlock + LOCK_BLOCKS);
+        assertEq(token.immatureSharesOf(user1), 100 ether);
+
+        vm.roll(startBlock + 700 + LOCK_BLOCKS);
+        assertEq(token.immatureSharesOf(user1), 0);
+    }
+
+    function test_MinStakeLock_TransferDoesNotAffectRecipientLock() public {
+        // user1 fully matured, user2 holds a fresh immature deposit
+        _mintWithLock(user1, 100 ether);
+        vm.roll(block.number + LOCK_BLOCKS);
+
+        vm.prank(depositPool);
+        token.mintShares(user2, 50 ether);
+        assertEq(token.immatureSharesOf(user2), 50 ether);
+
+        // Receiving mature shares must not extend or grow user2's lock
+        vm.prank(user1);
+        token.transfer(user2, 30 ether);
+
+        assertEq(token.immatureSharesOf(user2), 50 ether);
+        assertEq(token.balanceOf(user2), 80 ether);
+
+        // user2 can immediately move the received mature shares
+        vm.prank(user2);
+        token.transfer(user1, 30 ether);
+        assertEq(token.balanceOf(user2), 50 ether);
+    }
+
+    function test_MinStakeLock_OwnerExempt() public {
+        token.setMinStakeBlocks(LOCK_BLOCKS);
+
+        vm.prank(depositPool);
+        token.mintShares(owner, 100 ether);
+
+        assertEq(token.immatureSharesOf(owner), 0);
+
+        // Owner can transfer immediately (bridge capital stays nimble)
+        token.transfer(user1, 100 ether);
+        assertEq(token.balanceOf(user1), 100 ether);
+    }
+
+    function test_MinStakeLock_DisabledWhenZero() public {
+        // setUp() already set minStakeBlocks = 0
+        vm.prank(depositPool);
+        token.mintShares(user1, 100 ether);
+
+        assertEq(token.immatureSharesOf(user1), 0);
+
+        vm.prank(user1);
+        token.transfer(user2, 100 ether);
+        assertEq(token.balanceOf(user2), 100 ether);
+    }
+
+    function test_SetMinStakeBlocks_OnlyOwner() public {
+        vm.prank(user1);
+        vm.expectRevert(stQRLv2.NotOwner.selector);
+        token.setMinStakeBlocks(LOCK_BLOCKS);
+    }
+
+    function test_SetMinStakeBlocks_CapEnforced() public {
+        uint256 cap = token.MAX_MIN_STAKE_BLOCKS();
+
+        vm.expectRevert(stQRLv2.MinStakeBlocksTooHigh.selector);
+        token.setMinStakeBlocks(cap + 1);
+
+        token.setMinStakeBlocks(cap);
+        assertEq(token.minStakeBlocks(), cap);
+    }
+
+    function test_SetMinStakeBlocks_EmitsEvent() public {
+        vm.expectEmit(false, false, false, true);
+        emit MinStakeBlocksUpdated(0, LOCK_BLOCKS);
+        token.setMinStakeBlocks(LOCK_BLOCKS);
+    }
+
+    function testFuzz_MinStakeLock_LockedPlusImmatureNeverExceedsBalance(
+        uint96 maturedRaw,
+        uint96 freshRaw,
+        uint96 lockRaw
+    ) public {
+        uint256 matured = bound(uint256(maturedRaw), 1 ether, 1_000_000 ether);
+        uint256 fresh = bound(uint256(freshRaw), 1 ether, 1_000_000 ether);
+        uint256 locked = bound(uint256(lockRaw), 0, matured);
+
+        // Matured deposit, then a withdrawal lock on part of it, then a fresh deposit
+        _mintWithLock(user1, matured);
+        vm.roll(block.number + LOCK_BLOCKS);
+
+        if (locked > 0) {
+            vm.prank(depositPool);
+            token.lockShares(user1, locked);
+        }
+
+        vm.prank(depositPool);
+        token.mintShares(user1, fresh);
+
+        uint256 balance = token.balanceOf(user1);
+        uint256 immature = token.immatureSharesOf(user1);
+        assertLe(token.lockedSharesOf(user1) + immature, balance);
+
+        // Spendable amount transfers cleanly; one share more reverts
+        uint256 spendable = balance - token.lockedSharesOf(user1) - immature;
+        if (spendable > 0) {
+            vm.prank(user1);
+            token.transfer(user2, spendable);
+        }
+        vm.prank(user1);
+        vm.expectRevert();
+        token.transfer(user2, 1);
+    }
+
+    // =========================================================================
     //                      EVENT DECLARATIONS
     // =========================================================================
 
     event Approval(address indexed owner, address indexed spender, uint256 value);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event MinStakeBlocksUpdated(uint256 previousValue, uint256 newValue);
 }
