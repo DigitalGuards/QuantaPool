@@ -58,6 +58,17 @@ export interface WithdrawalRequestView {
 
 export type TxState = "idle" | "pending" | "confirmed" | "failed";
 
+export type ActivityType = "deposit" | "request" | "claim" | "cancel";
+
+export interface StakingActivity {
+  type: ActivityType;
+  /** QRL amount involved (absent for cancellations). */
+  qrlAmount: bigint | null;
+  shares: bigint | null;
+  blockNumber: bigint;
+  txHash: string;
+}
+
 export interface TxStatus {
   state: TxState;
   label: string;
@@ -102,8 +113,23 @@ interface ValidatorManagerMethods {
   getStats(): ContractCall<Record<string, unknown>>;
 }
 
+/** Minimal typed view over the contract instance for event queries. */
+interface PoolEventSource {
+  getPastEvents(
+    event: string,
+    options: { filter?: Record<string, unknown>; fromBlock?: unknown; toBlock?: unknown },
+  ): Promise<unknown[]>;
+}
+
+interface PastEventLog {
+  blockNumber?: unknown;
+  transactionHash?: string;
+  returnValues?: Record<string, unknown>;
+}
+
 interface Contracts {
   pool: DepositPoolMethods;
+  poolEvents: PoolEventSource;
   stqrl: StQrlMethods;
   validators: ValidatorManagerMethods;
 }
@@ -143,6 +169,9 @@ export class PoolStore {
   provider: ExtensionProvider | null = null;
   account: AccountState | null = null;
   withdrawals: WithdrawalRequestView[] = [];
+  /** The account's staking history, newest first (from DepositPool events). */
+  activity: StakingActivity[] = [];
+  activityError: string | null = null;
 
   tx: TxStatus = IDLE_TX;
 
@@ -266,6 +295,8 @@ export class PoolStore {
     this.provider = null;
     this.account = null;
     this.withdrawals = [];
+    this.activity = [];
+    this.activityError = null;
     this.connectError = null;
     this.finalizedRequests.clear();
     this.tx = IDLE_TX;
@@ -340,6 +371,7 @@ export class PoolStore {
             qrlValue: 0n,
           };
           this.withdrawals = [];
+          this.activity = [];
         });
         this.finalizedRequests.clear();
         void this.refreshAccount(next);
@@ -381,11 +413,13 @@ export class PoolStore {
     if (!this.contracts) {
       const web3 = await this.getWeb3();
       const { contracts } = this.network;
+      const poolContract = new web3.qrl.Contract(
+        DepositPoolV2ABI as unknown as ContractAbi,
+        contracts.depositPool,
+      );
       this.contracts = {
-        pool: new web3.qrl.Contract(
-          DepositPoolV2ABI as unknown as ContractAbi,
-          contracts.depositPool,
-        ).methods as unknown as DepositPoolMethods,
+        pool: poolContract.methods as unknown as DepositPoolMethods,
+        poolEvents: poolContract as unknown as PoolEventSource,
         stqrl: new web3.qrl.Contract(
           StQRLV2ABI as unknown as ContractAbi,
           contracts.stQRL,
@@ -455,9 +489,67 @@ export class PoolStore {
     return view;
   }
 
+  /**
+   * Build the account's staking history from DepositPool events (all four
+   * user-facing events index the user address). Each entry links to zondscan.
+   */
+  private async fetchActivity(address: string): Promise<void> {
+    try {
+      const { poolEvents } = await this.getContracts();
+      const query = (event: string) =>
+        poolEvents.getPastEvents(event, {
+          filter: { user: address },
+          fromBlock: 0,
+          toBlock: "latest",
+        });
+      const [deposits, requests, claims, cancels] = await Promise.all([
+        query("Deposited"),
+        query("WithdrawalRequested"),
+        query("WithdrawalClaimed"),
+        query("WithdrawalCancelled"),
+      ]);
+
+      const toActivity = (type: ActivityType) => (raw: unknown): StakingActivity => {
+        const log = raw as PastEventLog;
+        const values = log.returnValues ?? {};
+        return {
+          type,
+          qrlAmount: "qrlAmount" in values ? asBig(values.qrlAmount) : null,
+          shares:
+            "shares" in values
+              ? asBig(values.shares)
+              : "sharesReceived" in values
+                ? asBig(values.sharesReceived)
+                : null,
+          blockNumber: asBig(log.blockNumber),
+          txHash: log.transactionHash ?? "",
+        };
+      };
+
+      const merged = [
+        ...deposits.map(toActivity("deposit")),
+        ...requests.map(toActivity("request")),
+        ...claims.map(toActivity("claim")),
+        ...cancels.map(toActivity("cancel")),
+      ].sort((a, b) => (a.blockNumber > b.blockNumber ? -1 : 1));
+
+      runInAction(() => {
+        if (!this.account || this.account.address !== address) return;
+        this.activity = merged;
+        this.activityError = null;
+      });
+    } catch (error) {
+      // Some RPC proxies don't expose log queries — degrade gracefully.
+      runInAction(() => {
+        this.activityError = errorMessage(error);
+      });
+    }
+  }
+
   private async refreshAccount(address: string): Promise<void> {
     const web3 = await this.getWeb3();
     const { pool, stqrl } = await this.getContracts();
+    void this.fetchActivity(address);
 
     const [qrlBalance, shares, lockedShares, qrlValue, counts] = await Promise.all([
       web3.qrl.getBalance(address),
