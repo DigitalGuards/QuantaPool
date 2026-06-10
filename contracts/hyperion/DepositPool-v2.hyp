@@ -323,8 +323,14 @@ contract DepositPoolV2 {
         uint256 unlockedShares = stQRL.sharesOf(msg.sender) - stQRL.lockedSharesOf(msg.sender);
         if (unlockedShares < shares) revert InsufficientShares();
 
-        // Sync rewards first
-        _syncRewards();
+        // Refresh the rate before snapshotting the withdrawal value — but only
+        // while permissionless sync is safe. With principal staked off-contract
+        // the rate is owner-controlled, and triggering a sync here would let a
+        // requester front-run validator-exit settlement and snapshot an inflated
+        // value (see {_permissionlessSyncAllowed}); use the last synced rate.
+        if (_permissionlessSyncAllowed()) {
+            _syncRewards();
+        }
 
         // Calculate current QRL value
         qrlAmount = stQRL.getPooledQRLByShares(shares);
@@ -372,8 +378,13 @@ contract DepositPoolV2 {
         if (request.claimed) revert NoWithdrawalPending();
         if (block.number < request.requestBlock + WITHDRAWAL_DELAY) revert WithdrawalNotReady();
 
-        // Sync rewards first (external call, but to trusted stQRL contract)
-        _syncRewards();
+        // Refresh pooled accounting, but only while permissionless sync is safe.
+        // The payout uses the request-time snapshot (request.qrlAmount) either
+        // way; this keeps a claim from triggering a sync inside the validator-exit
+        // settlement window (see {_permissionlessSyncAllowed}).
+        if (_permissionlessSyncAllowed()) {
+            _syncRewards();
+        }
 
         // Cache shares before state changes
         uint256 sharesToBurn = request.shares;
@@ -491,12 +502,41 @@ contract DepositPoolV2 {
 
     /**
      * @notice Sync rewards from validator balance changes
-     * @dev Anyone can call this. It's trustless - just compares balances.
-     *      Called automatically on deposit/withdraw, but can be called
-     *      manually to update balances more frequently.
+     * @dev Trustless and permissionless while all principal is on-contract
+     *      (stakedQRL == 0). While validator principal is staked off-contract
+     *      (stakedQRL > 0) this is restricted to the owner — see
+     *      {_permissionlessSyncAllowed} for why.
      */
     function syncRewards() external nonReentrant {
+        if (!_permissionlessSyncAllowed() && msg.sender != owner) revert NotOwner();
         _syncRewards();
+    }
+
+    /**
+     * @notice Whether reward sync may be triggered permissionlessly right now.
+     * @dev Sync infers rewards/slashing from balance deltas. That inference is
+     *      only unambiguous while every QRL of principal sits in this contract
+     *      (stakedQRL == 0): then `balance - withdrawalReserve` is exactly the
+     *      pooled total.
+     *
+     *      Once a real fundValidator() forwards principal to the beacon deposit
+     *      contract (stakedQRL > 0), an exit sweep returning that principal via
+     *      EIP-4895 lands in `address(this).balance` automatically, a block
+     *      before the owner can call recordValidatorExit() to settle it. In
+     *      that window `balance + stakedQRL` double-counts the principal, so a
+     *      sync would book it as a large phantom reward and spike the exchange
+     *      rate. A permissionless caller could front-run the settlement, lock
+     *      that inflated rate into a withdrawal request (whose QRL value is
+     *      snapshotted on request), and drain the pool when the rate corrects.
+     *
+     *      So while principal is off-contract the exchange rate only moves
+     *      under owner control: the operator sequences recordValidatorExit()
+     *      and syncRewards() so settlement and reward recognition cannot be
+     *      front-run. The MVP path (fundValidatorMVP keeps QRL in-contract,
+     *      stakedQRL == 0) is unaffected and stays fully permissionless.
+     */
+    function _permissionlessSyncAllowed() internal view returns (bool) {
+        return stakedQRL == 0;
     }
 
     /**
