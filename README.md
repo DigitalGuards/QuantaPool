@@ -12,6 +12,7 @@ QuantaPool enables QRL holders to participate in Proof-of-Stake validation witho
 - **Fixed-Balance Token**: Share balance stays constant (tax-friendly), QRL value grows with rewards
 - **Slashing-Safe**: Fixed-balance design handles slashing by proportionally reducing all holders' QRL value
 - **Trustless Sync**: No oracle needed - rewards detected via EIP-4895 balance increases
+- **Griefing-Resistant**: Fresh deposits mature for ~1 day (owner-tunable) before they can be transferred or withdrawn, blocking deposit/withdraw yo-yo attacks on pool liquidity
 - **Post-Quantum Secure**: Built on QRL's Dilithium ML-DSA-87 signature scheme
 - **Production Infrastructure**: Terraform + Ansible for automated validator deployment
 - **Monitoring Stack**: Prometheus, Grafana dashboards, and Alertmanager with Discord/Telegram alerts
@@ -69,9 +70,9 @@ QuantaPool/
 │   │   └── ValidatorManager.sol #  Validator lifecycle tracking
 │   ├── hyperion/             #   Auto-synced Hyperion mirrors (.hyp)
 │   │   └── README.md         #     Dialect rules and hypc workflow
-│   └── test/                 #   Foundry test suite (200 tests)
-│       ├── stQRL-v2.t.sol    #     55 core token tests
-│       ├── DepositPool-v2.t.sol  # 90 deposit/withdrawal tests
+│   └── test/                 #   Foundry test suite (216 tests)
+│       ├── stQRL-v2.t.sol    #     68 core token tests
+│       ├── DepositPool-v2.t.sol  # 93 deposit/withdrawal tests
 │       ├── ValidatorManager.t.sol # 55 validator lifecycle tests
 │       └── hyperion/         #     Generated .t.hyp mirrors (reference only)
 ├── build/hyperion/           # hypc output (ABI, bin, manifest.json) - gitignored
@@ -96,8 +97,8 @@ QuantaPool/
 
 | Contract | LOC | Purpose |
 |----------|-----|---------|
-| `stQRL-v2.sol` | 496 | Fixed-balance liquid staking token (shares-based) |
-| `DepositPool-v2.sol` | 885 | User entry point, deposits/withdrawals, trustless reward sync |
+| `stQRL-v2.sol` | 576 | Fixed-balance liquid staking token (shares-based, min-stake maturity lock) |
+| `DepositPool-v2.sol` | 889 | User entry point, deposits/withdrawals, trustless reward sync |
 | `ValidatorManager.sol` | 349 | Validator lifecycle: Pending → Active → Exiting → Exited |
 
 All on-chain code lives under `contracts/`. Solidity sources in `contracts/solidity/` are the canonical editing target; Hyperion mirrors in `contracts/hyperion/` are generated from them (never hand-edit). Foundry tests live in `contracts/test/` with a parallel `contracts/test/hyperion/` tree of reference `.t.hyp` mirrors. Compiled Hyperion artifacts land in `build/hyperion/` (gitignored).
@@ -180,7 +181,7 @@ GitHub Actions runs `forge fmt --check`, `forge build --sizes`, and `forge test 
 
 ## Test Coverage
 
-- **200 tests passing** (55 stQRL-v2 + 90 DepositPool-v2 + 55 ValidatorManager)
+- **216 tests passing** (68 stQRL-v2 + 93 DepositPool-v2 + 55 ValidatorManager)
 - Share/QRL conversion math, multi-user rewards, slashing scenarios
 - Withdrawal flow with 128-block delay enforcement
 - Validator lifecycle (registration, activation, exit, slashing)

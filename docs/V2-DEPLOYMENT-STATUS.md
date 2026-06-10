@@ -128,6 +128,17 @@ The deployed v2.2 `DepositPoolV2` decrements only `bufferedQRL` when `fundValida
 
 **Action:** redeploy as v2.3 (same 5-tx deploy+wire flow) before exercising the real beacon path again - i.e. before the QRL-software-upgrade validator testing. The MVP-mode testnet flows on v2.2 remain safe in the meantime as long as `fundValidator()` (real path) is not used.
 
+### 8. Minimum stake lock (anti-griefing) - **in source 2026-06-10, ships with v2.3**
+
+Fresh deposits now mature for `minStakeBlocks` (default 1536, ~1 day) before they can be transferred or queued for withdrawal. Closes the deposit/withdraw yo-yo grief that would force the operator to bridge liquidity or exit validators at no cost to the attacker. Design points:
+
+- Two-bucket lazy maturity in `stQRLv2` (`immatureSharesOf` / `matureAtBlockOf`), mirroring the `_lockedShares` pattern. Top-ups fold remaining immature shares into a new bucket and reset its maturity; matured shares are unaffected.
+- Immature shares are non-transferable (closes the fresh-address bypass); transfers never write to the recipient's bucket (no dust-grief vector).
+- Owner deposits are exempt so operator bridge capital can enter/exit without the wait.
+- `setMinStakeBlocks` owner-settable, capped at `MAX_MIN_STAKE_BLOCKS` (46500, ~30 days), `0` disables.
+- Suite now **216 pass** (16 new tests incl. invariant fuzz). Frontend handles it gracefully against v2.2 (missing views read as 0) and shows a maturing notice on the Withdrawals page.
+- The live v2.2 contracts do not have the lock; it activates with the v2.3 redeploy.
+
 ---
 
 ## Frontend (live 2026-06-10)
