@@ -1133,6 +1133,225 @@ contract DepositPoolV2Test is Test {
     }
 
     // =========================================================================
+    //              OFF-CONTRACT STAKE ACCOUNTING (stakedQRL)
+    // =========================================================================
+    // fundValidator() forwards 40k QRL to the beacon deposit contract, so the
+    // pool's own balance drops by the stake. _syncRewards() must add stakedQRL
+    // back when reconciling, otherwise the funding tx reads as a slashing event
+    // and the exchange rate collapses. These tests lock that in.
+
+    function test_FundValidator_TracksStakedQRL() public {
+        _stubDepositContract();
+        _fundBufferForValidator();
+
+        assertEq(pool.stakedQRL(), 0);
+        pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+
+        // Principal left the contract but is still pooled.
+        assertEq(pool.stakedQRL(), 40000 ether);
+        assertEq(address(pool).balance, 0);
+        assertEq(token.totalPooledQRL(), 40000 ether);
+    }
+
+    function test_SyncAfterFundValidator_NoPhantomSlashing() public {
+        _stubDepositContract();
+        _fundBufferForValidator();
+        pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+
+        // Contract balance is now 0, stakedQRL is 40k. A naive balance-only
+        // sync would report a 40k slashing loss here.
+        uint256 pooledBefore = token.totalPooledQRL();
+        pool.syncRewards();
+
+        assertEq(token.totalPooledQRL(), pooledBefore, "pooled must not change");
+        assertEq(pool.totalSlashingLosses(), 0, "no phantom slashing");
+        assertEq(pool.totalRewardsReceived(), 0, "no phantom rewards");
+        // Exchange rate stays ~1:1 (depositor's value preserved).
+        assertApproxEqRel(token.getQRLValue(user1), 40000 ether, 1e14);
+    }
+
+    function test_RewardsArriveWhileStaked_AttributedAsRewards() public {
+        _stubDepositContract();
+        _fundBufferForValidator();
+        pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+
+        // 50 QRL of beacon rewards sweep in via EIP-4895 (modeled as a balance
+        // bump on top of the off-contract stake).
+        vm.deal(address(pool), 50 ether);
+
+        vm.expectEmit(true, true, true, true);
+        emit RewardsSynced(50 ether, 40050 ether, block.number);
+        pool.syncRewards();
+
+        assertEq(token.totalPooledQRL(), 40050 ether);
+        assertEq(pool.totalRewardsReceived(), 50 ether);
+        assertEq(pool.stakedQRL(), 40000 ether, "stake unchanged by reward sweep");
+    }
+
+    function test_RecordValidatorExit_SettlesReturnedPrincipal() public {
+        _stubDepositContract();
+        _fundBufferForValidator();
+        pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+
+        // Validator exits: 40k principal returns to the contract balance.
+        vm.deal(address(pool), 40000 ether);
+
+        // Owner reconciles: principal moves from off-contract stakedQRL back
+        // into the on-contract balance. totalPooledQRL stays put.
+        vm.expectEmit(true, true, true, true);
+        emit ValidatorExitRecorded(40000 ether, 0);
+        pool.recordValidatorExit(40000 ether);
+
+        assertEq(pool.stakedQRL(), 0);
+
+        // Without the recordValidatorExit() above, this sync would have double
+        // counted the returned principal as 40k of rewards.
+        pool.syncRewards();
+        assertEq(token.totalPooledQRL(), 40000 ether);
+        assertEq(pool.totalRewardsReceived(), 0, "principal must not count as rewards");
+    }
+
+    function test_RecordValidatorExit_OnlyOwner() public {
+        _stubDepositContract();
+        _fundBufferForValidator();
+        pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+
+        vm.prank(user1);
+        vm.expectRevert(DepositPoolV2.NotOwner.selector);
+        pool.recordValidatorExit(40000 ether);
+    }
+
+    function test_RecordValidatorExit_RejectsZero() public {
+        vm.expectRevert(DepositPoolV2.ZeroAmount.selector);
+        pool.recordValidatorExit(0);
+    }
+
+    function test_RecordValidatorExit_RejectsAboveStaked() public {
+        _stubDepositContract();
+        _fundBufferForValidator();
+        pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+
+        vm.expectRevert(DepositPoolV2.ExceedsStakedAmount.selector);
+        pool.recordValidatorExit(40000 ether + 1);
+    }
+
+    function test_EmergencyWithdraw_ExcludesStakedFromProtocolFunds() public {
+        _stubDepositContract();
+        _fundBufferForValidator();
+        pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+
+        // Stray 5 QRL is sent in on top of the staked position. It is genuinely
+        // excess (not pooled, not reserved) and must remain recoverable even
+        // though stakedQRL inflates totalPooledQRL.
+        vm.deal(address(pool), 5 ether);
+
+        // Recover to a fresh EOA (starts at zero balance, can receive ETH).
+        address recipient = address(0xBEEF);
+        pool.emergencyWithdraw(recipient, 5 ether);
+        assertEq(address(pool).balance, 0);
+        assertEq(recipient.balance, 5 ether);
+    }
+
+    // =========================================================================
+    //          PHANTOM-REWARD FRONT-RUN PROTECTION (validator exits)
+    // =========================================================================
+    // While principal is staked off-contract (stakedQRL > 0), an exit sweep
+    // returns principal to the balance a block before the owner can settle it
+    // with recordValidatorExit(). A permissionless sync in that window would
+    // book the principal as a phantom reward and spike the rate, which a
+    // front-runner could snapshot into a withdrawal and drain the pool. So
+    // permissionless reward sync is disabled whenever stakedQRL > 0. With
+    // stakedQRL == 0 (MVP path) it stays fully permissionless. These lock it in.
+
+    function test_SyncRewards_PermissionlessWhenNoStake() public {
+        // No off-contract principal: anyone may sync (trustless path intact).
+        vm.prank(user1);
+        pool.deposit{value: 100 ether}();
+        vm.deal(address(pool), 110 ether); // 10 QRL of rewards arrive
+
+        vm.prank(user2);
+        pool.syncRewards();
+
+        assertEq(token.totalPooledQRL(), 110 ether);
+        assertEq(pool.totalRewardsReceived(), 10 ether);
+    }
+
+    function test_SyncRewards_OwnerOnlyWhileStaked() public {
+        _stubDepositContract();
+        _fundBufferForValidator();
+        pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+
+        // Principal is now off-contract — permissionless sync is blocked.
+        vm.prank(user2);
+        vm.expectRevert(DepositPoolV2.NotOwner.selector);
+        pool.syncRewards();
+
+        // The owner can still sync (no revert).
+        pool.syncRewards();
+    }
+
+    function test_PhantomReward_FrontRunBlockedDuringExit() public {
+        _stubDepositContract();
+        _fundBufferForValidator(); // user1 holds 40000 shares
+        pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+
+        // Exit principal lands in the balance via EIP-4895 BEFORE the owner
+        // settles it: balance = 40k, stakedQRL still = 40k (would read as +40k).
+        vm.deal(address(pool), 40000 ether);
+
+        // (a) A permissionless sync that would bank the phantom reward reverts.
+        vm.prank(user2);
+        vm.expectRevert(DepositPoolV2.NotOwner.selector);
+        pool.syncRewards();
+
+        // (b) Front-running via requestWithdrawal must not inflate the rate:
+        // the snapshot reflects the true (pre-exit) value and no phantom
+        // reward is booked, so the inflated rate cannot be locked in.
+        vm.prank(user1);
+        (, uint256 snapshot) = pool.requestWithdrawal(40000 ether);
+
+        assertApproxEqRel(snapshot, 40000 ether, 1e14, "snapshot must use true rate");
+        assertEq(pool.totalRewardsReceived(), 0, "no phantom reward recognized");
+        assertEq(token.totalPooledQRL(), 40000 ether, "exchange rate unchanged");
+    }
+
+    function test_ExitSettlement_ThenPermissionlessSyncResumes() public {
+        _stubDepositContract();
+        _fundBufferForValidator();
+        pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+        vm.deal(address(pool), 40000 ether); // principal returned
+
+        // Owner settles — cannot be front-run (see test above) — clearing stake.
+        pool.recordValidatorExit(40000 ether);
+        assertEq(pool.stakedQRL(), 0);
+
+        // Permissionless sync works again and books no phantom reward.
+        vm.prank(user2);
+        pool.syncRewards();
+        assertEq(token.totalPooledQRL(), 40000 ether);
+        assertEq(pool.totalRewardsReceived(), 0, "principal must not count as rewards");
+    }
+
+    function test_OwnerSync_RecognizesGenuineRewardsWhileStaked() public {
+        _stubDepositContract();
+        _fundBufferForValidator();
+        pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+
+        // 50 QRL of genuine beacon rewards sweep in on top of the stake.
+        vm.deal(address(pool), 50 ether);
+
+        // Still blocked for the public...
+        vm.prank(user2);
+        vm.expectRevert(DepositPoolV2.NotOwner.selector);
+        pool.syncRewards();
+
+        // ...but the owner recognizes the real rewards under controlled timing.
+        pool.syncRewards();
+        assertEq(token.totalPooledQRL(), 40050 ether);
+        assertEq(pool.totalRewardsReceived(), 50 ether);
+    }
+
+    // =========================================================================
     //                       EVENT DECLARATIONS
     // =========================================================================
 
@@ -1140,5 +1359,6 @@ contract DepositPoolV2Test is Test {
     event MinDepositFloorUpdated(uint256 newFloor);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event ValidatorFunded(uint256 indexed validatorId, bytes pubkey, uint256 amount);
+    event ValidatorExitRecorded(uint256 amount, uint256 remainingStaked);
     event WithdrawalReserveFunded(uint256 amount);
 }

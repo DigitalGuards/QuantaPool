@@ -108,6 +108,24 @@ Not testable on the testnet (can't force a validator to be slashed externally). 
 ### 6. Validator activation observation
 Validator `0xa40ca760bcc4…` is in the activation queue. Once it transitions to `ACTIVE`, the validator client will start signing attestations. Need a follow-up integration test that, after activation, polls `validator_statuses{}` and confirms the pool's `_syncRewards()` picks up beacon-chain rewards routed back via the withdrawal address.
 
+### 7. Off-contract stake accounting (`stakedQRL`) — **fixed in source, REQUIRES v2.3 redeploy**
+
+The deployed v2.2 `DepositPoolV2` decrements only `bufferedQRL` when `fundValidator()` forwards the 40k stake to the beacon deposit contract; it never adds the off-contract principal back inside `_syncRewards()`. `_syncRewards()` computes `actualTotalPooled = balance − withdrawalReserve`, so the moment a real `fundValidator()` runs, the contract balance is 40k below `totalPooledQRL`. The next `syncRewards()` call (permissionless, and also triggered inside every `requestWithdrawal`/`claimWithdrawal`) emits `SlashingDetected(40000)` and collapses the exchange rate — after which a dust deposit can mint a near-unbounded share count and capture the pool when the stake/rewards return.
+
+**This is the current live state of the v2.2 pool:** the real `fundValidator()` executed on 2026-04-14 means a `syncRewards()` against the live v2.2 `DepositPoolV2` will report a phantom 40k slashing. Do **not** call `syncRewards()` (or trigger it via withdraw) on the live v2.2 pool until redeployed.
+
+**Fix (in `contracts/solidity/DepositPool-v2.sol`):**
+- New `stakedQRL` accumulator, incremented by `fundValidator()` when principal leaves for the beacon contract.
+- `_syncRewards()` now reconciles `balance + stakedQRL − withdrawalReserve`, so funding a validator is balance-neutral.
+- New owner-only `recordValidatorExit(amount)` decrements `stakedQRL` when exit proceeds return, preventing the returned principal from being double-counted as rewards.
+- `emergencyWithdraw()` recoverable-amount calc excludes `stakedQRL` (it lives off-contract).
+- **Phantom-reward front-run protection:** reward sync is permissionless only while `stakedQRL == 0`. Once principal is off-contract (`stakedQRL > 0`), `syncRewards()` and the implicit sync inside `requestWithdrawal`/`claimWithdrawal` are owner-only. Without this, an exit sweep lands principal in the balance a block before the owner can call `recordValidatorExit()`; an unrestricted sync in that window would book the principal as a phantom *reward* (the inverse of the slashing bug above), spike the exchange rate, and let a front-runner snapshot the inflated value into a withdrawal and drain the pool. Gating sync during that window makes settlement + reward recognition owner-sequenced and un-frontrunnable. The MVP path (`stakedQRL == 0`) stays fully permissionless.
+- 13 new Foundry regression tests in `DepositPool-v2.t.sol`: the `OFF-CONTRACT STAKE ACCOUNTING` block (no-phantom-slashing after funding, rewards-while-staked, exit settlement, access control, emergency-withdraw carve-out) plus a `PHANTOM-REWARD FRONT-RUN PROTECTION` block (permissionless-when-unstaked, owner-only-while-staked, front-run blocked during exit, permissionless resumes after settlement, owner still recognizes genuine rewards). Suite now **200 pass**.
+
+`fundValidatorMVP()` is unaffected — it keeps QRL in the contract and never touches `stakedQRL`, so its sync stays permissionless.
+
+**Action:** redeploy as v2.3 (same 5-tx deploy+wire flow) before exercising the real beacon path again — i.e. before the QRL-software-upgrade validator testing. The MVP-mode testnet flows on v2.2 remain safe in the meantime as long as `fundValidator()` (real path) is not used.
+
 ---
 
 ## How to resume
@@ -115,7 +133,7 @@ Validator `0xa40ca760bcc4…` is in the activation queue. Once it transitions to
 ```bash
 cd /home/waterfall/myqrlwallet/QuantaPool
 git status                                    # expect clean on dev
-forge test --summary                          # expect 187 pass
+forge test --summary                          # expect 200 pass
 node scripts/integration-test-v2.js status    # live testnet read-back (v2.2 addresses)
 ssh root@46.28.70.102 'systemctl is-active gqrl qrysm-beacon qrysm-validator'  # all should be active
 ```
@@ -145,7 +163,7 @@ The `validator` phase locks 40,000 QRL into the pool per run. Recover via the `c
 - `scripts/lib/loadDeployer.js` — wallet.js v3 loader (34-word mnemonic, registers seed on `web3.qrl.wallet`)
 - `contracts/solidity/` — canonical .sol sources
 - `contracts/hyperion/` — generated .hyp mirrors (regenerate with `sync-hyperion`)
-- `contracts/test/` — Foundry suite (187 tests, all pass)
+- `contracts/test/` — Foundry suite (200 tests, all pass)
 - `scripts/verify-deposit-data.js` — safety gate; validates a `deposit_data-*.json` against the live pool
 - `scripts/fund-validator-real.js` — broadcasts `pool.fundValidator()` (real beacon path)
 - `docs/NODE-SETUP.md` — gqrl + qrysm runbook for the validator host
