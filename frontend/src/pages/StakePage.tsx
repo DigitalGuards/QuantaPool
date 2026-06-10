@@ -19,7 +19,7 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
   {
     question: "What is stQRL?",
     answer:
-      "stQRL is a fixed-balance liquid staking token. Your share balance stays constant while the QRL value of each share grows as the pool earns rewards. You can transfer stQRL freely while your underlying stake keeps earning.",
+      "stQRL is a fixed-balance liquid staking token. Your share balance stays constant while the QRL value of each share grows as the pool earns rewards. Note: freshly minted shares must mature for about a day (1536 blocks) before they can be transferred or queued for withdrawal. Top-up deposits fold any not-yet-matured shares into a new bucket and restart that timer.",
   },
   {
     question: "How do rewards work?",
@@ -29,7 +29,7 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
   {
     question: "How do I unstake?",
     answer:
-      "Request a withdrawal on the Withdrawals page. Your shares are locked and, after a 128-block delay (about 2 hours), you can claim your QRL. You can cancel a pending request at any time before claiming.",
+      "Request a withdrawal on the Withdrawals page. Your shares are locked and, after a 128-block delay (about 2 hours), you can claim your QRL. You can cancel a pending request at any time before claiming. Keep in mind that each deposit must mature for about a day (1536 blocks) before those shares can be queued for withdrawal. Top-up deposits restart the maturity timer for any not-yet-matured shares.",
   },
   {
     question: "Is it post-quantum secure?",
