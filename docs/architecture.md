@@ -99,17 +99,28 @@ Handles deposits, withdrawals, and reward synchronization.
   slashing event. When exit proceeds return, the owner calls
   `recordValidatorExit(amount)` to settle that principal back into the
   on-contract balance (otherwise the next sync would double-count it as rewards).
+- Permissionless while all principal is on-contract (`stakedQRL == 0`): anyone
+  may call `syncRewards()`. Once principal is staked off-contract
+  (`stakedQRL > 0`), reward sync — including the implicit sync inside
+  `requestWithdrawal`/`claimWithdrawal` — is restricted to the owner. This
+  closes a front-running window: an exit sweep lands principal in the balance a
+  block before the owner can `recordValidatorExit()`, and an unrestricted sync
+  in that window would book the principal as a phantom reward, spike the rate,
+  and let a front-runner snapshot the inflated value into a withdrawal. With
+  sync owner-gated during that window, settlement and reward recognition are
+  sequenced by the operator and cannot be front-run.
 
 > **Known limitation (production):** the balance-diff sync is fully trustless
-> only while staked QRL sits in the contract (`fundValidatorMVP`) or while a
-> validator's funds are entirely off-contract (`fundValidator` + `stakedQRL`).
-> It cannot observe a *live* validator's accruing beacon balance, inactivity
-> leak, or slashing until those amounts are swept on-chain via EIP-4895 — and
-> the principal/reward split on return depends on the owner calling
-> `recordValidatorExit()`. A fully self-custodial production reward mechanism
-> over live beacon balances will require either periodic beacon-state input or
-> an automated exit-settlement path. This is acceptable for the MVP/testnet
-> trust model (single trusted operator) but must be hardened before mainnet.
+> only while staked QRL sits in the contract (`fundValidatorMVP`). Once
+> `fundValidator()` moves principal off-contract, reward sync becomes
+> owner-driven (see above) and cannot observe a *live* validator's accruing
+> beacon balance, inactivity leak, or slashing until those amounts are swept
+> on-chain via EIP-4895 — and the principal/reward split on return depends on
+> the owner calling `recordValidatorExit()`. A fully self-custodial production
+> reward mechanism over live beacon balances will require either periodic
+> beacon-state input or an automated exit-settlement path. This is acceptable
+> for the MVP/testnet trust model (single trusted operator) but must be
+> hardened before mainnet.
 
 **Key Parameters:**
 - `WITHDRAWAL_DELAY`: 128 blocks (~2 hours on QRL v2 testnet at ~60s/block, verified)
@@ -177,9 +188,9 @@ When slashing occurs:
 
 ## Test Coverage
 
-**Unit (Foundry, `contracts/test/`):** 195 tests, all green.
+**Unit (Foundry, `contracts/test/`):** 200 tests, all green.
 - `stQRL-v2.t.sol`: 55 tests (shares, conversions, rewards, slashing)
-- `DepositPool-v2.t.sol`: 85 tests (deposits, withdrawals, sync, off-contract stake accounting, access control)
+- `DepositPool-v2.t.sol`: 90 tests (deposits, withdrawals, sync, off-contract stake accounting, phantom-reward front-run protection, access control)
 - `ValidatorManager.t.sol`: 55 tests (lifecycle, slashing, batch operations)
 
 **Integration (live testnet, `scripts/integration-test-v2.js`):** 16 phases, all verified against the deployed contracts on chainId 1337. Covers deposit/mint, reward sync via EIP-4895-style balance donation, withdrawal request → 128-block delay → reserve funding → claim, pause/unpause, revert paths, validator lifecycle, QRC-20 allowance, batch activation, cancel. See `docs/V2-DEPLOYMENT-STATUS.md` for the phase matrix and current live state.
