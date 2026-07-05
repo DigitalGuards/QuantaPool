@@ -17,6 +17,14 @@ export function Footer() {
             MyQRLWallet
           </a>
           <a
+            href="https://myqrlwallet.com"
+            target="_blank"
+            rel="noreferrer"
+            className="hover:text-foreground"
+          >
+            Ecosystem
+          </a>
+          <a
             href={poolStore.network.explorer}
             target="_blank"
             rel="noreferrer"
