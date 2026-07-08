@@ -21,15 +21,15 @@ Persisted in `config/testnet-hyperion.json`. All 3 wired (`setStQRL`, `setDeposi
 - Buffer top-up `pool.deposit(40000)` - tx `0x12e2b96b8f4ac2e80b8246a32af92d047dfdf6dcc3416e52a1dce5751c3fc8c6`
 - `pool.fundValidator(pubkey, creds, sig, root)` - tx `0x61d6f48c7b17187abc3527577f65e6f100eda4ab50161d382e370321fbbd81c0`
 - 40 000 QRL forwarded to beacon deposit contract `Q4242…`
-- Local beacon (running on `46.28.70.102`) confirmed `beacon_processed_deposits_total = 1`
+- Local beacon confirmed `beacon_processed_deposits_total = 1`
 - Validator `0xa40ca760bcc4…` is in the activation queue (`UNKNOWN_STATUS` → eventually `ACTIVE` after several epochs)
 
 **Scenario 2 - end-to-end test of terraform + ansible + user-driven pool + second validator (2026-04-15):**
-- Terraform provisioned 2 Hetzner VPS: primary `138.201.152.117`, backup `159.69.125.89` (fsn1, cpx32 / cpx22). Monitoring module disabled (Hetzner 2-primary-IP quota on new project; reusing node #1 monitoring).
+- Terraform provisioned 2 VPS (primary + backup). Monitoring module disabled on the new project (reused node #1 monitoring).
 - Ansible deployed full stack on both (gqrl + qrysm-beacon + qrysm-validator). Drift fixes landed in commits `251e1db`, `ba18717`.
 - Funded 8 throwaway user wallets (mnemonics in `.env.scenario2`, gitignored) via `scripts/fanout-test-wallets.js` - 40100 QRL total.
 - 8 `pool.deposit()` calls (`scripts/scenario2-deposit.js`) → buffer 0 → 40092 QRL, shares 1:1 (8 txs, all green). Confirmed **overfund is benign**: 92 QRL sat safely alongside the 40k stake.
-- Keystore generated on primary `138.201.152.117` via rebuilt `staking-deposit-cli`. Mnemonic + seed persisted to `/etc/quantapool/validator-mnemonic.txt` (0600) on the host. `verify-deposit-data.js` passed all checks.
+- Keystore generated on the primary host via rebuilt `staking-deposit-cli`. Mnemonic + seed persisted to a `0600` file on the host. `verify-deposit-data.js` passed all checks.
 - `pool.fundValidator(pubkey, creds, sig, root)` - tx `0x8fe035435c620faac48ea719d386d2b4b4b77741b576ee7b2274d5ad6d6b2b61`. On-chain: `validatorCount: 1 → 2`, `bufferedQRL: 40092 → 92 QRL`.
 - Keystore imported, `qrysm-validator.service` active. Validator `0xb86185d4fcf4…` now in `UNKNOWN_STATUS`, same ~24h eth1 voting window ahead as validator #1.
 
@@ -97,10 +97,10 @@ Qrysm uses `ExecutionAddressWithdrawalPrefixByte = byte(0)` (`mainnet_config.go:
 `DepositPool-v2.sol:78` hardcoded `SIGNATURE_LENGTH = 4595`, but qrysm's `crypto/ml_dsa_87/ml_dsa_87t/signature.go` enforces ML-DSA-87 signatures at exactly **4627 bytes**. Any real `fundValidator()` on v2.1 would have reverted with `InvalidSignatureLength` before reaching the beacon contract. Fix bumped the constant to 4627 and updated the 4 Foundry tests that hardcoded the old length. Full suite still **187 pass**. v2.2 live addresses ship the fixed bytecode and have already executed a real `fundValidator()` end-to-end (see "Real validator deposit executed" above).
 
 ### 3. ~~Real validator deployment~~ - **done 2026-04-14**
-gqrl + qrysm beacon + qrysm validator running on `46.28.70.102` under systemd as user `qrlnode`. Beacon fully synced, validator key imported and listening for activation. See `docs/NODE-SETUP.md` for the runbook.
+gqrl + qrysm beacon + qrysm validator running under systemd on the validator host. Beacon fully synced, validator key imported and listening for activation. See `docs/NODE-SETUP.md` for the runbook.
 
 ### 4. ~~Monitoring contract-exporter rewrite~~ - **done 2026-04-14**
-Rewritten for v2 ABIs. Running on `46.28.70.102` (docker-compose under `/opt/quantapool/monitoring`). Dashboards live at `https://grafana.46-28-70-102.nip.io`. After v2.2 redeploy: `pooled=40000 shares=40000 rate=1.0 validators=1`. Discord webhook wired for critical/warning/info receivers; `monitoring/prometheus/rules/*.yml` tuned this session to suppress false positives (`BeaconChainLowPeers` was matching the always-zero `state="Connecting"` bucket; `NetworkInterfaceDown` was firing on the unplugged secondary NIC).
+Rewritten for v2 ABIs. Running under docker-compose on the validator host. After v2.2 redeploy: `pooled=40000 shares=40000 rate=1.0 validators=1`. Discord webhook wired for critical/warning/info receivers; `monitoring/prometheus/rules/*.yml` tuned this session to suppress false positives (`BeaconChainLowPeers` was matching the always-zero `state="Connecting"` bucket; `NetworkInterfaceDown` was firing on the unplugged secondary NIC).
 
 ### 5. Slashing path
 Not testable on the testnet (can't force a validator to be slashed externally). Foundry unit tests in `contracts/test/` cover the `markValidatorSlashed` accounting at the Solidity level. Current qrysm slashing constants are **placeholders** per the QRL team (Discord, 2026-01-25) - snapshot captured in `docs/UPSTREAM-FINDINGS.md` §4 for later diffing.
@@ -145,11 +145,8 @@ Fresh deposits now mature for `minStakeBlocks` (default 1536, ~1 day) before the
 
 `frontend/` (React 19 + Vite 7 + MobX, merged via PR #21) serves at **https://quantapool.com** and **https://quantapool.io**, both Cloudflare-proxied with SSL mode Full (strict).
 
-- Host: the zondscan box `ops@46.224.165.196`. Webroot `/var/www/quantapool`, vhost `/etc/nginx/sites-enabled/quantapool.conf`, Cloudflare Origin CA certs (valid to 2041) in `/home/ops/ssl/quantapool.{com,io}/`.
-- Deploy: `cd frontend && npm run build`, then `tar -C frontend/dist -czf - . | ssh ops@46.224.165.196 'rm -rf ~/quantapool-dist && mkdir -p ~/quantapool-dist && tar -xzf - -C ~/quantapool-dist && sudo cp -rf ~/quantapool-dist/. /var/www/quantapool/'`. No CI hook; manual only.
-- CORS coupling: the app reads chain state through the qrlwallet RPC proxy and the QRL price through the zondscan API. Both allowlists must include the four quantapool origins or the app shows "Could not reach the QRL network":
-  - `ops@49.13.162.117:~/myqrlwallet-backend/.env` `ALLOWED_ORIGINS` (restart `pm2 restart myqrlwallet-backend --update-env`)
-  - `ops@46.224.165.196:~/zondscan/backendAPI/.env` `CORS_ALLOW_ORIGINS` (restart pm2 process `handler`)
+- The app reads chain state through the qrlwallet RPC proxy and the QRL price through the zondscan explorer API; both CORS allowlists must include the quantapool origins or the app shows "Could not reach the QRL network".
+- Hosting, deploy steps, cert locations, and the exact CORS allowlist hosts are operational details kept out of this public repo (see the private `CLAUDE.md`).
 - Defaults in `frontend/src/config/networks.ts` mirror the v2.2 addresses above; override via `VITE_*` env vars.
 
 ---
@@ -161,7 +158,7 @@ cd /home/waterfall/myqrlwallet/QuantaPool
 git status                                    # expect clean on dev
 forge test --summary                          # expect 200 pass
 node scripts/integration-test-v2.js status    # live testnet read-back (v2.2 addresses)
-ssh root@46.28.70.102 'systemctl is-active gqrl qrysm-beacon qrysm-validator'  # all should be active
+# validator-host service health (gqrl/qrysm): see docs/NODE-SETUP.md
 ```
 
 Integration test phases run independently (idempotent per phase, but each run adds on-chain state):
