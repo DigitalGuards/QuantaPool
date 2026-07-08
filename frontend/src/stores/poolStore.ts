@@ -1,4 +1,5 @@
 import { makeAutoObservable, runInAction } from "mobx";
+import { QRLConnect, QRL_CONNECT_PROVIDER_INFO } from "@qrlwallet/connect";
 import type { ContractAbi } from "@theqrl/web3";
 import { DepositPoolV2ABI } from "@/abi/DepositPoolV2";
 import { StQRLV2ABI } from "@/abi/StQRLV2";
@@ -6,12 +7,32 @@ import { ValidatorManagerABI } from "@/abi/ValidatorManager";
 import { ACTIVE_NETWORK, type NetworkConfig } from "@/config/networks";
 import { getQrlWeb3, type Web3Instance } from "@/utils/web3/web3Lazy";
 import {
-  connectToExtension,
   ConnectionRejectedError,
-  WalletNotFoundError,
   type ExtensionProvider,
 } from "@/utils/web3/extension";
 import { formatUnits, parseUnits } from "@/utils/format";
+
+/** EIP-6963 rdns for the two QRL-capable wallets we surface in the picker. */
+const QRL_EXTENSION_RDNS = "theqrl.org";
+const QRL_CONNECT_RDNS = QRL_CONNECT_PROVIDER_INFO.rdns;
+
+/** EIP-6963 provider announcement (info + injected provider). */
+interface EIP6963Detail {
+  info: { uuid: string; name: string; icon: string; rdns: string };
+  provider: ExtensionProvider;
+}
+
+/** A wallet shown in the picker. `kind` drives the connect path. */
+export interface DiscoveredWallet {
+  uuid: string;
+  name: string;
+  icon: string;
+  rdns: string;
+  kind: "extension" | "relay";
+}
+
+/** Which transport the active provider uses (drives the tx param shape). */
+type ProviderKind = "extension" | "relay";
 
 export interface PoolStats {
   totalPooled: bigint;
@@ -182,6 +203,16 @@ export class PoolStore {
   isConnecting = false;
   connectError: string | null = null;
   provider: ExtensionProvider | null = null;
+  /** Wallets EIP-6963 discovered (QRL extension + MyQRLWallet relay). */
+  discoveredWallets: DiscoveredWallet[] = [];
+  /** Whether the wallet picker modal is open. */
+  walletPickerOpen = false;
+  /** Active qrlconnect:// URI awaiting a scan (relay pairing); null when none. */
+  pairingUri: string | null = null;
+  /** Relay pairing status string for the QR modal ("waiting", etc.). */
+  pairingStatus = "";
+  /** Display name of the connected wallet (e.g. "MyQRLWallet"). */
+  activeWalletName: string | null = null;
   account: AccountState | null = null;
   withdrawals: WithdrawalRequestView[] = [];
   /** The account's staking history, newest first (from DepositPool events). */
@@ -196,6 +227,16 @@ export class PoolStore {
   private web3Instance: Web3Instance | null = null;
   private contracts: Contracts | null = null;
   private initStarted = false;
+  /** Relay SDK singleton; announces itself via EIP-6963 on construction. */
+  private qrlConnect: QRLConnect | null = null;
+  /** uuid -> EIP-6963 detail, so the picker can resolve a click to a provider. */
+  private discoveredMap = new Map<string, EIP6963Detail>();
+  private providerKind: ProviderKind | null = null;
+  /** Distinguishes a user-initiated relay disconnect from a wallet-side drop. */
+  private relayUserDisconnected = false;
+  private walletsInitialized = false;
+  /** Extension providers already wired for EIP-1193 events (avoid duplicates). */
+  private wiredExtensionProviders = new WeakSet<ExtensionProvider>();
   /**
    * Claimed/cancelled requests are immutable on-chain - cache them so the
    * periodic refresh only refetches requests that can still change.
@@ -209,6 +250,13 @@ export class PoolStore {
       contracts: false,
       initStarted: false,
       finalizedRequests: false,
+      qrlConnect: false,
+      discoveredMap: false,
+      providerKind: false,
+      relayUserDisconnected: false,
+      walletsInitialized: false,
+      wiredExtensionProviders: false,
+      onEip6963Announce: false,
     } as Parameters<typeof makeAutoObservable>[1]);
   }
 
@@ -243,6 +291,7 @@ export class PoolStore {
   async init(): Promise<void> {
     if (this.initStarted) return;
     this.initStarted = true;
+    this.setupWallets();
     await this.refresh();
     // The store is a singleton living for the whole app session, so the
     // interval is intentionally never cleared.
@@ -275,14 +324,205 @@ export class PoolStore {
     }
   }
 
-  async connect(): Promise<void> {
-    this.isConnecting = true;
-    this.connectError = null;
-    try {
-      const { address, provider } = await connectToExtension();
-      this.provider = provider;
-      this.watchAccountChanges(provider);
+  /** Connect button entry point: open the wallet picker. */
+  connect(): void {
+    this.openWalletPicker();
+  }
+
+  openWalletPicker(): void {
+    // Re-announce so a wallet that loaded after our initial scan shows up.
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("eip6963:requestProvider"));
+    }
+    runInAction(() => {
+      this.connectError = null;
+      this.walletPickerOpen = true;
+    });
+  }
+
+  closeWalletPicker(): void {
+    runInAction(() => {
+      this.walletPickerOpen = false;
+    });
+  }
+
+  /**
+   * Construct the relay SDK (which announces itself over EIP-6963) and start
+   * listening for wallet announcements. Idempotent; runs once from init().
+   */
+  private setupWallets(): void {
+    if (this.walletsInitialized || typeof window === "undefined") return;
+    this.walletsInitialized = true;
+
+    const qrl = new QRLConnect({
+      dappMetadata: {
+        name: "QuantaPool",
+        url: location.origin,
+        // Peer redirect: after approving on mobile the wallet returns here.
+        redirectUrl: location.href,
+      },
+      autoReconnect: true,
+    });
+    this.qrlConnect = qrl;
+    this.wireRelayEvents(qrl);
+
+    window.addEventListener("eip6963:announceProvider", this.onEip6963Announce);
+    // Spec: dispatch AFTER listening so wallets that announced early re-announce.
+    window.dispatchEvent(new Event("eip6963:requestProvider"));
+
+    // Resume a stored relay session if one is still within its TTL. The SDK's
+    // constructor already kicked off reconnect(); reflect its live status and
+    // let the connect/accountsChanged handlers promote it to a full session.
+    if (qrl.hasStoredSession()) {
+      this.providerKind = "relay";
+      this.provider = qrl as unknown as ExtensionProvider;
       runInAction(() => {
+        this.activeWalletName = QRL_CONNECT_PROVIDER_INFO.name;
+        this.pairingStatus = String(qrl.getStatus());
+      });
+    }
+  }
+
+  private onEip6963Announce = (event: Event): void => {
+    const detail = (event as CustomEvent<EIP6963Detail>).detail;
+    const info = detail?.info;
+    if (!info?.uuid) return;
+    // Only surface QRL-capable wallets: the QRL extension and MyQRLWallet.
+    // A MetaMask-style provider cannot sign QRL transactions.
+    const isRelay = info.rdns === QRL_CONNECT_RDNS;
+    if (!isRelay && info.rdns !== QRL_EXTENSION_RDNS) return;
+    if (this.discoveredMap.has(info.uuid)) return;
+    this.discoveredMap.set(info.uuid, detail);
+    runInAction(() => {
+      this.discoveredWallets = Array.from(this.discoveredMap.values()).map((d) => ({
+        uuid: d.info.uuid,
+        name: d.info.name,
+        icon: d.info.icon,
+        rdns: d.info.rdns,
+        kind: d.info.rdns === QRL_CONNECT_RDNS ? "relay" : "extension",
+      }));
+    });
+  };
+
+  /** Connect the wallet the user clicked in the picker. */
+  async connectWallet(uuid: string): Promise<void> {
+    const detail = this.discoveredMap.get(uuid);
+    if (!detail) return;
+    runInAction(() => {
+      this.walletPickerOpen = false;
+      this.connectError = null;
+    });
+    if (detail.info.rdns === QRL_CONNECT_RDNS) {
+      await this.connectViaRelay();
+    } else {
+      await this.connectViaExtension(detail);
+    }
+  }
+
+  /** Relay pairing: generate a URI, show the QR (or deep-link on mobile). */
+  private async connectViaRelay(): Promise<void> {
+    const qrl = this.qrlConnect;
+    if (!qrl) return;
+    this.providerKind = "relay";
+    runInAction(() => {
+      this.activeWalletName = QRL_CONNECT_PROVIDER_INFO.name;
+    });
+    try {
+      const uri = await qrl.getConnectionURI();
+      if (qrl.isMobile()) {
+        window.location.href = uri;
+        return;
+      }
+      runInAction(() => {
+        this.pairingUri = uri;
+        this.pairingStatus = String(qrl.getStatus());
+      });
+      // The 'connect'/'accountsChanged' relay events finish the handshake.
+    } catch (error) {
+      this.providerKind = null;
+      runInAction(() => {
+        this.connectError = errorMessage(error);
+      });
+    }
+  }
+
+  /** Extension: request accounts directly from the injected provider. */
+  private async connectViaExtension(detail: EIP6963Detail): Promise<void> {
+    this.providerKind = "extension";
+    runInAction(() => {
+      this.isConnecting = true;
+      this.connectError = null;
+    });
+    try {
+      const accounts = await detail.provider.request<string[]>({
+        method: "qrl_requestAccounts",
+      });
+      const address = accounts?.[0];
+      if (!address) throw new ConnectionRejectedError();
+      this.wireExtensionEvents(detail);
+      this.onWalletConnected(address, detail.provider, "extension", detail.info.name);
+    } catch (error) {
+      this.provider = null;
+      this.providerKind = null;
+      runInAction(() => {
+        this.account = null;
+        this.connectError = errorMessage(error);
+      });
+    } finally {
+      runInAction(() => {
+        this.isConnecting = false;
+      });
+    }
+  }
+
+  /** Relay-only: tear down the pairing and rotate to a fresh channel/keys. */
+  async newConnection(): Promise<void> {
+    const qrl = this.qrlConnect;
+    if (!qrl) return;
+    this.providerKind = "relay";
+    try {
+      const uri = await qrl.newConnection();
+      if (qrl.isMobile()) {
+        window.location.href = uri;
+        return;
+      }
+      runInAction(() => {
+        this.pairingUri = uri;
+        this.pairingStatus = String(qrl.getStatus());
+      });
+    } catch (error) {
+      runInAction(() => {
+        this.connectError = errorMessage(error);
+      });
+    }
+  }
+
+  /** Dismiss the QR modal and reopen the picker so another wallet can be chosen. */
+  cancelPairing(): void {
+    if (this.providerKind === "relay") this.providerKind = null;
+    runInAction(() => {
+      this.pairingUri = null;
+      this.pairingStatus = "";
+      this.walletPickerOpen = true;
+    });
+  }
+
+  /** Unified post-connect: adopt the provider, seed the account, refresh. */
+  private onWalletConnected(
+    address: string,
+    provider: ExtensionProvider,
+    kind: ProviderKind,
+    name: string,
+  ): void {
+    this.provider = provider;
+    this.providerKind = kind;
+    const isNewAddress = !this.account || this.account.address !== address;
+    runInAction(() => {
+      this.activeWalletName = name;
+      this.walletPickerOpen = false;
+      this.pairingUri = null;
+      this.connectError = null;
+      if (isNewAddress) {
         this.account = {
           address,
           qrlBalance: 0n,
@@ -293,32 +533,37 @@ export class PoolStore {
           qrlValue: 0n,
           completedWithdrawalsCount: 0,
         };
-      });
-      this.finalizedRequests.clear();
-      await this.refreshAccount(address);
-    } catch (error) {
-      this.provider = null;
-      runInAction(() => {
-        this.account = null;
-        this.connectError =
-          error instanceof WalletNotFoundError
-            ? "QRL Wallet extension not detected. Install it or open QuantaPool from the MyQRLWallet app."
-            : errorMessage(error);
-      });
-    } finally {
-      runInAction(() => {
-        this.isConnecting = false;
-      });
-    }
+        this.withdrawals = [];
+        this.activity = [];
+      }
+    });
+    if (isNewAddress) this.finalizedRequests.clear();
+    void this.refreshAccount(address);
   }
 
   disconnect(): void {
+    if (this.providerKind === "relay" && this.qrlConnect) {
+      this.relayUserDisconnected = true;
+      void this.qrlConnect.disconnect().catch(() => undefined);
+    }
+    this.resetWalletState();
+  }
+
+  /** Clear all wallet/account/tx state back to disconnected. */
+  private resetWalletState(): void {
     this.provider = null;
-    this.account = null;
-    this.withdrawals = [];
-    this.activity = [];
-    this.activityError = null;
-    this.connectError = null;
+    this.providerKind = null;
+    runInAction(() => {
+      this.account = null;
+      this.withdrawals = [];
+      this.activity = [];
+      this.activityError = null;
+      this.connectError = null;
+      this.pairingUri = null;
+      this.pairingStatus = "";
+      this.activeWalletName = null;
+      this.walletPickerOpen = false;
+    });
     this.finalizedRequests.clear();
     this.tx = IDLE_TX;
   }
@@ -371,35 +616,100 @@ export class PoolStore {
     });
   }
 
+  /** Wire the relay SDK's EIP-1193 events into store state. */
+  private wireRelayEvents(qrl: QRLConnect): void {
+    qrl.on("connect", () => {
+      if (this.providerKind !== "relay") return;
+      const address = qrl.getAccounts()[0];
+      if (address) {
+        this.onWalletConnected(
+          address,
+          qrl as unknown as ExtensionProvider,
+          "relay",
+          QRL_CONNECT_PROVIDER_INFO.name,
+        );
+      }
+    });
+
+    qrl.on("accountsChanged", (accounts: string[]) => {
+      if (this.providerKind !== "relay") return;
+      const next = accounts[0];
+      if (!next) {
+        this.disconnect();
+        return;
+      }
+      this.onWalletConnected(
+        next,
+        qrl as unknown as ExtensionProvider,
+        "relay",
+        QRL_CONNECT_PROVIDER_INFO.name,
+      );
+    });
+
+    qrl.on("statusChanged", (status) => {
+      if (this.providerKind !== "relay") return;
+      runInAction(() => {
+        this.pairingStatus = String(status);
+      });
+    });
+
+    qrl.on("disconnect", () => {
+      if (this.providerKind !== "relay") return;
+      if (this.relayUserDisconnected) {
+        this.relayUserDisconnected = false;
+        this.resetWalletState();
+        return;
+      }
+      // Wallet-initiated drop: auto-regenerate a QR so the user can re-pair.
+      void this.regenerateRelayQr();
+    });
+  }
+
+  /** After a wallet-side drop, show a fresh QR to reconnect. */
+  private async regenerateRelayQr(): Promise<void> {
+    const qrl = this.qrlConnect;
+    if (!qrl) {
+      this.resetWalletState();
+      return;
+    }
+    runInAction(() => {
+      this.account = null;
+      this.withdrawals = [];
+      this.activity = [];
+    });
+    this.finalizedRequests.clear();
+    try {
+      const uri = await qrl.getConnectionURI();
+      runInAction(() => {
+        this.pairingUri = uri;
+        this.pairingStatus = String(qrl.getStatus());
+      });
+    } catch {
+      // The old channel is gone and a fresh one failed: fall back to fully
+      // disconnected rather than leaving a dead QR on screen.
+      this.resetWalletState();
+    }
+  }
+
   /**
-   * Handle account switches made inside the wallet extension. The provider
-   * may not support events - the listener is best-effort.
+   * Wire an extension provider's account events once. Extension provider
+   * objects are long-lived singletons, so a WeakSet stops duplicate handlers
+   * stacking across reconnects.
    */
-  private watchAccountChanges(provider: ExtensionProvider): void {
-    provider.on?.("accountsChanged", (accounts) => {
+  private wireExtensionEvents(detail: EIP6963Detail): void {
+    const provider = detail.provider;
+    if (typeof provider.on !== "function") return;
+    if (this.wiredExtensionProviders.has(provider)) return;
+    this.wiredExtensionProviders.add(provider);
+
+    provider.on("accountsChanged", (accounts) => {
+      if (this.provider !== provider) return;
       const next = Array.isArray(accounts) ? (accounts[0] as string | undefined) : undefined;
       if (!next) {
         this.disconnect();
         return;
       }
-      if (this.account && next !== this.account.address) {
-        runInAction(() => {
-          this.account = {
-            address: next,
-            qrlBalance: 0n,
-            shares: 0n,
-            lockedShares: 0n,
-            immatureShares: 0n,
-            matureAtBlock: 0n,
-            qrlValue: 0n,
-            completedWithdrawalsCount: 0,
-          };
-          this.withdrawals = [];
-          this.activity = [];
-        });
-        this.finalizedRequests.clear();
-        void this.refreshAccount(next);
-      }
+      this.onWalletConnected(next, provider, "extension", detail.info.name);
     });
   }
 
@@ -647,35 +957,25 @@ export class PoolStore {
     this.tx = { state: "pending", label, txHash: null, error: null };
     try {
       const params = await build();
-      const web3 = await this.getWeb3();
       const value = params.value ?? 0n;
 
-      let gasLimit = 1_500_000;
-      try {
-        const estimated = await web3.qrl.estimateGas({
-          from,
-          to: params.to,
-          value,
-          data: params.data,
-        });
-        gasLimit = Number((asBig(estimated) * 130n) / 100n);
-      } catch {
-        // Estimation can fail on some RPC proxies - fall back to a safe limit.
-      }
-      const gasPrice = asBig(await web3.qrl.getGasPrice());
+      // Relay wallet (MyQRLWallet web/mobile/desktop) estimates its own gas
+      // via qrl_estimateGas, so sending an explicit limit would fight that;
+      // value is 0x-hex and omitted when zero. The QRL extension needs an
+      // explicit limit/price computed from the read node.
+      const txParams =
+        this.providerKind === "relay"
+          ? {
+              from,
+              to: params.to,
+              data: params.data,
+              ...(value > 0n ? { value: `0x${value.toString(16)}` } : {}),
+            }
+          : await this.buildExtensionTxParams(from, params.to, value, params.data);
 
       const txHash = await provider.request<string>({
         method: "qrl_sendTransaction",
-        params: [
-          {
-            from,
-            to: params.to,
-            value: value.toString(),
-            data: params.data,
-            gasLimit,
-            gasPrice: gasPrice.toString(),
-          },
-        ],
+        params: [txParams],
       });
       if (!txHash) throw new Error("Wallet returned no transaction hash");
       runInAction(() => {
@@ -706,6 +1006,41 @@ export class PoolStore {
       });
       return false;
     }
+  }
+
+  /**
+   * Extension path: the QRL browser extension does NOT estimate gas for a dApp
+   * `qrl_sendTransaction`; it reads the limit straight off the request and a
+   * contract call fails to sign without it (verified against the extension
+   * source). So compute the limit here from the read node. The limit is sent
+   * under both `gas` (what the current extension reads) and `gasLimit` (older
+   * builds) for cross-version safety. gasPrice is included but the extension
+   * always fills its own fee data and ignores this value.
+   */
+  private async buildExtensionTxParams(
+    from: string,
+    to: string,
+    value: bigint,
+    data: string,
+  ): Promise<Record<string, unknown>> {
+    const web3 = await this.getWeb3();
+    let gasLimit = 1_500_000;
+    try {
+      const estimated = await web3.qrl.estimateGas({ from, to, value, data });
+      gasLimit = Number((asBig(estimated) * 130n) / 100n);
+    } catch {
+      // Estimation can fail on some RPC proxies - fall back to a safe limit.
+    }
+    const gasPrice = asBig(await web3.qrl.getGasPrice());
+    return {
+      from,
+      to,
+      value: value.toString(),
+      data,
+      gas: gasLimit,
+      gasLimit,
+      gasPrice: gasPrice.toString(),
+    };
   }
 
   private async waitForReceipt(txHash: string): Promise<unknown | null> {

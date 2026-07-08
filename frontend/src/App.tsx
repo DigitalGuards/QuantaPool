@@ -5,6 +5,8 @@ import { AlertTriangle, X } from "lucide-react";
 import { Header } from "@/components/Layout/Header";
 import { Footer } from "@/components/Layout/Footer";
 import { TxBanner } from "@/components/TxBanner";
+import { WalletPickerModal } from "@/components/WalletPickerModal";
+import { QrPairModal } from "@/components/QrPairModal";
 import { StakePage } from "@/pages/StakePage";
 import { WithdrawalsPage } from "@/pages/WithdrawalsPage";
 import { StatsPage } from "@/pages/StatsPage";
@@ -59,6 +61,8 @@ const App = observer(() => {
 
       <Footer />
       <TxBanner />
+      <WalletPickerModal />
+      <QrPairModal />
     </BrowserRouter>
   );
 });
