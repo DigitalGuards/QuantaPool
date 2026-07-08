@@ -357,9 +357,9 @@ export class PoolStore {
     const qrl = new QRLConnect({
       dappMetadata: {
         name: "QuantaPool",
-        url: location.origin,
+        url: window.location.origin,
         // Peer redirect: after approving on mobile the wallet returns here.
-        redirectUrl: location.href,
+        redirectUrl: window.location.href,
       },
       autoReconnect: true,
     });
