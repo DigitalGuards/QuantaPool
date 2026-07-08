@@ -3,7 +3,7 @@
 **Last updated:** 2026-06-10
 **Branch:** `dev`
 **Network:** QRL v2 testnet, chainId `1337`
-**Deployment revision:** v2.2 (ML-DSA-87 signature length fix; supersedes v2.1 + v2.0, see `REDEPLOY-PLAN.md`)
+**Deployment revision:** v2.2 (ML-DSA-87 signature length fix; supersedes v2.1 + v2.0)
 
 ---
 
@@ -97,7 +97,7 @@ Qrysm uses `ExecutionAddressWithdrawalPrefixByte = byte(0)` (`mainnet_config.go:
 `DepositPool-v2.sol:78` hardcoded `SIGNATURE_LENGTH = 4595`, but qrysm's `crypto/ml_dsa_87/ml_dsa_87t/signature.go` enforces ML-DSA-87 signatures at exactly **4627 bytes**. Any real `fundValidator()` on v2.1 would have reverted with `InvalidSignatureLength` before reaching the beacon contract. Fix bumped the constant to 4627 and updated the 4 Foundry tests that hardcoded the old length. Full suite still **187 pass**. v2.2 live addresses ship the fixed bytecode and have already executed a real `fundValidator()` end-to-end (see "Real validator deposit executed" above).
 
 ### 3. ~~Real validator deployment~~ - **done 2026-04-14**
-gqrl + qrysm beacon + qrysm validator running under systemd on the validator host. Beacon fully synced, validator key imported and listening for activation. See `docs/NODE-SETUP.md` for the runbook.
+gqrl + qrysm beacon + qrysm validator running under systemd on the validator host. Beacon fully synced, validator key imported and listening for activation. Runbook is maintainer-internal (not in this public repo).
 
 ### 4. ~~Monitoring contract-exporter rewrite~~ - **done 2026-04-14**
 Rewritten for v2 ABIs. Running under docker-compose on the validator host. After v2.2 redeploy: `pooled=40000 shares=40000 rate=1.0 validators=1`. Discord webhook wired for critical/warning/info receivers; `monitoring/prometheus/rules/*.yml` tuned this session to suppress false positives (`BeaconChainLowPeers` was matching the always-zero `state="Connecting"` bucket; `NetworkInterfaceDown` was firing on the unplugged secondary NIC).
@@ -158,7 +158,7 @@ cd /home/REDACTED/myqrlwallet/QuantaPool
 git status                                    # expect clean on dev
 forge test --summary                          # expect 200 pass
 node scripts/integration-test-v2.js status    # live testnet read-back (v2.2 addresses)
-# validator-host service health (gqrl/qrysm): see docs/NODE-SETUP.md
+# validator-host service health (gqrl/qrysm): see the maintainer-internal runbook
 ```
 
 Integration test phases run independently (idempotent per phase, but each run adds on-chain state):
@@ -189,7 +189,6 @@ The `validator` phase locks 40,000 QRL into the pool per run. Recover via the `c
 - `contracts/test/` - Foundry suite (200 tests, all pass)
 - `scripts/verify-deposit-data.js` - safety gate; validates a `deposit_data-*.json` against the live pool
 - `scripts/fund-validator-real.js` - broadcasts `pool.fundValidator()` (real beacon path)
-- `docs/NODE-SETUP.md` - gqrl + qrysm runbook for the validator host
 - `build/hyperion/{stQRLv2,DepositPoolV2,ValidatorManager}.{abi,bin}` - compiled artifacts (gitignored)
 - `.env` - `TESTNET_SEED` (gitignored)
 - `scripts/v1-deprecated/` - archived v1 scripts (do not run against v2)
