@@ -3,6 +3,10 @@
 .claude
 CLAUDE.md
 
+# Private ops docs (host IPs, runbooks) - keep local, not in public repo
+docs/NODE-SETUP.md
+docs/REDEPLOY-PLAN.md
+
 # Terraform state and secrets - never commit
 *.tfvars
 *.tfstate
