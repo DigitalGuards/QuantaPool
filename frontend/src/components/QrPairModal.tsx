@@ -1,127 +1,51 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import { observer } from "mobx-react-lite";
-import QRCode from "qrcode";
-import { Copy, ExternalLink, RefreshCw } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/UI/Card";
-import { Button } from "@/components/UI/Button";
+import { defineQrlPairingModal, QrlPairingModal } from "@qrlwallet/connect-ui";
 import { useStore } from "@/stores/store";
 
 /**
- * "Pair MyQRLWallet" QR modal for the relay (connect SDK) path. Shows the
- * qrlconnect:// URI as a QR plus a desktop deep-link and copy-code fallback,
- * mirroring the reference dApp example. Self-gates on poolStore.pairingUri.
+ * "Pair MyQRLWallet" modal for the relay (connect SDK) path, now the shared
+ * <qrl-pairing-modal> web component from @qrlwallet/connect-ui instead of a
+ * hand-copied QR card. Self-gates on poolStore.pairingUri; the element's
+ * qrl-new-connection / qrl-cancel events map onto the store actions.
  */
 export const QrPairModal = observer(() => {
   const { poolStore } = useStore();
   const uri = poolStore.pairingUri;
-  const [dataUrl, setDataUrl] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const status = poolStore.pairingStatus;
+  const hostRef = useRef<HTMLSpanElement | null>(null);
+  const elRef = useRef<QrlPairingModal | null>(null);
+  const statusRef = useRef(status);
+  statusRef.current = status;
 
   useEffect(() => {
-    if (!uri) {
-      setDataUrl(null);
-      return;
-    }
-    let alive = true;
-    void QRCode.toDataURL(uri, {
-      width: 480,
-      margin: 2,
-      color: { dark: "#000000", light: "#ffffff" },
-    })
-      .then((url) => {
-        if (alive) setDataUrl(url);
-      })
-      .catch(() => undefined);
+    if (!uri) return;
+    defineQrlPairingModal();
+    const el = new QrlPairingModal();
+    el.setAttribute("uri", uri);
+    if (statusRef.current) el.setAttribute("status", statusRef.current);
+    const onNew = () => void poolStore.newConnection();
+    const onDismiss = () => poolStore.cancelPairing();
+    el.addEventListener("qrl-new-connection", onNew);
+    el.addEventListener("qrl-cancel", onDismiss);
+    hostRef.current?.append(el);
+    elRef.current = el;
     return () => {
-      alive = false;
+      // Listeners off before remove(): removal fires qrl-cancel by design
+      // (external-unmount dismissal), which must not loop back into MobX.
+      el.removeEventListener("qrl-new-connection", onNew);
+      el.removeEventListener("qrl-cancel", onDismiss);
+      el.remove();
+      elRef.current = null;
     };
-  }, [uri]);
+  }, [uri, poolStore]);
+
+  useEffect(() => {
+    if (!elRef.current) return;
+    if (status) elRef.current.setAttribute("status", status);
+    else elRef.current.removeAttribute("status");
+  }, [status]);
 
   if (!uri) return null;
-  const statusDetail = poolStore.pairingStatus;
-
-  return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur"
-      onClick={() => poolStore.cancelPairing()}
-    >
-      <Card
-        className="w-full max-w-sm border-l-2 border-l-secondary bg-background"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <CardHeader className="pb-3 text-center">
-          <CardTitle className="text-lg">Pair MyQRLWallet</CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Scan with the mobile app, or use the wallet at{" "}
-            <a
-              href="https://qrlwallet.com"
-              target="_blank"
-              rel="noreferrer"
-              className="text-blue-accent hover:underline"
-            >
-              qrlwallet.com
-            </a>
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-3 text-center">
-          {dataUrl ? (
-            <img
-              src={dataUrl}
-              alt="qrlconnect pairing QR code"
-              className="mx-auto h-60 w-60 rounded-md bg-white p-2"
-            />
-          ) : (
-            <p className="text-sm text-muted-foreground">Generating…</p>
-          )}
-          {statusDetail ? (
-            <p className="text-xs text-muted-foreground">status: {statusDetail}</p>
-          ) : null}
-          <div className="grid grid-cols-2 gap-2">
-            <Button variant="outline" size="sm" asChild>
-              <a href={uri} title="Opens the MyQRLWallet desktop app if installed">
-                <ExternalLink className="h-3.5 w-3.5" />
-                Open in wallet
-              </a>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                void navigator.clipboard.writeText(uri).then(() => {
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 1500);
-                });
-              }}
-            >
-              <Copy className="h-3.5 w-3.5" />
-              {copied ? "Copied!" : "Copy code"}
-            </Button>
-          </div>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            Desktop wallet without the protocol handler? Copy the code and paste it under dApp
-            Sessions in the wallet.
-          </p>
-          <div className="flex items-center justify-center gap-4">
-            <Button
-              variant="link"
-              size="sm"
-              className="h-auto p-0"
-              onClick={() => void poolStore.newConnection()}
-            >
-              <RefreshCw className="h-3 w-3" />
-              New connection
-            </Button>
-            <Button
-              variant="link"
-              size="sm"
-              className="h-auto p-0"
-              onClick={() => poolStore.cancelPairing()}
-            >
-              Cancel
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
+  return <span ref={hostRef} />;
 });
