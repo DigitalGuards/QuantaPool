@@ -46,7 +46,9 @@ export function findQrlProvider(): Promise<EIP6963ProviderDetail | null> {
 
     const onAnnounce = (event: Event) => {
       const announceEvent = event as EIP6963AnnounceProviderEvent;
-      if (QRL_WALLET_RDNS.has(announceEvent.detail.info.rdns)) {
+      // Any page script can dispatch this event; never assume the shape.
+      const rdns = announceEvent.detail?.info?.rdns;
+      if (rdns && QRL_WALLET_RDNS.has(rdns)) {
         cachedDetail = announceEvent.detail;
         finish(cachedDetail);
       }
