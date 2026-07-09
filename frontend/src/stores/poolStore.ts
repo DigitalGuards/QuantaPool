@@ -14,7 +14,7 @@ import { appStoreUrl, attemptWalletRedirect } from "@/utils/deeplink";
 import { formatUnits, parseUnits } from "@/utils/format";
 
 /** EIP-6963 rdns for the two QRL-capable wallets we surface in the picker. */
-const QRL_EXTENSION_RDNS = "theqrl.org";
+const QRL_EXTENSION_RDNS = new Set(["theqrl.org", "com.qrlwallet.extension"]);
 const QRL_CONNECT_RDNS = QRL_CONNECT_PROVIDER_INFO.rdns;
 
 /** EIP-6963 provider announcement (info + injected provider). */
@@ -398,7 +398,7 @@ export class PoolStore {
     // Only surface QRL-capable wallets: the QRL extension and MyQRLWallet.
     // A MetaMask-style provider cannot sign QRL transactions.
     const isRelay = info.rdns === QRL_CONNECT_RDNS;
-    if (!isRelay && info.rdns !== QRL_EXTENSION_RDNS) return;
+    if (!isRelay && !QRL_EXTENSION_RDNS.has(info.rdns)) return;
     if (this.discoveredMap.has(info.uuid)) return;
     this.discoveredMap.set(info.uuid, detail);
     runInAction(() => {
