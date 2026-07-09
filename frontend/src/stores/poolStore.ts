@@ -1033,8 +1033,11 @@ export class PoolStore {
    * contract call fails to sign without it (verified against the extension
    * source). So compute the limit here from the read node. The limit is sent
    * under both `gas` (what the current extension reads) and `gasLimit` (older
-   * builds) for cross-version safety. gasPrice is included but the extension
-   * always fills its own fee data and ignores this value.
+   * builds) for cross-version safety. `type: "0x2"` is required: without it
+   * the extension (v0.3.0) builds a legacy gasPrice tx that fails
+   * @theqrl/web3 0.5 gas validation (MissingGasError); with it the extension
+   * fills its own maxFee/maxPriorityFee, the shape all its internal sends
+   * use. Device-verified on QuantaSwap 2026-07-09.
    */
   private async buildExtensionTxParams(
     from: string,
@@ -1050,7 +1053,6 @@ export class PoolStore {
     } catch {
       // Estimation can fail on some RPC proxies - fall back to a safe limit.
     }
-    const gasPrice = asBig(await web3.qrl.getGasPrice());
     return {
       from,
       to,
@@ -1058,7 +1060,7 @@ export class PoolStore {
       data,
       gas: gasLimit,
       gasLimit,
-      gasPrice: gasPrice.toString(),
+      type: "0x2",
     };
   }
 
