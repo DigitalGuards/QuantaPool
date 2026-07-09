@@ -234,6 +234,12 @@ export class PoolStore {
   private providerKind: ProviderKind | null = null;
   /** Distinguishes a user-initiated relay disconnect from a wallet-side drop. */
   private relayUserDisconnected = false;
+  /**
+   * True once a relay session actually reached "connected". A failed startup
+   * auto-reconnect of a stale stored session also emits disconnect; without
+   * this gate that would pop an unsolicited QR the user never asked for.
+   */
+  private relayEstablished = false;
   private walletsInitialized = false;
   /** Extension providers already wired for EIP-1193 events (avoid duplicates). */
   private wiredExtensionProviders = new WeakSet<ExtensionProvider>();
@@ -254,6 +260,7 @@ export class PoolStore {
       discoveredMap: false,
       providerKind: false,
       relayUserDisconnected: false,
+      relayEstablished: false,
       walletsInitialized: false,
       wiredExtensionProviders: false,
       onEip6963Announce: false,
@@ -516,6 +523,7 @@ export class PoolStore {
   ): void {
     this.provider = provider;
     this.providerKind = kind;
+    if (kind === "relay") this.relayEstablished = true;
     const isNewAddress = !this.account || this.account.address !== address;
     runInAction(() => {
       this.activeWalletName = name;
@@ -553,6 +561,7 @@ export class PoolStore {
   private resetWalletState(): void {
     this.provider = null;
     this.providerKind = null;
+    this.relayEstablished = false;
     runInAction(() => {
       this.account = null;
       this.withdrawals = [];
@@ -660,7 +669,17 @@ export class PoolStore {
         this.resetWalletState();
         return;
       }
-      // Wallet-initiated drop: auto-regenerate a QR so the user can re-pair.
+      // A stale stored session whose startup auto-reconnect fails also emits
+      // disconnect. Only re-pair when a live session actually dropped; otherwise
+      // fall back to the Connect button rather than popping an unsolicited QR.
+      if (!this.relayEstablished) {
+        this.resetWalletState();
+        return;
+      }
+      // Wallet-initiated drop of a live session: auto-regenerate a QR so the
+      // user can re-pair. Clear the flag so a follow-up drop before the re-pair
+      // completes takes the reset path instead of looping fresh QRs.
+      this.relayEstablished = false;
       void this.regenerateRelayQr();
     });
   }
