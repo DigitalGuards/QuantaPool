@@ -497,8 +497,13 @@ export class PoolStore {
     try {
       const uri = await qrl.newConnection();
       if (qrl.isMobile()) {
-        window.location.href = uri;
-        return;
+        // Same fallback as connectViaRelay: an unhandled deep link (app not
+        // installed) must not dead-end the rotation flow either.
+        const opened = await attemptWalletRedirect(uri);
+        if (opened) return;
+        runInAction(() => {
+          this.connectError = `MyQRLWallet app not detected. Install it (${appStoreUrl()}) or use the copy-code option with the wallet at qrlwallet.com.`;
+        });
       }
       runInAction(() => {
         this.pairingUri = uri;
