@@ -17,7 +17,6 @@ export function attemptWalletRedirect(uri: string, timeoutMs = 1800): Promise<bo
   }
   return new Promise((resolve) => {
     let settled = false;
-    let timer: number | undefined;
     const finish = (opened: boolean): void => {
       if (settled) return;
       settled = true;
@@ -34,7 +33,9 @@ export function attemptWalletRedirect(uri: string, timeoutMs = 1800): Promise<bo
     };
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("pagehide", onHide);
-    timer = window.setTimeout(() => {
+    // finish() closes over this; nothing can invoke it synchronously between
+    // the listener registrations above and this initialization.
+    const timer = window.setTimeout(() => {
       finish(false);
     }, timeoutMs);
     try {
