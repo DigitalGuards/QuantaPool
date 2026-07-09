@@ -1,5 +1,5 @@
 import { makeAutoObservable, runInAction } from "mobx";
-import { QRLConnect, QRL_CONNECT_PROVIDER_INFO } from "@qrlwallet/connect";
+import { QRLConnect, QRL_CONNECT_PROVIDER_INFO, attemptWalletRedirect, getAppStoreUrl } from "@qrlwallet/connect";
 import type { ContractAbi } from "@theqrl/web3";
 import { DepositPoolV2ABI } from "@/abi/DepositPoolV2";
 import { StQRLV2ABI } from "@/abi/StQRLV2";
@@ -10,7 +10,7 @@ import {
   ConnectionRejectedError,
   type ExtensionProvider,
 } from "@/utils/web3/extension";
-import { appStoreUrl, attemptWalletRedirect } from "@/utils/deeplink";
+
 import { formatUnits, parseUnits } from "@/utils/format";
 
 /** EIP-6963 rdns for the two QRL-capable wallets we surface in the picker. */
@@ -444,7 +444,7 @@ export class PoolStore {
         const opened = await attemptWalletRedirect(uri);
         if (opened) return;
         runInAction(() => {
-          this.connectError = `MyQRLWallet app not detected. Install it (${appStoreUrl()}) or use the copy-code option with the wallet at qrlwallet.com.`;
+          this.connectError = `MyQRLWallet app not detected. Install it (${getAppStoreUrl()}) or use the copy-code option with the wallet at qrlwallet.com.`;
         });
       }
       runInAction(() => {
@@ -502,7 +502,7 @@ export class PoolStore {
         const opened = await attemptWalletRedirect(uri);
         if (opened) return;
         runInAction(() => {
-          this.connectError = `MyQRLWallet app not detected. Install it (${appStoreUrl()}) or use the copy-code option with the wallet at qrlwallet.com.`;
+          this.connectError = `MyQRLWallet app not detected. Install it (${getAppStoreUrl()}) or use the copy-code option with the wallet at qrlwallet.com.`;
         });
       }
       runInAction(() => {
