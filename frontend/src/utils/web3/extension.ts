@@ -28,7 +28,9 @@ interface EIP6963AnnounceProviderEvent extends CustomEvent {
   detail: EIP6963ProviderDetail;
 }
 
-const QRL_WALLET_RDNS = "theqrl.org";
+// Injected QRL extensions: the upstream QRL Web3 Wallet and the MyQRLWallet
+// Extension fork (com.qrlwallet.extension, minted 2026-07-09). Same API.
+const QRL_WALLET_RDNS = new Set(["theqrl.org", "com.qrlwallet.extension"]);
 
 let cachedDetail: EIP6963ProviderDetail | null = null;
 
@@ -44,7 +46,7 @@ export function findQrlProvider(): Promise<EIP6963ProviderDetail | null> {
 
     const onAnnounce = (event: Event) => {
       const announceEvent = event as EIP6963AnnounceProviderEvent;
-      if (announceEvent.detail.info.rdns === QRL_WALLET_RDNS) {
+      if (QRL_WALLET_RDNS.has(announceEvent.detail.info.rdns)) {
         cachedDetail = announceEvent.detail;
         finish(cachedDetail);
       }
