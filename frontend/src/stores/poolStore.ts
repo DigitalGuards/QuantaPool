@@ -10,6 +10,7 @@ import {
   ConnectionRejectedError,
   type ExtensionProvider,
 } from "@/utils/web3/extension";
+import { appStoreUrl, attemptWalletRedirect } from "@/utils/deeplink";
 import { formatUnits, parseUnits } from "@/utils/format";
 
 /** EIP-6963 rdns for the two QRL-capable wallets we surface in the picker. */
@@ -437,8 +438,14 @@ export class PoolStore {
     try {
       const uri = await qrl.getConnectionURI();
       if (qrl.isMobile()) {
-        window.location.href = uri;
-        return;
+        // Deep-link into the app; if nothing handles the protocol (app not
+        // installed, or chooser dismissed) fall back to the pairing modal
+        // instead of dead-ending on an unknown-protocol navigation.
+        const opened = await attemptWalletRedirect(uri);
+        if (opened) return;
+        runInAction(() => {
+          this.connectError = `MyQRLWallet app not detected. Install it (${appStoreUrl()}) or use the copy-code option with the wallet at qrlwallet.com.`;
+        });
       }
       runInAction(() => {
         this.pairingUri = uri;
