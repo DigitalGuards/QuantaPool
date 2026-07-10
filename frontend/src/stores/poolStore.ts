@@ -681,6 +681,15 @@ export class PoolStore {
         this.resetWalletState();
         return;
       }
+      // The SDK also emits 'disconnect' when its reconnect probe gives up on
+      // a wallet that is merely backgrounded (routine on mobile). The stored
+      // session survives that and any request revives it: relay-buffered and,
+      // on SDK >= 3.3.0, deep-linked awake. Rotating to a fresh QR here would
+      // orphan the wallet side's session and could strand an approval already
+      // in flight, so keep account/UI state and stay paired.
+      if (qrl.hasStoredSession()) {
+        return;
+      }
       // A stale stored session whose startup auto-reconnect fails also emits
       // disconnect. Only re-pair when a live session actually dropped; otherwise
       // fall back to the Connect button rather than popping an unsolicited QR.
@@ -688,9 +697,10 @@ export class PoolStore {
         this.resetWalletState();
         return;
       }
-      // Wallet-initiated drop of a live session: auto-regenerate a QR so the
-      // user can re-pair. Clear the flag so a follow-up drop before the re-pair
-      // completes takes the reset path instead of looping fresh QRs.
+      // Wallet-initiated terminate of a live session (stored session gone):
+      // auto-regenerate a QR so the user can re-pair. Clear the flag so a
+      // follow-up drop before the re-pair completes takes the reset path
+      // instead of looping fresh QRs.
       this.relayEstablished = false;
       void this.regenerateRelayQr();
     });
