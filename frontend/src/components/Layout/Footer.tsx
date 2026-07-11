@@ -25,6 +25,14 @@ export function Footer() {
             Ecosystem
           </a>
           <a
+            href="https://quantaswap.io"
+            target="_blank"
+            rel="noreferrer"
+            className="hover:text-foreground"
+          >
+            QuantaSwap
+          </a>
+          <a
             href={poolStore.network.explorer}
             target="_blank"
             rel="noreferrer"
