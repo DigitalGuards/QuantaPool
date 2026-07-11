@@ -66,7 +66,7 @@ const WITHDRAWAL_STEPS = [
 
 export function HowItWorksPage() {
   return (
-    <div className="mx-auto max-w-3xl space-y-6 py-6">
+    <div className="page-enter mx-auto max-w-3xl space-y-6 py-6">
       <div>
         <h1 className="text-2xl font-bold">How QuantaPool works</h1>
         <p className="mt-2 text-muted-foreground">

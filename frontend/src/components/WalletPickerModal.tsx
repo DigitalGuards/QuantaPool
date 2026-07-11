@@ -18,10 +18,7 @@ export const WalletPickerModal = observer(() => {
       className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-4 backdrop-blur"
       onClick={() => poolStore.closeWalletPicker()}
     >
-      <Card
-        className="w-full max-w-sm border-l-2 border-l-secondary bg-background"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <Card className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg">Connect a wallet</CardTitle>
@@ -49,7 +46,7 @@ export const WalletPickerModal = observer(() => {
               <button
                 key={w.uuid}
                 onClick={() => void poolStore.connectWallet(w.uuid)}
-                className="flex w-full items-center gap-3 rounded-md border border-border bg-muted/30 px-3 py-3 text-left transition-colors hover:border-secondary/60 hover:bg-muted/50"
+                className="cursor-pointer flex w-full items-center gap-3 rounded-md border border-border bg-muted/30 px-3 py-3 text-left transition-colors hover:border-primary/40 hover:bg-primary/10"
               >
                 {w.icon ? (
                   <img src={w.icon} alt="" className="h-8 w-8 rounded-md" />
@@ -57,7 +54,7 @@ export const WalletPickerModal = observer(() => {
                   <span className="h-8 w-8 rounded-md bg-muted" />
                 )}
                 <span className="flex-1 font-medium">{w.name}</span>
-                <span className="font-mono text-xs text-muted-foreground">{w.rdns}</span>
+                <span className="font-data text-xs text-blue-accent">{w.rdns}</span>
               </button>
             ))
           )}

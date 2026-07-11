@@ -16,7 +16,7 @@ export const ConnectButton = observer(() => {
           target="_blank"
           rel="noreferrer"
           title="View address on Zondscan"
-          className="hidden sm:inline rounded-md border border-border bg-muted/40 px-3 py-1.5 font-mono text-xs text-secondary hover:border-secondary/60"
+          className="hidden sm:inline rounded-md border border-border bg-muted/40 px-3 py-1.5 font-data text-xs text-blue-accent hover:border-blue-accent/40"
         >
           {shortenAddress(poolStore.account.address)}
         </a>

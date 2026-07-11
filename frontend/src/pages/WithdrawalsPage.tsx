@@ -59,7 +59,7 @@ export const WithdrawalsPage = observer(() => {
 
   if (!account) {
     return (
-      <div className="mx-auto max-w-md py-16 text-center">
+      <div className="page-enter mx-auto max-w-md py-16 text-center">
         <h1 className="text-2xl font-bold">Withdrawals</h1>
         <p className="mt-3 text-muted-foreground">
           Connect your wallet to request and claim withdrawals.
@@ -76,7 +76,7 @@ export const WithdrawalsPage = observer(() => {
   }
 
   return (
-    <div className="mx-auto max-w-md space-y-4 py-6">
+    <div className="page-enter mx-auto max-w-md space-y-4 py-6">
       <h1 className="text-2xl font-bold">Withdrawals</h1>
 
       <Tabs defaultValue="request">
@@ -89,11 +89,11 @@ export const WithdrawalsPage = observer(() => {
 
         {/* Request withdrawal */}
         <TabsContent value="request">
-          <Card className="border-l-2 border-l-secondary">
+          <Card className="surface-ember">
             <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-xl">Unstake</CardTitle>
-                <span className="text-xs text-muted-foreground">
+                <span className="font-data text-xs text-muted-foreground">
                   Available: {unlockedShares !== null ? formatAmount(unlockedShares) : "-"} stQRL
                 </span>
               </div>
@@ -104,7 +104,10 @@ export const WithdrawalsPage = observer(() => {
                     : null;
                 return (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {formatAmount(account.immatureShares)} stQRL still maturing
+                    <span className="font-data">
+                      {formatAmount(account.immatureShares)} stQRL
+                    </span>{" "}
+                    still maturing
                     {blocksLeft !== null
                       ? `, available in ${blocksToTime(blocksLeft, BLOCK_TIME_SECONDS)}`
                       : ""}
@@ -125,18 +128,20 @@ export const WithdrawalsPage = observer(() => {
                 disabled={poolStore.tx.state === "pending"}
               />
 
-              {validationError && <p className="text-sm text-red-400">{validationError}</p>}
+              {validationError && <p className="text-sm text-destructive">{validationError}</p>}
 
               <div className="space-y-1.5 rounded-md border border-border/60 bg-muted/20 p-3 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">You will receive</span>
-                  <span className="font-medium">
+                  <span className="font-data font-medium">
                     {previewQrl !== null ? `≈ ${formatAmount(previewQrl)} QRL` : "-"}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Waiting period</span>
-                  <span>{blocksToTime(WITHDRAWAL_DELAY_BLOCKS, BLOCK_TIME_SECONDS)}</span>
+                  <span className="font-data">
+                    {blocksToTime(WITHDRAWAL_DELAY_BLOCKS, BLOCK_TIME_SECONDS)}
+                  </span>
                 </div>
               </div>
 
@@ -183,17 +188,24 @@ export const WithdrawalsPage = observer(() => {
                       className="flex items-center justify-between gap-3 rounded-md border border-border/60 p-3 text-sm"
                     >
                       <div>
-                        <p className="font-medium">
+                        <p className="font-data font-medium">
                           {formatAmount(request.shares)} stQRL →{" "}
                           {formatAmount(request.qrlPayout)} QRL
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {request.canClaim ? (
-                            <span className="text-green-400">Ready to claim</span>
+                            <span className="text-success">Ready to claim</span>
                           ) : request.blocksRemaining > 0n ? (
                             <>
-                              Ready in {request.blocksRemaining.toString()} blocks (
-                              {blocksToTime(request.blocksRemaining, BLOCK_TIME_SECONDS)})
+                              Ready in{" "}
+                              <span className="font-data">
+                                {request.blocksRemaining.toString()}
+                              </span>{" "}
+                              blocks (
+                              <span className="font-data">
+                                {blocksToTime(request.blocksRemaining, BLOCK_TIME_SECONDS)}
+                              </span>
+                              )
                             </>
                           ) : (
                             "Waiting for withdrawal reserve"
