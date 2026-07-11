@@ -9,7 +9,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode | null })
   return (
     <div className="flex items-center justify-between text-sm">
       <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium">{value ?? <Skeleton className="h-4 w-20" />}</span>
+      <span className="font-data font-medium">{value ?? <Skeleton className="h-4 w-20" />}</span>
     </div>
   );
 }
@@ -24,7 +24,7 @@ export const StatsPage = observer(() => {
     : 0;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 py-6">
+    <div className="page-enter mx-auto max-w-3xl space-y-4 py-6">
       <h1 className="text-2xl font-bold">Protocol stats</h1>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -67,7 +67,10 @@ export const StatsPage = observer(() => {
                   pool.paused ? (
                     <span className="text-secondary">Paused</span>
                   ) : (
-                    <span className="text-green-400">Open</span>
+                    <span className="inline-flex items-center gap-1.5 text-success">
+                      <span aria-hidden className="glow-dot h-1.5 w-1.5 rounded-full bg-success" />
+                      Open
+                    </span>
                   )
                 ) : null
               }
@@ -86,7 +89,9 @@ export const StatsPage = observer(() => {
             <div className="pt-2">
               <div className="mb-1 flex justify-between text-xs text-muted-foreground">
                 <span>Next validator (40,000 QRL)</span>
-                <span>{pool ? `${formatAmount(pool.buffered, 18, 0)} QRL buffered` : ""}</span>
+                <span className="font-data">
+                  {pool ? `${formatAmount(pool.buffered, 18, 0)} QRL buffered` : ""}
+                </span>
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-muted">
                 <div
@@ -138,7 +143,7 @@ export const StatsPage = observer(() => {
                     href={getExplorerAddressUrl(address)}
                     target="_blank"
                     rel="noreferrer"
-                    className="font-mono text-xs text-blue-accent hover:underline"
+                    className="font-data text-xs text-blue-accent hover:underline"
                   >
                     {shortenAddress(address, 6)}
                   </a>

@@ -1,4 +1,5 @@
 import { NavLink, Link } from "react-router-dom";
+import { observer } from "mobx-react-lite";
 import { Logo } from "@/components/Logo";
 import { ConnectButton } from "@/components/ConnectButton";
 import { useStore } from "@/stores/store";
@@ -11,7 +12,7 @@ const navItems = [
   { to: "/how-it-works", label: "How it works" },
 ];
 
-export function Header() {
+export const Header = observer(function Header() {
   const { poolStore } = useStore();
 
   return (
@@ -30,7 +31,7 @@ export function Header() {
                   cn(
                     "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
                     isActive
-                      ? "bg-secondary/10 text-secondary"
+                      ? "bg-primary/10 text-primary"
                       : "text-muted-foreground hover:text-foreground",
                   )
                 }
@@ -41,7 +42,16 @@ export function Header() {
           </nav>
         </div>
         <div className="flex items-center gap-3">
-          <span className="rounded-full border border-secondary/40 bg-secondary/10 px-2.5 py-0.5 text-xs font-medium text-secondary">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-accent/30 bg-blue-accent/10 px-2.5 py-0.5 text-xs font-medium text-blue-accent">
+            <span
+              aria-hidden
+              className={cn(
+                "glow-dot h-1.5 w-1.5 rounded-full",
+                poolStore.rpcError
+                  ? "bg-destructive text-destructive"
+                  : "bg-success text-success",
+              )}
+            />
             {poolStore.network.shortName}
           </span>
           <ConnectButton />
@@ -56,7 +66,7 @@ export function Header() {
             className={({ isActive }) =>
               cn(
                 "px-3 py-1 text-sm font-medium",
-                isActive ? "text-secondary" : "text-muted-foreground hover:text-foreground",
+                isActive ? "text-primary" : "text-muted-foreground hover:text-foreground",
               )
             }
           >
@@ -66,4 +76,4 @@ export function Header() {
       </nav>
     </header>
   );
-}
+});

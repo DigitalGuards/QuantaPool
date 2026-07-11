@@ -34,11 +34,11 @@ export const StatsBar = observer(() => {
       {stats.map((stat) => (
         <div key={stat.label} className="bg-background p-4">
           <dt className="text-xs text-muted-foreground">{stat.label}</dt>
-          <dd className="mt-1 text-sm font-semibold">
+          <dd className="font-data mt-1 text-sm font-semibold">
             {stat.value ?? <Skeleton className="h-5 w-24" />}
           </dd>
           {"sub" in stat && stat.sub && (
-            <p className="mt-0.5 text-xs text-muted-foreground">{stat.sub}</p>
+            <p className="font-data mt-0.5 text-xs text-muted-foreground">{stat.sub}</p>
           )}
         </div>
       ))}

@@ -16,7 +16,7 @@ export const TxBanner = observer(() => {
       className={cn(
         "fixed bottom-4 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-center gap-3 rounded-lg border bg-background/95 p-4 shadow-lg backdrop-blur",
         tx.state === "pending" && "border-l-4 border-l-blue-accent",
-        tx.state === "confirmed" && "border-l-4 border-l-green-500",
+        tx.state === "confirmed" && "border-l-4 border-l-success",
         tx.state === "failed" && "border-l-4 border-l-destructive",
       )}
       role="status"
@@ -25,7 +25,7 @@ export const TxBanner = observer(() => {
         <Loader2 className="h-5 w-5 shrink-0 animate-spin text-blue-accent" />
       )}
       {tx.state === "confirmed" && (
-        <CheckCircle2 className="h-5 w-5 shrink-0 text-green-500" />
+        <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
       )}
       {tx.state === "failed" && <XCircle className="h-5 w-5 shrink-0 text-destructive" />}
 
