@@ -7,6 +7,7 @@ import { Footer } from "@/components/Layout/Footer";
 import { TxBanner } from "@/components/TxBanner";
 import { WalletPickerModal } from "@/components/WalletPickerModal";
 import { QrPairModal } from "@/components/QrPairModal";
+import { RouteSeo } from "@/components/RouteSeo";
 import { StakePage } from "@/pages/StakePage";
 import { WithdrawalsPage } from "@/pages/WithdrawalsPage";
 import { StatsPage } from "@/pages/StatsPage";
@@ -22,6 +23,7 @@ const App = observer(() => {
 
   return (
     <BrowserRouter>
+      <RouteSeo />
       <Header />
 
       {poolStore.rpcError && (
