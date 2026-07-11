@@ -1,8 +1,18 @@
+/* Self-hosted variable fonts (Sora display / Instrument Sans body /
+   JetBrains Mono data) are imported in main.tsx: importing them here would
+   let the Tailwind postcss pipeline inline the @font-face rules without
+   rewriting the package-relative woff2 URLs. */
 @import "tailwindcss";
 
-/* Theme customization for Tailwind v4 - token values mirror myqrlwallet-frontend
-   so QuantaPool reads as part of the same product family. */
+/* Theme customization for Tailwind v4 - "Obsidian & Ember" token values
+   mirror myqrlwallet-frontend so QuantaPool reads as part of the same
+   product family. */
 @theme {
+  /* Typography */
+  --font-sans: "Instrument Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Sora Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", monospace;
+
   /* Border radius */
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
@@ -24,6 +34,9 @@
   --color-blue-accent: hsl(var(--blue-accent));
   --color-blue-accent-foreground: hsl(var(--blue-accent-foreground));
 
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+
   --color-destructive: hsl(var(--destructive));
   --color-destructive-foreground: hsl(var(--destructive-foreground));
 
@@ -33,65 +46,90 @@
   --color-accent: hsl(var(--accent));
   --color-accent-foreground: hsl(var(--accent-foreground));
 
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));
 }
 
+/* CSS Custom Properties for theming.
+
+   "Obsidian & Ember": one deep warm-ink surface family, one ember-orange
+   action color (the QRL brand), quantum-cyan reserved for informational
+   states, and layered glow + grain atmosphere behind everything. Values
+   are the canonical set from myqrlwallet-frontend. */
 @layer base {
   :root {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 235 15% 4%;
+    --foreground: 36 20% 95%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: 235 13% 7%;
+    --card-foreground: 36 20% 95%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --popover: 235 14% 6%;
+    --popover-foreground: 36 20% 95%;
 
-    --secondary: 25 95% 53%; /* QRL Orange */
-    --secondary-foreground: 210 40% 98%;
+    /* Ember: the single action color */
+    --primary: 24 96% 55%;
+    --primary-foreground: 24 90% 6%;
 
-    --blue-accent: 199 89% 64%; /* #4aafff */
-    --blue-accent-foreground: 210 40% 98%;
+    /* QRL Orange kept as the brand accent token (rails, edges, badges) */
+    --secondary: 25 95% 53%;
+    --secondary-foreground: 24 90% 6%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    /* QRL battery blue: the identity color (addresses, account markers)
+       and informational states. Orange acts, blue identifies. */
+    --blue-accent: 199 89% 64%;
+    --blue-accent-foreground: 200 90% 8%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --success: 152 55% 48%;
+    --success-foreground: 152 80% 8%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --muted: 235 10% 12%;
+    --muted-foreground: 234 8% 64%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --accent: 235 11% 13%;
+    --accent-foreground: 36 20% 95%;
 
-    --radius: 0.5rem;
+    --destructive: 0 68% 46%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 235 10% 15%;
+    --input: 235 10% 17%;
+    --ring: 24 96% 55%;
+
+    --radius: 0.75rem;
   }
 
   /* Customized scrollbar */
   ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-background;
+    background: transparent;
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-muted rounded-full;
+    background: hsl(var(--muted-foreground) / 0.25);
+    border-radius: 9999px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-muted-foreground/50;
+    background: hsl(var(--primary) / 0.5);
   }
 
   * {
-    scrollbar-color: hsl(var(--muted-foreground)) hsl(var(--background));
+    scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
     box-sizing: border-box;
     @apply border-border;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.35);
+    color: hsl(var(--foreground));
   }
 
   html {
@@ -99,11 +137,32 @@
     -webkit-tap-highlight-color: transparent;
   }
 
+  /* Body is the scroll container here (unlike the wallet, which scrolls
+     #root): the atmosphere layers stay put via background-attachment: fixed
+     while content scrolls normally. */
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
+    background-color: hsl(var(--background));
+    background-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E"),
+      radial-gradient(52rem 34rem at 12% -8%, hsl(24 96% 55% / 0.09), transparent 62%),
+      radial-gradient(44rem 30rem at 108% 112%, hsl(190 90% 58% / 0.05), transparent 60%),
+      radial-gradient(60rem 44rem at 50% 120%, hsl(236 40% 12% / 0.5), transparent 70%);
+    background-attachment: fixed;
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01" on;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
     margin: 0;
     padding: 0;
     min-height: 100svh;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
   }
 
   #root {
@@ -118,5 +177,106 @@
   select,
   textarea {
     touch-action: manipulation;
+  }
+}
+
+/* Component-layer surfaces: sit below Tailwind utilities so per-card
+   overrides (border-l-4, bg-*, etc.) still win. */
+@layer components {
+  /* Data voice: addresses, hashes, balances. */
+  .font-data {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  /* Glass surface: the one card treatment used everywhere so pages stop
+     feeling stitched together. Solid-ish ink with a soft top sheen.
+     Deliberately NO backdrop-filter: it would give every card its own
+     stacking context, trapping z-indexed hover popovers beneath
+     later-painted sibling cards. Cards only ever sit over the flat
+     body atmosphere, so translucency alone reads the same. */
+  .surface-glass {
+    background:
+      linear-gradient(180deg, hsl(var(--foreground) / 0.045), transparent 42%),
+      hsl(var(--card) / 0.88);
+    border: 1px solid hsl(var(--foreground) / 0.08);
+    box-shadow:
+      0 1px 0 hsl(var(--foreground) / 0.05) inset,
+      0 18px 40px -24px hsl(235 30% 2% / 0.9);
+  }
+
+  /* Ember edge treatment for "hero" cards (the stake form). */
+  .surface-ember {
+    background:
+      linear-gradient(180deg, hsl(var(--primary) / 0.07), transparent 46%),
+      hsl(var(--card) / 0.86);
+    border: 1px solid hsl(var(--primary) / 0.22);
+    box-shadow:
+      0 1px 0 hsl(var(--primary) / 0.14) inset,
+      0 18px 44px -22px hsl(24 96% 40% / 0.28);
+  }
+}
+
+@layer utilities {
+  /* Orchestrated page entrance: apply .page-enter to a route's outer
+     wrapper; direct children rise in with a soft stagger. fill-mode is
+     backwards, NOT both: both would retain an identity transform and
+     re-parent position:fixed descendants. */
+  .page-enter > * {
+    animation: rise-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  }
+  .page-enter > *:nth-child(2) {
+    animation-delay: 60ms;
+  }
+  .page-enter > *:nth-child(3) {
+    animation-delay: 120ms;
+  }
+  .page-enter > *:nth-child(4) {
+    animation-delay: 180ms;
+  }
+  .page-enter > *:nth-child(n + 5) {
+    animation-delay: 240ms;
+  }
+
+  .animate-rise {
+    animation: rise-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  }
+
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(14px) scale(0.995);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  /* Soft pulsing halo for live/status dots. */
+  .glow-dot {
+    box-shadow: 0 0 0 0 currentColor;
+    animation: glow-pulse 2.4s ease-out infinite;
+  }
+
+  @keyframes glow-pulse {
+    0% {
+      box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 45%, transparent);
+    }
+    70% {
+      box-shadow: 0 0 0 7px transparent;
+    }
+    100% {
+      box-shadow: 0 0 0 0 transparent;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .page-enter > *,
+    .animate-rise,
+    .glow-dot {
+      animation: none;
+    }
   }
 }

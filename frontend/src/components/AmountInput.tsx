@@ -33,7 +33,7 @@ export function AmountInput({ value, onChange, balance, symbol, disabled }: Amou
             const next = e.target.value.replace(",", ".");
             if (next === "" || /^\d*\.?\d*$/.test(next)) onChange(next);
           }}
-          className="h-12 pr-16 text-lg"
+          className="font-data h-12 pr-16 text-lg"
         />
         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground">
           {symbol}

@@ -90,12 +90,12 @@ export const StakePage = observer(() => {
   };
 
   return (
-    <div className="space-y-10">
+    <div className="page-enter space-y-10">
       {/* Hero */}
       <section className="relative pt-10 pb-2 text-center">
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 -top-16 h-64 bg-[radial-gradient(ellipse_at_top,hsl(25_95%_53%/0.10),transparent_65%)]"
+          className="pointer-events-none absolute inset-x-0 -top-16 h-64 bg-[radial-gradient(ellipse_at_top,hsl(var(--secondary)/0.10),transparent_65%)]"
         />
         <h1 className="text-3xl font-black tracking-tight md:text-5xl">
           Liquid staking for <span className="text-secondary">QRL</span>
@@ -108,12 +108,12 @@ export const StakePage = observer(() => {
 
       {/* Stake widget */}
       <section className="mx-auto max-w-md space-y-4">
-        <Card className="border-l-2 border-l-secondary">
+        <Card className="surface-ember">
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between">
               <CardTitle className="text-xl">Stake</CardTitle>
               {account && (
-                <span className="text-xs text-muted-foreground">
+                <span className="font-data text-xs text-muted-foreground">
                   Balance: {formatAmount(account.qrlBalance)} QRL
                 </span>
               )}
@@ -129,23 +129,27 @@ export const StakePage = observer(() => {
             />
 
             {validationError && (
-              <p className="text-sm text-red-400">{validationError}</p>
+              <p className="text-sm text-destructive">{validationError}</p>
             )}
 
             <div className="space-y-1.5 rounded-md border border-border/60 bg-muted/20 p-3 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">You will receive</span>
-                <span className="font-medium">
+                <span className="font-data font-medium">
                   {previewShares !== null ? `≈ ${formatAmount(previewShares)} stQRL` : "-"}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Exchange rate</span>
-                <span>{pool ? `1 stQRL = ${formatRate(pool.exchangeRate)} QRL` : "-"}</span>
+                <span className="font-data">
+                  {pool ? `1 stQRL = ${formatRate(pool.exchangeRate)} QRL` : "-"}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Minimum deposit</span>
-                <span>{pool ? `${formatAmount(pool.minDeposit)} QRL` : "-"}</span>
+                <span className="font-data">
+                  {pool ? `${formatAmount(pool.minDeposit)} QRL` : "-"}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Protocol fee</span>
@@ -186,11 +190,11 @@ export const StakePage = observer(() => {
             <CardContent className="space-y-1.5 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">stQRL balance</span>
-                <span className="font-medium">{formatAmount(account.shares)} stQRL</span>
+                <span className="font-data font-medium">{formatAmount(account.shares)} stQRL</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Current value</span>
-                <span className="font-medium">
+                <span className="font-data font-medium">
                   {formatAmount(account.qrlValue)} QRL
                   {(() => {
                     const usd = poolStore.usdValue(account.qrlValue);
@@ -205,7 +209,7 @@ export const StakePage = observer(() => {
               {account.lockedShares > 0n && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Locked in withdrawals</span>
-                  <Link to="/withdrawals" className="text-blue-accent hover:underline">
+                  <Link to="/withdrawals" className="font-data text-blue-accent hover:underline">
                     {formatAmount(account.lockedShares)} stQRL
                   </Link>
                 </div>

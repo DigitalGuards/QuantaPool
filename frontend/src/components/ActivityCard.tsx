@@ -10,7 +10,7 @@ const ACTIVITY_META: Record<
   ActivityType,
   { label: string; icon: React.ComponentType<{ className?: string }>; color: string }
 > = {
-  deposit: { label: "Staked", icon: ArrowDownToLine, color: "text-green-400" },
+  deposit: { label: "Staked", icon: ArrowDownToLine, color: "text-success" },
   request: { label: "Withdrawal requested", icon: Clock, color: "text-secondary" },
   claim: { label: "Withdrawal claimed", icon: ArrowUpFromLine, color: "text-blue-accent" },
   cancel: { label: "Request cancelled", icon: Undo2, color: "text-muted-foreground" },
@@ -61,16 +61,16 @@ export const ActivityCard = observer(() => {
                   <Icon className={`h-4 w-4 shrink-0 ${meta.color}`} />
                   <div className="min-w-0 flex-1">
                     <p className="font-medium">{meta.label}</p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="font-data text-xs text-muted-foreground">
                       Block {item.blockNumber.toString()}
                     </p>
                   </div>
                   <div className="text-right">
                     {item.qrlAmount !== null && (
-                      <p className="font-medium">{formatAmount(item.qrlAmount)} QRL</p>
+                      <p className="font-data font-medium">{formatAmount(item.qrlAmount)} QRL</p>
                     )}
                     {item.shares !== null && (
-                      <p className="text-xs text-muted-foreground">
+                      <p className="font-data text-xs text-muted-foreground">
                         {formatAmount(item.shares)} stQRL
                       </p>
                     )}

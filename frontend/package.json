@@ -12,6 +12,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource-variable/instrument-sans": "^5.2.8",
+    "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "@fontsource-variable/sora": "^5.2.8",
     "@qrlwallet/connect": "^3.3.0",
     "@qrlwallet/connect-ui": "^0.1.0",
     "@radix-ui/react-slot": "^1.1.2",
