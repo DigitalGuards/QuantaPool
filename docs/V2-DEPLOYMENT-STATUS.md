@@ -104,7 +104,7 @@ Validator `0xa40ca760bcc4…` is in the activation queue. Once it transitions to
 ## How to resume
 
 ```bash
-cd /home/REDACTED/myqrlwallet/QuantaPool
+cd QuantaPool
 git status                                    # expect clean on dev
 forge test --summary                          # expect 187 pass
 node scripts/integration-test-v2.js status    # live testnet read-back (v2.2 addresses)

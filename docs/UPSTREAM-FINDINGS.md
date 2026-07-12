@@ -1,8 +1,8 @@
 # Upstream QRL v2 Findings
 
 Facts read directly from the cloned upstream repos at:
-- `/home/REDACTED/myqrlwallet/qrysm` (QRL consensus client)
-- `/home/REDACTED/myqrlwallet/go-qrl` (QRL execution client)
+- `qrysm` (QRL consensus client)
+- `go-qrl` (QRL execution client)
 
 Captured here because the official staking documentation is still in QA (per QRL team, Discord, 2026-04-13). **Verify against the official docs once published** — this file is a diff baseline, not a spec.
 
