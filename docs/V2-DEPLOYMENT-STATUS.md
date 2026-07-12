@@ -154,7 +154,7 @@ Fresh deposits now mature for `minStakeBlocks` (default 1536, ~1 day) before the
 ## How to resume
 
 ```bash
-cd /home/REDACTED/myqrlwallet/QuantaPool
+cd QuantaPool
 git status                                    # expect clean on dev
 forge test --summary                          # expect 200 pass
 node scripts/integration-test-v2.js status    # live testnet read-back (v2.2 addresses)
