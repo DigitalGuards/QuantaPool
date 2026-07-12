@@ -1,6 +1,6 @@
 # QuantaPool validator node setup
 
-**Host:** `REDACTED` (Ubuntu 24.04, 32 GB RAM, 1.8 TB disk)
+**Host:** `<validator-host>` (Ubuntu 24.04, 32 GB RAM, 1.8 TB disk)
 **User:** `qrlnode` (system, nologin, `HOME=/opt/quantapool/node`)
 **Stack:** gqrl (execution) + qrysm beacon (consensus) + qrysm validator. As of 2026-04-14 all three are running under systemd; one validator key is imported and waiting for activation after the on-chain deposit (`pool.fundValidator()` tx `0x61d6f48c…`).
 

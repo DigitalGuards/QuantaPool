@@ -21,7 +21,7 @@ Persisted in `config/testnet-hyperion.json`. All 3 wired (`setStQRL`, `setDeposi
 - Buffer top-up `pool.deposit(40000)` — tx `0x12e2b96b8f4ac2e80b8246a32af92d047dfdf6dcc3416e52a1dce5751c3fc8c6`
 - `pool.fundValidator(pubkey, creds, sig, root)` — tx `0x61d6f48c7b17187abc3527577f65e6f100eda4ab50161d382e370321fbbd81c0`
 - 40 000 QRL forwarded to beacon deposit contract `Q4242…`
-- Local beacon (running on `REDACTED`) confirmed `beacon_processed_deposits_total = 1`
+- Local beacon (running on `<validator-host>`) confirmed `beacon_processed_deposits_total = 1`
 - Validator `0xa40ca760bcc4…` is in the activation queue (`UNKNOWN_STATUS` → eventually `ACTIVE` after several epochs)
 
 ### Deprecated (v2.0 + v2.1) — DO NOT interact
@@ -88,10 +88,10 @@ Qrysm uses `ExecutionAddressWithdrawalPrefixByte = byte(0)` (`mainnet_config.go:
 `DepositPool-v2.sol:78` hardcoded `SIGNATURE_LENGTH = 4595`, but qrysm's `crypto/ml_dsa_87/ml_dsa_87t/signature.go` enforces ML-DSA-87 signatures at exactly **4627 bytes**. Any real `fundValidator()` on v2.1 would have reverted with `InvalidSignatureLength` before reaching the beacon contract. Fix bumped the constant to 4627 and updated the 4 Foundry tests that hardcoded the old length. Full suite still **187 pass**. v2.2 live addresses ship the fixed bytecode and have already executed a real `fundValidator()` end-to-end (see "Real validator deposit executed" above).
 
 ### 3. ~~Real validator deployment~~ — **done 2026-04-14**
-gqrl + qrysm beacon + qrysm validator running on `REDACTED` under systemd as user `qrlnode`. Beacon fully synced, validator key imported and listening for activation. See `docs/NODE-SETUP.md` for the runbook.
+gqrl + qrysm beacon + qrysm validator running on `<validator-host>` under systemd as user `qrlnode`. Beacon fully synced, validator key imported and listening for activation. See `docs/NODE-SETUP.md` for the runbook.
 
 ### 4. ~~Monitoring contract-exporter rewrite~~ — **done 2026-04-14**
-Rewritten for v2 ABIs. Running on `REDACTED` (docker-compose under `/opt/quantapool/monitoring`). Dashboards live at `https://grafana.REDACTED.nip.io`. After v2.2 redeploy: `pooled=40000 shares=40000 rate=1.0 validators=1`. Discord webhook wired for critical/warning/info receivers; `monitoring/prometheus/rules/*.yml` tuned this session to suppress false positives (`BeaconChainLowPeers` was matching the always-zero `state="Connecting"` bucket; `NetworkInterfaceDown` was firing on the unplugged secondary NIC).
+Rewritten for v2 ABIs. Running on `<validator-host>` (docker-compose under `/opt/quantapool/monitoring`). Dashboards live at `https://grafana.<validator-host-ip>.nip.io`. After v2.2 redeploy: `pooled=40000 shares=40000 rate=1.0 validators=1`. Discord webhook wired for critical/warning/info receivers; `monitoring/prometheus/rules/*.yml` tuned this session to suppress false positives (`BeaconChainLowPeers` was matching the always-zero `state="Connecting"` bucket; `NetworkInterfaceDown` was firing on the unplugged secondary NIC).
 
 ### 5. Slashing path
 Not testable on the testnet (can't force a validator to be slashed externally). Foundry unit tests in `contracts/test/` cover the `markValidatorSlashed` accounting at the Solidity level. Current qrysm slashing constants are **placeholders** per the QRL team (Discord, 2026-01-25) — snapshot captured in `docs/UPSTREAM-FINDINGS.md` §4 for later diffing.
@@ -108,7 +108,7 @@ cd QuantaPool
 git status                                    # expect clean on dev
 forge test --summary                          # expect 187 pass
 node scripts/integration-test-v2.js status    # live testnet read-back (v2.2 addresses)
-ssh root@REDACTED 'systemctl is-active gqrl qrysm-beacon qrysm-validator'  # all should be active
+ssh root@<validator-host> 'systemctl is-active gqrl qrysm-beacon qrysm-validator'  # all should be active
 ```
 
 Integration test phases run independently (idempotent per phase, but each run adds on-chain state):

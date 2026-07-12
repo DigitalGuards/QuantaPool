@@ -55,7 +55,7 @@ Testnet-only, zero real money. User has more testnet QRL. **Decision: do not dra
 
 7. **Update monitoring:**
    ```bash
-   ssh REDACTED "cd /opt/quantapool/monitoring && ..."
+   ssh <validator-host> "cd /opt/quantapool/monitoring && ..."
    ```
    Update `.env` on the server with new addresses, restart contract-exporter, verify metrics land.
 
@@ -66,7 +66,7 @@ Testnet-only, zero real money. User has more testnet QRL. **Decision: do not dra
 
 ## What this does *not* unlock
 
-- **Real beacon path still needs gqrl+qrysm running.** The prefix fix was necessary but not sufficient. Next milestone after redeploy is standing up a validator node on `REDACTED` so `fundValidator()` can be exercised end-to-end.
+- **Real beacon path still needs gqrl+qrysm running.** The prefix fix was necessary but not sufficient. Next milestone after redeploy is standing up a validator node on `<validator-host>` so `fundValidator()` can be exercised end-to-end.
 - **External audit.** The contract is testnet-only until reviewed.
 - **Slashing constants.** Still placeholders upstream; no change needed in our code until QRL team publishes final values.
 
