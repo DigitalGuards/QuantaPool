@@ -12,6 +12,7 @@ import { StakePage } from "@/pages/StakePage";
 import { WithdrawalsPage } from "@/pages/WithdrawalsPage";
 import { StatsPage } from "@/pages/StatsPage";
 import { HowItWorksPage } from "@/pages/HowItWorksPage";
+import { LegalPage } from "@/pages/LegalPage";
 import { useStore } from "@/stores/store";
 
 const App = observer(() => {
@@ -57,6 +58,7 @@ const App = observer(() => {
           <Route path="/withdrawals" element={<WithdrawalsPage />} />
           <Route path="/stats" element={<StatsPage />} />
           <Route path="/how-it-works" element={<HowItWorksPage />} />
+          <Route path="/legal" element={<LegalPage />} />
           <Route path="*" element={<StakePage />} />
         </Routes>
       </main>

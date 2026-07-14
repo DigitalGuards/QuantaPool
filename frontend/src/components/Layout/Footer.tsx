@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useStore } from "@/stores/store";
 
 export function Footer() {
@@ -48,6 +49,9 @@ export function Footer() {
           >
             GitHub
           </a>
+          <Link to="/legal" className="hover:text-foreground">
+            Legal
+          </Link>
         </div>
       </div>
     </footer>

@@ -24,6 +24,11 @@ const ROUTE_META: Record<string, { title: string; description: string }> = {
     description:
       "How QuantaPool liquid staking works: deposit QRL, mint stQRL shares, earn validator rewards, and withdraw on QRL 2.0, the post-quantum blockchain.",
   },
+  "/legal": {
+    title: "Legal Notice | QuantaPool",
+    description:
+      "Legal notice for QuantaPool: testnet-only scope, no crypto-asset services, open-source license, and provider information.",
+  },
 };
 
 /**
