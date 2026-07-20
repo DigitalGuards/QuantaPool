@@ -1,5 +1,6 @@
 import { observer } from "mobx-react-lite";
 import { Skeleton } from "@/components/UI/Skeleton";
+import { NATIVE_UNIT } from "@/config/networks";
 import { useStore } from "@/stores/store";
 import { formatAmount, formatRate, formatUsd } from "@/utils/format";
 
@@ -12,12 +13,12 @@ export const StatsBar = observer(() => {
   const stats = [
     {
       label: "Total staked",
-      value: pool ? `${formatAmount(pool.totalPooled, 18, 0)} QRL` : null,
+      value: pool ? `${formatAmount(pool.totalPooled, 18, 0)} ${NATIVE_UNIT}` : null,
       sub: tvlUsd !== null ? `≈ ${formatUsd(tvlUsd)}` : undefined,
     },
     {
       label: "stQRL exchange rate",
-      value: pool ? `1 stQRL = ${formatRate(pool.exchangeRate)} QRL` : null,
+      value: pool ? `1 stQRL = ${formatRate(pool.exchangeRate)} ${NATIVE_UNIT}` : null,
     },
     {
       label: "Active validators",
@@ -25,7 +26,7 @@ export const StatsBar = observer(() => {
     },
     {
       label: "Net rewards",
-      value: pool ? `${formatAmount(pool.netRewards)} QRL` : null,
+      value: pool ? `${formatAmount(pool.netRewards)} ${NATIVE_UNIT}` : null,
     },
   ];
 

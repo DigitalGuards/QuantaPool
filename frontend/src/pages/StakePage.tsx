@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/UI/Card";
 import { AmountInput } from "@/components/AmountInput";
 import { ActivityCard } from "@/components/ActivityCard";
 import { StatsBar } from "@/components/StatsBar";
+import { NATIVE_UNIT } from "@/config/networks";
 import { useStore } from "@/stores/store";
 import { formatAmount, formatRate, formatUsd, parseUnits } from "@/utils/format";
 
@@ -14,7 +15,7 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
   {
     question: "What is QuantaPool?",
     answer:
-      "QuantaPool is a decentralized liquid staking protocol for the QRL network. You deposit QRL into the pool, the pool funds validators (40,000 QRL each), and validator rewards flow back to all stakers automatically.",
+      "QuantaPool is a decentralized liquid staking protocol for the QRL network. You deposit QRL into the pool, the pool funds validators (40,000 Quanta each), and validator rewards flow back to all stakers automatically.",
   },
   {
     question: "What is stQRL?",
@@ -66,9 +67,9 @@ export const StakePage = observer(() => {
     if (parsedAmount === null) return "Enter a valid amount";
     if (parsedAmount === 0n) return null;
     if (pool && parsedAmount < pool.minDeposit) {
-      return `Minimum deposit is ${formatAmount(pool.minDeposit)} QRL`;
+      return `Minimum deposit is ${formatAmount(pool.minDeposit)} ${NATIVE_UNIT}`;
     }
-    if (parsedAmount > account.qrlBalance) return "Insufficient QRL balance";
+    if (parsedAmount > account.qrlBalance) return "Insufficient Quanta balance";
     return null;
   }, [account, amount, parsedAmount, pool]);
 
@@ -114,7 +115,7 @@ export const StakePage = observer(() => {
               <CardTitle className="text-xl">Stake</CardTitle>
               {account && (
                 <span className="font-data text-xs text-muted-foreground">
-                  Balance: {formatAmount(account.qrlBalance)} QRL
+                  Balance: {formatAmount(account.qrlBalance)} {NATIVE_UNIT}
                 </span>
               )}
             </div>
@@ -124,7 +125,7 @@ export const StakePage = observer(() => {
               value={amount}
               onChange={setAmount}
               balance={stakeBalance}
-              symbol="QRL"
+              symbol={NATIVE_UNIT}
               disabled={poolStore.tx.state === "pending"}
             />
 
@@ -142,13 +143,13 @@ export const StakePage = observer(() => {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Exchange rate</span>
                 <span className="font-data">
-                  {pool ? `1 stQRL = ${formatRate(pool.exchangeRate)} QRL` : "-"}
+                  {pool ? `1 stQRL = ${formatRate(pool.exchangeRate)} ${NATIVE_UNIT}` : "-"}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Minimum deposit</span>
                 <span className="font-data">
-                  {pool ? `${formatAmount(pool.minDeposit)} QRL` : "-"}
+                  {pool ? `${formatAmount(pool.minDeposit)} ${NATIVE_UNIT}` : "-"}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -195,7 +196,7 @@ export const StakePage = observer(() => {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Current value</span>
                 <span className="font-data font-medium">
-                  {formatAmount(account.qrlValue)} QRL
+                  {formatAmount(account.qrlValue)} {NATIVE_UNIT}
                   {(() => {
                     const usd = poolStore.usdValue(account.qrlValue);
                     return usd !== null ? (

@@ -2,7 +2,7 @@ import { observer } from "mobx-react-lite";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/UI/Card";
 import { Skeleton } from "@/components/UI/Skeleton";
 import { useStore } from "@/stores/store";
-import { getExplorerAddressUrl, VALIDATOR_STAKE_QRL } from "@/config/networks";
+import { getExplorerAddressUrl, NATIVE_UNIT, VALIDATOR_STAKE_QRL } from "@/config/networks";
 import { formatAmount, formatRate, formatUsd, shortenAddress } from "@/utils/format";
 
 function Row({ label, value }: { label: string; value: React.ReactNode | null }) {
@@ -34,10 +34,10 @@ export const StatsPage = observer(() => {
           </CardHeader>
           <CardContent className="space-y-2">
             <Row
-              label="Total pooled QRL"
+              label="Total pooled Quanta"
               value={
                 pool
-                  ? `${formatAmount(pool.totalPooled)} QRL${(() => {
+                  ? `${formatAmount(pool.totalPooled)} ${NATIVE_UNIT}${(() => {
                       const usd = poolStore.usdValue(pool.totalPooled);
                       return usd !== null ? ` (≈ ${formatUsd(usd)})` : "";
                     })()}`
@@ -50,11 +50,11 @@ export const StatsPage = observer(() => {
             />
             <Row
               label="Exchange rate"
-              value={pool ? `1 stQRL = ${formatRate(pool.exchangeRate)} QRL` : null}
+              value={pool ? `1 stQRL = ${formatRate(pool.exchangeRate)} ${NATIVE_UNIT}` : null}
             />
             <Row
               label="Withdrawal reserve"
-              value={pool ? `${formatAmount(pool.reserveBalance)} QRL` : null}
+              value={pool ? `${formatAmount(pool.reserveBalance)} ${NATIVE_UNIT}` : null}
             />
             <Row
               label="Shares pending withdrawal"
@@ -88,9 +88,9 @@ export const StatsPage = observer(() => {
             <Row label="Funded by pool" value={pool ? pool.validators.toString() : null} />
             <div className="pt-2">
               <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-                <span>Next validator (40,000 QRL)</span>
+                <span>Next validator (40,000 Quanta)</span>
                 <span className="font-data">
-                  {pool ? `${formatAmount(pool.buffered, 18, 0)} QRL buffered` : ""}
+                  {pool ? `${formatAmount(pool.buffered, 18, 0)} ${NATIVE_UNIT} buffered` : ""}
                 </span>
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-muted">
@@ -110,15 +110,15 @@ export const StatsPage = observer(() => {
           <CardContent className="space-y-2">
             <Row
               label="Total rewards"
-              value={pool ? `${formatAmount(pool.totalRewards)} QRL` : null}
+              value={pool ? `${formatAmount(pool.totalRewards)} ${NATIVE_UNIT}` : null}
             />
             <Row
               label="Slashing losses"
-              value={pool ? `${formatAmount(pool.totalSlashing)} QRL` : null}
+              value={pool ? `${formatAmount(pool.totalSlashing)} ${NATIVE_UNIT}` : null}
             />
             <Row
               label="Net rewards"
-              value={pool ? `${formatAmount(pool.netRewards)} QRL` : null}
+              value={pool ? `${formatAmount(pool.netRewards)} ${NATIVE_UNIT}` : null}
             />
             <Row label="Protocol fee" value="None" />
           </CardContent>

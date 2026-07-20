@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/UI/Tabs";
 import { AmountInput } from "@/components/AmountInput";
 import { useStore } from "@/stores/store";
-import { BLOCK_TIME_SECONDS, WITHDRAWAL_DELAY_BLOCKS } from "@/config/networks";
+import { BLOCK_TIME_SECONDS, NATIVE_UNIT, WITHDRAWAL_DELAY_BLOCKS } from "@/config/networks";
 import { blocksToTime, formatAmount, parseUnits } from "@/utils/format";
 
 export const WithdrawalsPage = observer(() => {
@@ -134,7 +134,7 @@ export const WithdrawalsPage = observer(() => {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">You will receive</span>
                   <span className="font-data font-medium">
-                    {previewQrl !== null ? `≈ ${formatAmount(previewQrl)} QRL` : "-"}
+                    {previewQrl !== null ? `≈ ${formatAmount(previewQrl)} ${NATIVE_UNIT}` : "-"}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -190,7 +190,7 @@ export const WithdrawalsPage = observer(() => {
                       <div>
                         <p className="font-data font-medium">
                           {formatAmount(request.shares)} stQRL →{" "}
-                          {formatAmount(request.qrlPayout)} QRL
+                          {formatAmount(request.qrlPayout)} {NATIVE_UNIT}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {request.canClaim ? (
