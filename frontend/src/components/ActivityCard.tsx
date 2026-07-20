@@ -3,7 +3,7 @@ import { ArrowDownToLine, ArrowUpFromLine, Clock, ExternalLink, Undo2 } from "lu
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/UI/Card";
 import { useStore } from "@/stores/store";
 import type { ActivityType } from "@/stores/poolStore";
-import { getExplorerAddressUrl, getExplorerTxUrl } from "@/config/networks";
+import { getExplorerAddressUrl, getExplorerTxUrl, NATIVE_UNIT } from "@/config/networks";
 import { formatAmount } from "@/utils/format";
 
 const ACTIVITY_META: Record<
@@ -67,7 +67,9 @@ export const ActivityCard = observer(() => {
                   </div>
                   <div className="text-right">
                     {item.qrlAmount !== null && (
-                      <p className="font-data font-medium">{formatAmount(item.qrlAmount)} QRL</p>
+                      <p className="font-data font-medium">
+                        {formatAmount(item.qrlAmount)} {NATIVE_UNIT}
+                      </p>
                     )}
                     {item.shares !== null && (
                       <p className="font-data text-xs text-muted-foreground">

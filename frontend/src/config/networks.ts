@@ -55,6 +55,9 @@ export const getExplorerTxUrl = (txHash: string): string =>
 export const getExplorerAddressUrl = (address: string): string =>
   `${ACTIVE_NETWORK.explorer}/address/${address}`;
 
+/** Display unit for native coin amounts. The asset/network name stays "QRL". */
+export const NATIVE_UNIT = "Quanta";
+
 /** QRL block time - used to translate withdrawal-delay blocks into wall time. */
 export const BLOCK_TIME_SECONDS = 60;
 

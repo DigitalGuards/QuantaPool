@@ -76,7 +76,7 @@ export function HowItWorksPage() {
 
       <Section icon={Coins} title="The problem QuantaPool solves">
         <p>
-          Running your own QRL validator requires 40,000 QRL and a server that stays online
+          Running your own QRL validator requires 40,000 Quanta and a server that stays online
           around the clock. QuantaPool pools deposits from many stakers, runs the validators for
           you, and shares the rewards, so you can stake any amount above the minimum and stay
           liquid the whole time.
@@ -87,7 +87,7 @@ export function HowItWorksPage() {
         <p>
           When you deposit QRL into the pool you receive <strong>stQRL</strong>, a token that
           represents your share of everything the pool holds. Deposits go into a buffer, and every
-          time the buffer reaches 40,000 QRL the pool funds a new validator.
+          time the buffer reaches 40,000 Quanta the pool funds a new validator.
         </p>
         <p>
           stQRL is a <strong>fixed-balance</strong> token: your share count stays constant (which
@@ -101,8 +101,8 @@ export function HowItWorksPage() {
         <p>
           Validators earn rewards for proposing and attesting blocks. Those rewards flow back to
           the pool and raise the <strong>stQRL → QRL exchange rate</strong>. Example: you stake
-          1,000 QRL at a rate of 1.00 and receive 1,000 stQRL. A year later the rate is 1.05,
-          and your same 1,000 stQRL is now worth 1,050 QRL.
+          1,000 Quanta at a rate of 1.00 and receive 1,000 stQRL. A year later the rate is 1.05,
+          and your same 1,000 stQRL is now worth 1,050 Quanta.
         </p>
         <p>
           Reward detection is <strong>trustless</strong>: the contract reads its own balance
@@ -137,7 +137,7 @@ export function HowItWorksPage() {
         <p>Pooled QRL only ever sits in three places, all visible on-chain:</p>
         <ul className="list-disc space-y-1 pl-5">
           <li>
-            <strong>Validators</strong>: 40,000 QRL each, staked on the QRL beacon chain earning
+            <strong>Validators</strong>: 40,000 Quanta each, staked on the QRL beacon chain earning
             rewards.
           </li>
           <li>
