@@ -14,8 +14,7 @@ import { formatAmount, formatRate, formatUsd, parseUnits } from "@/utils/format"
 const FAQ_ITEMS: { question: string; answer: string }[] = [
   {
     question: "What is QuantaPool?",
-    answer:
-      "QuantaPool is a decentralized liquid staking protocol for the QRL network. You deposit QRL into the pool, the pool funds validators (40,000 Quanta each), and validator rewards flow back to all stakers automatically.",
+    answer: `QuantaPool is a decentralized liquid staking protocol for the QRL network. You deposit QRL into the pool, the pool funds validators (40,000 ${NATIVE_UNIT} each), and validator rewards flow back to all stakers automatically.`,
   },
   {
     question: "What is stQRL?",
@@ -69,7 +68,7 @@ export const StakePage = observer(() => {
     if (pool && parsedAmount < pool.minDeposit) {
       return `Minimum deposit is ${formatAmount(pool.minDeposit)} ${NATIVE_UNIT}`;
     }
-    if (parsedAmount > account.qrlBalance) return "Insufficient Quanta balance";
+    if (parsedAmount > account.qrlBalance) return `Insufficient ${NATIVE_UNIT} balance`;
     return null;
   }, [account, amount, parsedAmount, pool]);
 

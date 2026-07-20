@@ -34,7 +34,7 @@ export const StatsPage = observer(() => {
           </CardHeader>
           <CardContent className="space-y-2">
             <Row
-              label="Total pooled Quanta"
+              label={`Total pooled ${NATIVE_UNIT}`}
               value={
                 pool
                   ? `${formatAmount(pool.totalPooled)} ${NATIVE_UNIT}${(() => {
@@ -88,7 +88,7 @@ export const StatsPage = observer(() => {
             <Row label="Funded by pool" value={pool ? pool.validators.toString() : null} />
             <div className="pt-2">
               <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-                <span>Next validator (40,000 Quanta)</span>
+                <span>Next validator (40,000 {NATIVE_UNIT})</span>
                 <span className="font-data">
                   {pool ? `${formatAmount(pool.buffered, 18, 0)} ${NATIVE_UNIT} buffered` : ""}
                 </span>
