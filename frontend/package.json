@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "dev:lan": "vite --host 0.0.0.0",
+    "test": "node --test --experimental-strip-types src/utils/*.test.ts",
     "build": "tsc -b && vite build",
     "lint": "eslint . --max-warnings 0",
     "preview": "vite preview"

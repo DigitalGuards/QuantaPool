@@ -7,7 +7,7 @@ export function isQrlAddress(value: unknown): value is string {
 export function requireQrlAccount(accounts: unknown): string {
   if (
     !Array.isArray(accounts) ||
-    accounts.length === 0 ||
+    accounts.length !== 1 ||
     !accounts.every(isQrlAddress)
   ) {
     throw new Error("Wallet returned an invalid QRL account");

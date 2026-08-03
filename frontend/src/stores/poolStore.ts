@@ -13,6 +13,12 @@ import {
 
 import { formatUnits, parseUnits } from "@/utils/format";
 import { requireQrlAccount } from "@/utils/qrlAddress";
+import {
+  activateExtensionAfterRelayRetirement,
+  ConnectionAttemptGuard,
+  RelayResetGuard,
+  shouldIgnoreRelayResetEvent,
+} from "@/utils/relayReset";
 
 /** EIP-6963 rdns for the two QRL-capable wallets we surface in the picker. */
 const QRL_EXTENSION_RDNS = new Set(["theqrl.org", "com.qrlwallet.extension"]);
@@ -244,6 +250,8 @@ export class PoolStore {
    */
   private relayEstablished = false;
   private relayAuthorization: Promise<void> | null = null;
+  private relayResetGuard = new RelayResetGuard();
+  private connectionAttemptGuard = new ConnectionAttemptGuard();
   private walletsInitialized = false;
   /** Extension providers already wired for EIP-1193 events (avoid duplicates). */
   private wiredExtensionProviders = new WeakSet<ExtensionProvider>();
@@ -266,6 +274,8 @@ export class PoolStore {
       relayUserDisconnected: false,
       relayEstablished: false,
       relayAuthorization: false,
+      relayResetGuard: false,
+      connectionAttemptGuard: false,
       walletsInitialized: false,
       wiredExtensionProviders: false,
       onEip6963Announce: false,
@@ -419,70 +429,152 @@ export class PoolStore {
   /** Connect the wallet the user clicked in the picker. */
   async connectWallet(uuid: string): Promise<void> {
     const detail = this.discoveredMap.get(uuid);
-    if (!detail) return;
+    if (!detail || this.relayResetGuard.active) return;
+    const kind = detail.info.rdns === QRL_CONNECT_RDNS ? "relay" : "extension";
+    const attemptGeneration = this.connectionAttemptGuard.begin(kind);
+    if (attemptGeneration === null) return;
     runInAction(() => {
       this.walletPickerOpen = false;
       this.connectError = null;
     });
-    if (detail.info.rdns === QRL_CONNECT_RDNS) {
-      await this.connectViaRelay();
-    } else {
-      await this.connectViaExtension(detail);
+    try {
+      if (kind === "relay") {
+        await this.connectViaRelay(attemptGeneration);
+      } else {
+        await this.connectViaExtension(detail, attemptGeneration);
+      }
+    } finally {
+      this.connectionAttemptGuard.finish(attemptGeneration);
     }
   }
 
   /** Relay pairing: generate a URI, show the QR (or deep-link on mobile). */
-  private async connectViaRelay(): Promise<void> {
+  private async connectViaRelay(attemptGeneration: number): Promise<void> {
     const qrl = this.qrlConnect;
     if (!qrl) return;
-    this.providerKind = "relay";
-    runInAction(() => {
-      this.activeWalletName = QRL_CONNECT_PROVIDER_INFO.name;
-    });
+    const previousChannelId = qrl.getChannelId();
+    const resetGeneration = this.relayResetGuard.begin();
+    let uri: string;
     try {
-      const uri = await qrl.getConnectionURI();
-      if (qrl.isMobile()) {
-        // Deep-link into the app; if nothing handles the protocol (app not
-        // installed, or chooser dismissed) fall back to the pairing modal
-        // instead of dead-ending on an unknown-protocol navigation.
-        const opened = await attemptWalletRedirect(uri);
-        if (opened) return;
-        runInAction(() => {
-          this.connectError = `MyQRLWallet app not detected. Install it (${getAppStoreUrl()}) or use the copy-code option with the wallet at qrlwallet.com.`;
-        });
+      uri = await qrl.getConnectionURI();
+      if (
+        !this.connectionAttemptGuard.isCurrent(attemptGeneration) ||
+        !this.relayResetGuard.isCurrent(resetGeneration)
+      ) {
+        return;
       }
+      this.provider = qrl as unknown as ExtensionProvider;
+      this.providerKind = "relay";
+      this.relayEstablished = false;
       runInAction(() => {
-        this.pairingUri = uri;
-        this.pairingStatus = String(qrl.getStatus());
+        this.activeWalletName = QRL_CONNECT_PROVIDER_INFO.name;
+        this.account = null;
+        this.withdrawals = [];
+        this.activity = [];
+        this.activityError = null;
+        this.pairingUri = null;
       });
-      // The 'connect'/'accountsChanged' relay events finish the handshake.
+      this.finalizedRequests.clear();
+      this.tx = IDLE_TX;
     } catch (error) {
-      this.providerKind = null;
+      if (
+        !this.connectionAttemptGuard.isCurrent(attemptGeneration) ||
+        !this.relayResetGuard.isCurrent(resetGeneration)
+      ) {
+        return;
+      }
+      const channelChanged = qrl.getChannelId() !== previousChannelId;
+      if (channelChanged) this.resetWalletState();
       runInAction(() => {
         this.connectError = errorMessage(error);
+        if (!channelChanged && this.providerKind === "relay") {
+          this.pairingStatus = errorMessage(error);
+        }
+      });
+      return;
+    } finally {
+      this.relayResetGuard.finish(resetGeneration);
+    }
+
+    if (!this.connectionAttemptGuard.isCurrent(attemptGeneration)) return;
+    runInAction(() => {
+      this.pairingUri = uri;
+      this.pairingStatus = String(qrl.getStatus());
+    });
+    if (qrl.isMobile()) {
+      // Deep-link into the app; if nothing handles the protocol (app not
+      // installed, or chooser dismissed) fall back to the pairing modal
+      // instead of dead-ending on an unknown-protocol navigation.
+      const opened = await attemptWalletRedirect(uri).catch(() => false);
+      if (opened) return;
+      runInAction(() => {
+        this.connectError = `MyQRLWallet app not detected. Install it (${getAppStoreUrl()}) or use the copy-code option with the wallet at qrlwallet.com.`;
       });
     }
+    // The 'connect'/'accountsChanged' relay events finish the handshake.
   }
 
   /** Extension: request accounts directly from the injected provider. */
-  private async connectViaExtension(detail: EIP6963Detail): Promise<void> {
-    this.providerKind = "extension";
+  private async connectViaExtension(
+    detail: EIP6963Detail,
+    attemptGeneration: number,
+  ): Promise<void> {
     runInAction(() => {
       this.isConnecting = true;
       this.connectError = null;
     });
     try {
-      const accounts = await detail.provider.request<string[]>({
-        method: "qrl_requestAccounts",
-      });
-      const address = requireQrlAccount(accounts);
-      this.wireExtensionEvents(detail);
-      this.onWalletConnected(address, detail.provider, "extension", detail.info.name);
+      const activation = await activateExtensionAfterRelayRetirement(
+        async () => {
+          const qrl = this.qrlConnect;
+          if (qrl) {
+            this.isDisconnecting = true;
+            this.relayUserDisconnected = true;
+            try {
+              await qrl.disconnect();
+            } catch (error) {
+              return error;
+            } finally {
+              this.relayUserDisconnected = false;
+              this.isDisconnecting = false;
+            }
+          }
+
+          // Relay retirement succeeded. Forget the old local transport before
+          // asking an injected wallet to expose its account.
+          this.resetWalletState();
+          return null;
+        },
+        async () => {
+          if (!this.connectionAttemptGuard.isCurrent(attemptGeneration)) {
+            throw new Error("Wallet connection attempt changed");
+          }
+          return detail.provider.request<string[]>({
+            method: "qrl_requestAccounts",
+          });
+        },
+        (accounts) => {
+          if (!this.connectionAttemptGuard.isCurrent(attemptGeneration)) {
+            throw new Error("Wallet connection attempt changed");
+          }
+          const address = requireQrlAccount(accounts);
+          this.wireExtensionEvents(detail);
+          this.onWalletConnected(address, detail.provider, "extension", detail.info.name);
+        },
+      );
+
+      if (!this.connectionAttemptGuard.isCurrent(attemptGeneration)) return;
+      if (!activation.ok) {
+        const message = `Could not retire relay session: ${errorMessage(activation.retirementError)}`;
+        runInAction(() => {
+          this.connectError = message;
+          if (this.pairingUri) this.pairingStatus = message;
+        });
+        return;
+      }
     } catch (error) {
-      this.provider = null;
-      this.providerKind = null;
+      if (!this.connectionAttemptGuard.isCurrent(attemptGeneration)) return;
       runInAction(() => {
-        this.account = null;
         this.connectError = errorMessage(error);
       });
     } finally {
@@ -496,25 +588,55 @@ export class PoolStore {
   async newConnection(): Promise<void> {
     const qrl = this.qrlConnect;
     if (!qrl) return;
-    this.providerKind = "relay";
+    if (this.relayResetGuard.active || this.connectionAttemptGuard.isPending()) return;
+    const previousChannelId = qrl.getChannelId();
+    const resetGeneration = this.relayResetGuard.begin();
+    runInAction(() => {
+      this.connectError = null;
+      this.pairingStatus = "Rotating connection...";
+    });
+    let uri: string;
     try {
-      const uri = await qrl.newConnection();
-      if (qrl.isMobile()) {
-        // Same fallback as connectViaRelay: an unhandled deep link (app not
-        // installed) must not dead-end the rotation flow either.
-        const opened = await attemptWalletRedirect(uri);
-        if (opened) return;
-        runInAction(() => {
-          this.connectError = `MyQRLWallet app not detected. Install it (${getAppStoreUrl()}) or use the copy-code option with the wallet at qrlwallet.com.`;
-        });
-      }
+      uri = await qrl.newConnection();
+      if (!this.relayResetGuard.isCurrent(resetGeneration)) return;
+      this.provider = qrl as unknown as ExtensionProvider;
+      this.providerKind = "relay";
+      this.relayEstablished = false;
       runInAction(() => {
-        this.pairingUri = uri;
-        this.pairingStatus = String(qrl.getStatus());
+        this.activeWalletName = QRL_CONNECT_PROVIDER_INFO.name;
+        this.account = null;
+        this.withdrawals = [];
+        this.activity = [];
+        this.activityError = null;
+        this.pairingUri = null;
       });
+      this.finalizedRequests.clear();
+      this.tx = IDLE_TX;
     } catch (error) {
+      if (!this.relayResetGuard.isCurrent(resetGeneration)) return;
+      const channelChanged = qrl.getChannelId() !== previousChannelId;
+      if (channelChanged) this.resetWalletState();
+      const message = errorMessage(error);
       runInAction(() => {
-        this.connectError = errorMessage(error);
+        this.connectError = message;
+        if (!channelChanged) this.pairingStatus = message;
+      });
+      return;
+    } finally {
+      this.relayResetGuard.finish(resetGeneration);
+    }
+
+    runInAction(() => {
+      this.pairingUri = uri;
+      this.pairingStatus = String(qrl.getStatus());
+    });
+    if (qrl.isMobile()) {
+      // Same fallback as connectViaRelay: an unhandled deep link (app not
+      // installed) must not dead-end the rotation flow either.
+      const opened = await attemptWalletRedirect(uri).catch(() => false);
+      if (opened) return;
+      runInAction(() => {
+        this.connectError = `MyQRLWallet app not detected. Install it (${getAppStoreUrl()}) or use the copy-code option with the wallet at qrlwallet.com.`;
       });
     }
   }
@@ -530,7 +652,13 @@ export class PoolStore {
       });
       return;
     }
-    if (this.isDisconnecting) return;
+    if (
+      this.isDisconnecting ||
+      this.relayResetGuard.active ||
+      this.connectionAttemptGuard.isPending()
+    ) {
+      return;
+    }
 
     this.isDisconnecting = true;
     this.relayUserDisconnected = true;
@@ -593,7 +721,13 @@ export class PoolStore {
   }
 
   async disconnect(): Promise<boolean> {
-    if (this.isDisconnecting) return false;
+    if (
+      this.isDisconnecting ||
+      this.relayResetGuard.active ||
+      this.connectionAttemptGuard.isPending()
+    ) {
+      return false;
+    }
     if (this.providerKind !== "relay" || !this.qrlConnect) {
       this.resetWalletState();
       return true;
@@ -624,6 +758,7 @@ export class PoolStore {
 
   /** Clear all wallet/account/tx state back to disconnected. */
   private resetWalletState(): void {
+    this.relayResetGuard.invalidate();
     this.provider = null;
     this.providerKind = null;
     this.relayUserDisconnected = false;
@@ -694,12 +829,21 @@ export class PoolStore {
   /** Wire the relay SDK's EIP-1193 events into store state. */
   private wireRelayEvents(qrl: QRLConnect): void {
     qrl.on("connect", () => {
-      if (this.providerKind !== "relay" || this.relayUserDisconnected) return;
+      if (
+        this.providerKind !== "relay" ||
+        this.relayUserDisconnected ||
+        this.relayResetGuard.active ||
+        this.connectionAttemptGuard.isPending("extension")
+      ) {
+        return;
+      }
       void this.authorizeRelayAccount(qrl);
     });
 
     qrl.on("accountsChanged", (accounts: string[]) => {
       if (this.providerKind !== "relay" || this.relayUserDisconnected) return;
+      if (this.connectionAttemptGuard.isPending("extension")) return;
+      if (shouldIgnoreRelayResetEvent(this.relayResetGuard, "accounts")) return;
       if (Array.isArray(accounts) && accounts.length === 0) {
         void this.disconnect();
         return;
@@ -727,6 +871,8 @@ export class PoolStore {
 
     qrl.on("statusChanged", (status) => {
       if (this.providerKind !== "relay") return;
+      if (this.connectionAttemptGuard.isPending("extension")) return;
+      if (shouldIgnoreRelayResetEvent(this.relayResetGuard, "status")) return;
       runInAction(() => {
         this.pairingStatus = String(status);
       });
@@ -734,6 +880,8 @@ export class PoolStore {
 
     qrl.on("disconnect", () => {
       if (this.providerKind !== "relay") return;
+      if (this.connectionAttemptGuard.isPending("extension")) return;
+      if (shouldIgnoreRelayResetEvent(this.relayResetGuard, "disconnect")) return;
       if (this.relayUserDisconnected) {
         this.relayUserDisconnected = false;
         this.resetWalletState();
@@ -783,7 +931,14 @@ export class PoolStore {
         ? cached
         : await qrl.request({ method: "qrl_requestAccounts" });
       const address = requireQrlAccount(accounts);
-      if (this.providerKind !== "relay" || qrl.getChannelId() !== channelId) return;
+      if (
+        this.providerKind !== "relay" ||
+        qrl.getChannelId() !== channelId ||
+        this.relayResetGuard.active ||
+        this.connectionAttemptGuard.isPending("extension")
+      ) {
+        return;
+      }
       this.onWalletConnected(
         address,
         qrl as unknown as ExtensionProvider,
@@ -795,7 +950,8 @@ export class PoolStore {
         this.providerKind !== "relay" ||
         qrl.getChannelId() !== channelId ||
         this.relayUserDisconnected ||
-        this.isDisconnecting
+        this.isDisconnecting ||
+        this.relayResetGuard.active
       ) {
         return;
       }
@@ -828,23 +984,35 @@ export class PoolStore {
       this.resetWalletState();
       return;
     }
+    if (this.relayResetGuard.active || this.connectionAttemptGuard.isPending()) return;
+    const resetGeneration = this.relayResetGuard.begin();
     runInAction(() => {
       this.account = null;
       this.withdrawals = [];
       this.activity = [];
     });
     this.finalizedRequests.clear();
+    let uri: string;
     try {
-      const uri = await qrl.getConnectionURI();
-      runInAction(() => {
-        this.pairingUri = uri;
-        this.pairingStatus = String(qrl.getStatus());
-      });
-    } catch {
+      uri = await qrl.getConnectionURI();
+      if (!this.relayResetGuard.isCurrent(resetGeneration)) return;
+    } catch (error) {
+      if (!this.relayResetGuard.isCurrent(resetGeneration)) return;
       // The old channel is gone and a fresh one failed: fall back to fully
       // disconnected rather than leaving a dead QR on screen.
       this.resetWalletState();
+      runInAction(() => {
+        this.connectError = `Could not create replacement pairing: ${errorMessage(error)}`;
+      });
+      return;
+    } finally {
+      this.relayResetGuard.finish(resetGeneration);
     }
+
+    runInAction(() => {
+      this.pairingUri = uri;
+      this.pairingStatus = String(qrl.getStatus());
+    });
   }
 
   /**
