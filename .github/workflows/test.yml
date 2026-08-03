@@ -49,7 +49,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.22.x
           cache: npm
           cache-dependency-path: |
             package-lock.json
@@ -71,6 +71,10 @@ jobs:
       - name: Lint frontend
         working-directory: frontend
         run: npm run lint
+
+      - name: Test frontend lifecycle guards
+        working-directory: frontend
+        run: npm test
 
       - name: Build frontend
         working-directory: frontend

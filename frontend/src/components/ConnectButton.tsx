@@ -23,11 +23,14 @@ export const ConnectButton = observer(() => {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => poolStore.disconnect()}
+          disabled={poolStore.isDisconnecting}
+          onClick={() => void poolStore.disconnect()}
           aria-label="Disconnect wallet"
         >
           <LogOut className="h-4 w-4" />
-          <span className="hidden sm:inline">Disconnect</span>
+          <span className="hidden sm:inline">
+            {poolStore.isDisconnecting ? "Disconnecting…" : "Disconnect"}
+          </span>
         </Button>
       </div>
     );

@@ -1,4 +1,4 @@
-import { NavLink, Link } from "react-router-dom";
+import { NavLink, Link } from "react-router";
 import { observer } from "mobx-react-lite";
 import { Logo } from "@/components/Logo";
 import { ConnectButton } from "@/components/ConnectButton";
