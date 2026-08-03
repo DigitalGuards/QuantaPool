@@ -3,6 +3,8 @@
  * pattern used by myqrlwallet-frontend.
  */
 
+import { requireQrlAccount } from "@/utils/qrlAddress";
+
 export interface ExtensionProvider {
   request: <T = unknown>(args: {
     method: string;
@@ -97,8 +99,7 @@ export async function connectToExtension(): Promise<ConnectedWallet> {
     const accounts = await detail.provider.request<string[]>({
       method: "qrl_requestAccounts",
     });
-    const address = accounts?.[0];
-    if (!address) throw new ConnectionRejectedError();
+    const address = requireQrlAccount(accounts);
     return { address, provider: detail.provider };
   } catch (error) {
     if (providerErrorCode(error) === 4001) throw new ConnectionRejectedError();
