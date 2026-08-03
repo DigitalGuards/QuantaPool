@@ -69,7 +69,7 @@ All phases pass green on live testnet. Run any phase independently.
 | `errors` | 6 revert paths (below-min, zero, over-balance, one-shot guards, bad pubkey) | ✓ |
 | `pause` | `pause()` blocks deposit; `unpause()` restores | ✓ |
 | `lifecycle` | VM state machine: Active → Exiting → Exited + idempotency guard | ✓ |
-| `claim-prep` | `fundWithdrawalReserve` reclassifies pooled→reserve; claim still blocked on 128-block delay | ✓ |
+| `claim-prep` | `fundWithdrawalReserve` reclassifies pooled→reserve; claim still blocked on 128-block delay | ✓ (historical v2.2 behavior) |
 | `claim` | Actual `claimWithdrawal` after 128-block delay + reserve funded | ✓ (completed end-to-end on v2.0 2026-04-14: 50 shares burned, 50.5 QRL paid out before v2.1 redeploy) |
 | `wait-claim` | Polls `getWithdrawalRequest` every 60s, auto-claims when ready | ✓ |
 | `cancel` | Create 1-share request → cancel → shares unlock, request zeroed | ✓ |
@@ -78,7 +78,7 @@ All phases pass green on live testnet. Run any phase independently.
 | `approve` | `approve` + `transferFrom` (self-spend); infinite-allowance non-decrement | ✓ |
 | `all` | Runs every phase sequentially | use with care (adds state each run) |
 
-Net protocol validation: **the claim paid exactly `qrlAmount=50.5` (the snapshot captured at request time), not the reduced `currentQRLValue=50.436` that the reserve-carve-out briefly implied.** Remaining shareholders kept their rate. The protocol preserves each claimer's original entitlement without diluting the rest - the virtual-offset + request-snapshot design works.
+Historical v2.2 validation: the claim paid the request-time `qrlAmount=50.5` while reserve funding temporarily reduced `currentQRLValue` to 50.436. A later source review found that this reserve carve-out distorted deposits made before the queued shares burned, and the fixed payout let queued holders avoid losses synchronized before claim. The current source retires that behavior: reserve remains inside `totalPooledQRL`, the request value is an estimate, and claim settles at the synchronized share value.
 
 ---
 
@@ -118,15 +118,30 @@ The deployed v2.2 `DepositPoolV2` decrements only `bufferedQRL` when `fundValida
 
 **Fix (in `contracts/solidity/DepositPool-v2.sol`):**
 - New `stakedQRL` accumulator, incremented by `fundValidator()` when principal leaves for the beacon contract.
-- `_syncRewards()` now reconciles `balance + stakedQRL − withdrawalReserve`, so funding a validator is balance-neutral.
+- `_syncRewards()` now reconciles `balance + stakedQRL`, so funding a validator is balance-neutral. The current source keeps withdrawal reserve inside pooled assets until the matching shares burn.
 - New owner-only `recordValidatorExit(amount)` decrements `stakedQRL` when exit proceeds return, preventing the returned principal from being double-counted as rewards.
 - `emergencyWithdraw()` recoverable-amount calc excludes `stakedQRL` (it lives off-contract).
-- **Phantom-reward front-run protection:** reward sync is permissionless only while `stakedQRL == 0`. Once principal is off-contract (`stakedQRL > 0`), `syncRewards()` and the implicit sync inside `requestWithdrawal`/`claimWithdrawal` are owner-only. Without this, an exit sweep lands principal in the balance a block before the owner can call `recordValidatorExit()`; an unrestricted sync in that window would book the principal as a phantom *reward* (the inverse of the slashing bug above), spike the exchange rate, and let a front-runner snapshot the inflated value into a withdrawal and drain the pool. Gating sync during that window makes settlement + reward recognition owner-sequenced and un-frontrunnable. The MVP path (`stakedQRL == 0`) stays fully permissionless.
+- **Phantom-reward front-run protection:** reward sync is permissionless only while `stakedQRL == 0`. Once principal is off-contract (`stakedQRL > 0`), `syncRewards()` is owner-only and claims reject unsettled on-chain balance deltas. Without this, an exit sweep lands principal in the balance before the owner can call `recordValidatorExit()`; an unrestricted sync in that window would book the principal as a phantom *reward* and spike the exchange rate. Gating sync during that window makes settlement and reward recognition owner-sequenced. The MVP path (`stakedQRL == 0`) stays fully permissionless.
 - 13 new Foundry regression tests in `DepositPool-v2.t.sol`: the `OFF-CONTRACT STAKE ACCOUNTING` block (no-phantom-slashing after funding, rewards-while-staked, exit settlement, access control, emergency-withdraw carve-out) plus a `PHANTOM-REWARD FRONT-RUN PROTECTION` block (permissionless-when-unstaked, owner-only-while-staked, front-run blocked during exit, permissionless resumes after settlement, owner still recognizes genuine rewards). Suite now **200 pass**.
 
 `fundValidatorMVP()` is unaffected - it keeps QRL in the contract and never touches `stakedQRL`, so its sync stays permissionless.
 
 **Action:** redeploy as v2.3 (same 5-tx deploy+wire flow) before exercising the real beacon path again - i.e. before the QRL-software-upgrade validator testing. The MVP-mode testnet flows on v2.2 remain safe in the meantime as long as `fundValidator()` (real path) is not used.
+
+### 7b. Share and reserve accounting hardening - **in source, requires v2.3 redeploy**
+
+The current source includes additional accounting changes found during the v2.3 security review:
+
+- Deposits reconcile rewards or losses that existed before `msg.value`, preventing new shares from capturing unsynced rewards.
+- `withdrawalReserve` remains part of `totalPooledQRL` until claim. Reserve funding therefore changes neither side of the share conversion rate.
+- Claims price shares after synchronized settlement. Request-time QRL values are informational estimates, so queued holders receive rewards and bear slashing until their shares burn.
+- Exit settlement restores observed returned principal to `bufferedQRL`, capped at the nominal stake retired. This preserves restaking liquidity while preventing a slashed exit from creating unsupported buffer credit.
+- Real and MVP validator funding require liquid balance net of reserve as well as sufficient `bufferedQRL`. Repeated reserve funding reduces the usable buffer without exposing earmarked funds.
+- Cancelled or overfunded requests can be unearmarked with `releaseWithdrawalReserve`; reserve provenance restores only validator buffer that was actually reserved.
+- `emergencyWithdraw` rejects unsettled balance deltas. Native inflows after pool initialization are protected as possible validator rewards.
+- The Foundry suite is now 226 tests, including deterministic and fuzz regressions for each accounting issue, repeated reserve funding, safe reserve release, and exit-principal provenance.
+
+These changes require fresh contract deployment. The live addresses above retain v2.2 behavior.
 
 ### 8. Minimum stake lock (anti-griefing) - **in source 2026-06-10, ships with v2.3**
 

@@ -2,6 +2,7 @@
 .env.*
 .claude
 CLAUDE.md
+.deploy-hyperion-*.lock
 
 # Private ops docs (host IPs, runbooks) - keep local, not in public repo
 docs/NODE-SETUP.md

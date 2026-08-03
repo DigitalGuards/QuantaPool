@@ -50,7 +50,7 @@ const WITHDRAWAL_STEPS = [
   {
     title: "Request",
     description:
-      "You choose how much stQRL to unstake. Those shares are locked (they can't be transferred) and the QRL value is snapshotted at that moment, so a later rate change can't reduce what you'll receive.",
+      "You choose how much stQRL to unstake. Those shares are locked and continue receiving rewards or bearing slashing changes until they are claimed.",
   },
   {
     title: `Wait ${WITHDRAWAL_DELAY_BLOCKS} blocks (${blocksToTime(WITHDRAWAL_DELAY_BLOCKS, BLOCK_TIME_SECONDS)})`,
@@ -60,7 +60,7 @@ const WITHDRAWAL_STEPS = [
   {
     title: "Claim",
     description:
-      "Once the delay has passed and the withdrawal reserve is funded, claim your QRL. Requests are paid out oldest-first; your locked shares are burned and the QRL lands in your wallet.",
+      "Once the delay has passed, accounting is settled, and the withdrawal reserve is funded, claim your current QRL value. Requests are paid out oldest-first; your locked shares are burned and the QRL lands in your wallet.",
   },
 ];
 

@@ -228,7 +228,7 @@ async function main() {
             expect(BigInt(req.shares) === reqShares, `request[${requestId}].shares == requested`);
             expect(!req.canClaim, `canClaim=false (no reserve funded yet)`);
             expect(BigInt(req.blocksRemaining) > 0n, `blocksRemaining=${req.blocksRemaining} (~128 expected)`);
-            console.log(`  qrlAmount snapshot at request: ${fmt(BigInt(req.currentQRLValue))} QRL`);
+            console.log(`  current QRL estimate: ${fmt(BigInt(req.currentQRLValue))} QRL`);
         }
         await dumpStatus(pool);
     }
@@ -433,7 +433,7 @@ async function main() {
                     const reserveAfter = BigInt(await pool.methods.withdrawalReserve().call());
                     const pooledAfter = BigInt(await stQRL.methods.totalPooledQRL().call());
                     expect(reserveAfter === reserveBefore + delta, `reserve += ${fmt(delta)} QRL`);
-                    expect(pooledAfter === pooledBefore - delta, `pooled -= ${fmt(delta)} QRL (reclassified, not burned)`);
+                    expect(pooledAfter === pooledBefore, `pooled unchanged while reserve and queued shares remain outstanding`);
                 }
 
                 // Claim should still revert because 128 blocks haven't elapsed
@@ -464,7 +464,7 @@ async function main() {
             console.log('  (skipping - no pending claimable request)');
         } else {
             const req = await pool.methods.getWithdrawalRequest(account.address, nextIdx.toString()).call();
-            console.log(`  target: request[${nextIdx}] shares=${fmt(BigInt(req.shares))} qrlAmount=${fmt(BigInt(req.currentQRLValue))} canClaim=${req.canClaim} blocksRemaining=${req.blocksRemaining}`);
+            console.log(`  target: request[${nextIdx}] shares=${fmt(BigInt(req.shares))} currentEstimate=${fmt(BigInt(req.currentQRLValue))} canClaim=${req.canClaim} blocksRemaining=${req.blocksRemaining}`);
             if (!req.canClaim) {
                 console.log(`  ✗ not yet claimable. Retry in ~${Math.ceil(Number(req.blocksRemaining) * 60 / 60)} min, or use \`wait-claim\`.`);
                 return;

@@ -190,7 +190,8 @@ export const WithdrawalsPage = observer(() => {
                       <div>
                         <p className="font-data font-medium">
                           {formatAmount(request.shares)} stQRL →{" "}
-                          {formatAmount(request.qrlPayout)} {NATIVE_UNIT}
+                          {formatAmount(request.qrlPayout)} {NATIVE_UNIT}{" "}
+                          <span className="font-sans text-xs text-muted-foreground">estimate</span>
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {request.canClaim ? (

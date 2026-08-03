@@ -17,12 +17,13 @@ pragma solidity ^0.8.24;
  *   triggering contract code. This contract periodically checks its balance
  *   and updates stQRL's totalPooledQRL accordingly.
  *
- *   syncRewards() can be called by anyone - it's trustless. The contract
- *   simply compares its actual balance to expected balance and attributes
- *   the difference to rewards (positive) or slashing (negative).
+ *   syncRewards() can be called by anyone while all principal is on-contract.
+ *   While stakedQRL is nonzero, only the owner may sequence reward sync and
+ *   validator-exit settlement. The contract compares its accounted assets to
+ *   the observed balance plus tracked off-contract principal.
  *
  * Balance Accounting:
- *   contractBalance + stakedQRL = totalPooledQRL + withdrawalReserve
+ *   contractBalance + stakedQRL = totalPooledQRL
  *
  *   - totalPooledQRL: All QRL under pool management (buffered + staked + rewards)
  *     This is what stQRL token tracks. Includes buffered deposits waiting
@@ -31,7 +32,8 @@ pragma solidity ^0.8.24;
  *   - stakedQRL: principal forwarded to the beacon deposit contract by the
  *     real fundValidator() path. It lives off-contract but is still pooled,
  *     so _syncRewards() adds it back when reconciling the balance.
- *   - withdrawalReserve: QRL earmarked for pending withdrawals (not pooled)
+ *   - withdrawalReserve: Liquid QRL earmarked for pending withdrawals. It
+ *     remains pooled until the matching shares are burned at claim time.
  *
  * For MVP (testnet), fundValidatorMVP keeps QRL in this contract and stakedQRL
  * stays zero. For production, fundValidator sends QRL to the beacon deposit
@@ -127,7 +129,7 @@ contract DepositPoolV2 {
     /// @notice Withdrawal request data
     struct WithdrawalRequest {
         uint256 shares; // Shares to burn
-        uint256 qrlAmount; // QRL amount at request time (may change with rebase)
+        uint256 qrlAmount; // Request-time estimate, replaced by actual payout on claim
         uint256 requestBlock; // Block when requested
         bool claimed; // Whether claimed
     }
@@ -143,6 +145,11 @@ contract DepositPoolV2 {
 
     /// @notice QRL reserved for pending withdrawals
     uint256 public withdrawalReserve;
+
+    /// @notice Portion of withdrawalReserve that was moved out of bufferedQRL
+    /// @dev Tracks exactly how much buffer may be restored when an earmark is
+    ///      released. The remainder came from unbuffered liquid assets.
+    uint256 public bufferedQRLInReserve;
 
     // =============================================================
     //                       SYNC STORAGE
@@ -187,6 +194,7 @@ contract DepositPoolV2 {
     event ValidatorExitRecorded(uint256 amount, uint256 remainingStaked);
 
     event WithdrawalReserveFunded(uint256 amount);
+    event WithdrawalReserveReleased(uint256 amount, uint256 bufferRestored);
     event WithdrawalCancelled(address indexed user, uint256 indexed requestId, uint256 shares);
     event MinDepositUpdated(uint256 newMinDeposit);
     event MinDepositFloorUpdated(uint256 newFloor);
@@ -223,6 +231,7 @@ contract DepositPoolV2 {
     error InvalidWithdrawalIndex();
     error ExceedsRecoverableAmount();
     error ExceedsStakedAmount();
+    error AccountingNotSettled();
 
     // =============================================================
     //                         MODIFIERS
@@ -261,18 +270,19 @@ contract DepositPoolV2 {
 
     /**
      * @notice Deposit QRL and receive stQRL
-     * @dev Mints shares based on current exchange rate, adds deposit to buffer
-     *
-     * Note: Does NOT call syncRewards() because msg.value is already in
-     * address(this).balance when function executes, which would incorrectly
-     * be detected as "rewards". Users wanting the latest rate should call
-     * syncRewards() before depositing.
+     * @dev Reconciles pre-existing balance changes, mints shares at the current
+     *      exchange rate, and adds the deposit to the validator buffer.
      *
      * @return shares Amount of stQRL shares minted
      */
     function deposit() external payable nonReentrant whenNotPaused returns (uint256 shares) {
         if (address(stQRL) == address(0)) revert StQRLNotSet();
         if (msg.value < minDeposit) revert BelowMinDeposit();
+
+        // msg.value is already in this contract's balance. Reconcile against
+        // the balance immediately before this deposit so existing rewards or
+        // losses cannot be captured by the new depositor.
+        _syncBeforeDeposit(msg.value);
 
         // Mint shares FIRST - this calculates shares at current rate
         // mintShares internally calls getSharesByPooledQRL(qrlAmount)
@@ -310,7 +320,8 @@ contract DepositPoolV2 {
      * @dev Users can have multiple pending withdrawal requests
      * @param shares Amount of shares to withdraw
      * @return requestId The ID of this withdrawal request
-     * @return qrlAmount Current QRL value of shares (may change before claim)
+     * @return qrlAmount Current QRL estimate. The actual claim amount is priced
+     *         after accounting is synchronized at claim time.
      */
     function requestWithdrawal(uint256 shares)
         external
@@ -325,17 +336,18 @@ contract DepositPoolV2 {
             stQRL.sharesOf(msg.sender) - stQRL.lockedSharesOf(msg.sender) - stQRL.immatureSharesOf(msg.sender);
         if (unlockedShares < shares) revert InsufficientShares();
 
-        // Refresh the rate before snapshotting the withdrawal value — but only
-        // while permissionless sync is safe. With principal staked off-contract
-        // the rate is owner-controlled, and triggering a sync here would let a
-        // requester front-run validator-exit settlement and snapshot an inflated
-        // value (see {_permissionlessSyncAllowed}); use the last synced rate.
+        // Refresh the request-time estimate when permissionless sync is safe.
+        // With principal staked off-contract, the rate is owner-controlled and
+        // the estimate uses the last settled rate. It creates no payout right.
         if (_permissionlessSyncAllowed()) {
             _syncRewards();
         }
 
-        // Calculate current QRL value
-        qrlAmount = stQRL.getPooledQRLByShares(shares);
+        // Store an informational estimate for history and UI compatibility.
+        // Claims deliberately reprice these shares after settlement.
+        uint256 currentPooled = stQRL.totalPooledQRL();
+        uint256 convertedAmount = stQRL.getPooledQRLByShares(shares);
+        qrlAmount = convertedAmount < currentPooled ? convertedAmount : currentPooled;
 
         // Lock shares so they cannot be transferred
         stQRL.lockShares(msg.sender, shares);
@@ -354,9 +366,10 @@ contract DepositPoolV2 {
 
     /**
      * @notice Claim the next pending withdrawal (FIFO order)
-     * @dev Burns shares and transfers QRL to user.
+     * @dev Reprices and burns shares, then transfers QRL to the user.
      *      Skips cancelled requests (claimed=true, shares=0) automatically.
-     *      Uses actual burned QRL value for all accounting to prevent discrepancies.
+     *      The request-time estimate is not an entitlement. This makes queued
+     *      holders participate in rewards and slashing until their shares burn.
      * @return qrlAmount Amount of QRL received
      */
     function claimWithdrawal() external nonReentrant returns (uint256 qrlAmount) {
@@ -380,44 +393,48 @@ contract DepositPoolV2 {
         if (request.claimed) revert NoWithdrawalPending();
         if (block.number < request.requestBlock + WITHDRAWAL_DELAY) revert WithdrawalNotReady();
 
-        // Refresh pooled accounting, but only while permissionless sync is safe.
-        // The payout uses the request-time snapshot (request.qrlAmount) either
-        // way; this keeps a claim from triggering a sync inside the validator-exit
-        // settlement window (see {_permissionlessSyncAllowed}).
+        // Refresh pooled accounting when permissionless sync is safe. While
+        // principal is off-contract, reject claims during any unsettled balance
+        // delta. The owner must sequence exit settlement and reward sync first.
         if (_permissionlessSyncAllowed()) {
             _syncRewards();
+        } else {
+            _requireAccountingSettled();
         }
 
         // Cache shares before state changes
         uint256 sharesToBurn = request.shares;
 
-        // Use the QRL amount captured at request time.
-        // After fundWithdrawalReserve() reclassified pooled QRL into the reserve,
-        // totalPooledQRL is reduced, which distorts the share→QRL conversion.
-        // The request's qrlAmount was calculated BEFORE reclassification, so it
-        // reflects the true value of the shares at the time they were locked.
-        qrlAmount = request.qrlAmount;
+        // Price at settlement so queued holders receive rewards and bear losses
+        // until their shares are actually removed from circulation. Cap at real
+        // pooled assets because the token's virtual offset is not spendable QRL.
+        uint256 currentPooled = stQRL.totalPooledQRL();
+        uint256 convertedAmount = stQRL.getPooledQRLByShares(sharesToBurn);
+        qrlAmount = convertedAmount < currentPooled ? convertedAmount : currentPooled;
+
+        if (withdrawalReserve < qrlAmount || address(this).balance < qrlAmount) {
+            revert InsufficientReserve();
+        }
 
         // Unlock shares before burning
         stQRL.unlockShares(msg.sender, sharesToBurn);
 
-        // Burn shares (return value ignored — see comment above)
+        // Burn shares at the same synchronized exchange rate used above.
         stQRL.burnShares(msg.sender, sharesToBurn);
 
-        // Check if we have enough in reserve
-        if (withdrawalReserve < qrlAmount) revert InsufficientReserve();
-
-        // === EFFECTS (state changes using actual burned amount) ===
+        // === EFFECTS ===
+        request.qrlAmount = qrlAmount;
         request.claimed = true;
         nextWithdrawalIndex[msg.sender] = requestIndex + 1;
         totalWithdrawalShares -= sharesToBurn;
         withdrawalReserve -= qrlAmount;
+        uint256 bufferedReserveConsumed = qrlAmount < bufferedQRLInReserve ? qrlAmount : bufferedQRLInReserve;
+        bufferedQRLInReserve -= bufferedReserveConsumed;
 
-        // NOTE: We do NOT decrement totalPooledQRL here.
-        // The QRL being claimed comes from withdrawalReserve, which is already
-        // outside totalPooledQRL. The totalPooledQRL was decremented when the
-        // reserve was funded (see fundWithdrawalReserve). Decrementing here
-        // would double-count and cause _syncRewards() to detect phantom rewards.
+        // Reserved QRL stays pooled until claim. Remove the claimed assets in
+        // the same transaction that removes their shares, preserving the rate
+        // for every remaining and newly minted share.
+        stQRL.updateTotalPooledQRL(currentPooled - qrlAmount);
 
         // === INTERACTION (ETH transfer last) ===
         (bool success,) = msg.sender.call{value: qrlAmount}("");
@@ -475,13 +492,16 @@ contract DepositPoolV2 {
 
         WithdrawalRequest storage request = withdrawalRequests[user][requestId];
         shares = request.shares;
-        currentQRLValue = stQRL.getPooledQRLByShares(shares);
+        uint256 currentPooled = stQRL.totalPooledQRL();
+        uint256 convertedAmount = stQRL.getPooledQRLByShares(shares);
+        currentQRLValue = convertedAmount < currentPooled ? convertedAmount : currentPooled;
         requestBlock = request.requestBlock;
         claimed = request.claimed;
 
         uint256 unlockBlock = request.requestBlock + WITHDRAWAL_DELAY;
+        bool accountingSettled = _actualTotalPooled() == stQRL.totalPooledQRL();
         canClaim = !request.claimed && request.shares > 0 && block.number >= unlockBlock
-            && withdrawalReserve >= currentQRLValue;
+            && withdrawalReserve >= currentQRLValue && address(this).balance >= currentQRLValue && accountingSettled;
 
         blocksRemaining = block.number >= unlockBlock ? 0 : unlockBlock - block.number;
     }
@@ -518,8 +538,7 @@ contract DepositPoolV2 {
      * @notice Whether reward sync may be triggered permissionlessly right now.
      * @dev Sync infers rewards/slashing from balance deltas. That inference is
      *      only unambiguous while every QRL of principal sits in this contract
-     *      (stakedQRL == 0): then `balance - withdrawalReserve` is exactly the
-     *      pooled total.
+     *      (stakedQRL == 0): then `balance` is exactly the pooled total.
      *
      *      Once a real fundValidator() forwards principal to the beacon deposit
      *      contract (stakedQRL > 0), an exit sweep returning that principal via
@@ -527,9 +546,8 @@ contract DepositPoolV2 {
      *      before the owner can call recordValidatorExit() to settle it. In
      *      that window `balance + stakedQRL` double-counts the principal, so a
      *      sync would book it as a large phantom reward and spike the exchange
-     *      rate. A permissionless caller could front-run the settlement, lock
-     *      that inflated rate into a withdrawal request (whose QRL value is
-     *      snapshotted on request), and drain the pool when the rate corrects.
+     *      rate. A permissionless caller could front-run the settlement and
+     *      claim a matured queued withdrawal at that inflated rate.
      *
      *      So while principal is off-contract the exchange rate only moves
      *      under owner control: the operator sequences recordValidatorExit()
@@ -548,14 +566,14 @@ contract DepositPoolV2 {
      *   On-contract QRL = bufferedQRL + rewards + withdrawalReserve
      *   Off-contract QRL = stakedQRL (principal sent to the beacon deposit
      *     contract via fundValidator; still under protocol management)
-     *   withdrawalReserve is earmarked for pending withdrawals (not pooled)
-     *   actualTotalPooled = balance + stakedQRL - withdrawalReserve
+     *   withdrawalReserve remains pooled until claim burns the matching shares
+     *   actualTotalPooled = balance + stakedQRL
      *
      * If actualTotalPooled > previousPooled → rewards arrived
      * If actualTotalPooled < previousPooled → slashing occurred
      *
      * Note: For MVP (fundValidatorMVP), staked QRL stays in the contract and
-     * stakedQRL is zero, so this reduces to balance - withdrawalReserve.
+     * stakedQRL is zero, so this reduces to balance.
      * For production (fundValidator), staked QRL leaves for the beacon deposit
      * contract; adding stakedQRL back keeps the funding from registering as a
      * slashing event. When exit proceeds return via EIP-4895, the owner calls
@@ -565,20 +583,43 @@ contract DepositPoolV2 {
     function _syncRewards() internal {
         if (address(stQRL) == address(0)) return;
 
-        // Include off-contract staked principal so beacon deposits are not
-        // mistaken for slashing. bufferedQRL + rewards live in balance;
-        // stakedQRL lives at the beacon deposit contract.
-        uint256 currentBalance = address(this).balance + stakedQRL;
+        _syncToActualTotal(_actualTotalPooled());
+    }
 
-        // Total pooled = everything except withdrawal reserve
-        // This includes: bufferedQRL + stakedQRL + any rewards via EIP-4895
-        uint256 actualTotalPooled;
-        if (currentBalance > withdrawalReserve) {
-            actualTotalPooled = currentBalance - withdrawalReserve;
-        } else {
-            actualTotalPooled = 0;
+    /**
+     * @dev Reconcile the balance that existed immediately before a deposit.
+     *      With no off-contract stake this is permissionless and unambiguous.
+     *      With stake off-contract, any delta must be settled by the owner first
+     *      because an exit return can be indistinguishable from a reward.
+     */
+    function _syncBeforeDeposit(uint256 depositAmount) internal {
+        uint256 actualBeforeDeposit = address(this).balance - depositAmount + stakedQRL;
+
+        if (_permissionlessSyncAllowed()) {
+            _syncToActualTotal(actualBeforeDeposit);
+        } else if (actualBeforeDeposit != stQRL.totalPooledQRL()) {
+            revert AccountingNotSettled();
         }
+    }
 
+    /**
+     * @dev Revert while an on-chain balance delta is waiting for owner settlement.
+     */
+    function _requireAccountingSettled() internal view {
+        if (_actualTotalPooled() != stQRL.totalPooledQRL()) revert AccountingNotSettled();
+    }
+
+    /**
+     * @dev Assets backing all outstanding shares, including liquid reserves.
+     */
+    function _actualTotalPooled() internal view returns (uint256) {
+        return address(this).balance + stakedQRL;
+    }
+
+    /**
+     * @dev Attribute a previously computed actual asset total as reward or loss.
+     */
+    function _syncToActualTotal(uint256 actualTotalPooled) internal {
         // What we previously tracked as pooled
         uint256 previousPooled = stQRL.totalPooledQRL();
 
@@ -622,7 +663,9 @@ contract DepositPoolV2 {
         bytes calldata signature,
         bytes32 deposit_data_root
     ) external onlyOwner nonReentrant returns (uint256 validatorId) {
-        if (bufferedQRL < VALIDATOR_STAKE) revert InsufficientBuffer();
+        if (bufferedQRL < VALIDATOR_STAKE || _availableValidatorLiquidity() < VALIDATOR_STAKE) {
+            revert InsufficientBuffer();
+        }
         if (pubkey.length != PUBKEY_LENGTH) revert InvalidPubkeyLength();
         if (signature.length != SIGNATURE_LENGTH) revert InvalidSignatureLength();
         if (withdrawal_credentials.length != CREDENTIALS_LENGTH) revert InvalidCredentialsLength();
@@ -665,7 +708,9 @@ contract DepositPoolV2 {
      * @return validatorId The new validator's ID
      */
     function fundValidatorMVP() external onlyOwner nonReentrant returns (uint256 validatorId) {
-        if (bufferedQRL < VALIDATOR_STAKE) revert InsufficientBuffer();
+        if (bufferedQRL < VALIDATOR_STAKE || _availableValidatorLiquidity() < VALIDATOR_STAKE) {
+            revert InsufficientBuffer();
+        }
 
         bufferedQRL -= VALIDATOR_STAKE;
         validatorId = validatorCount++;
@@ -684,47 +729,93 @@ contract DepositPoolV2 {
      *      to move `amount` from the off-contract stakedQRL accumulator back
      *      into on-contract accounting, leaving totalPooledQRL unchanged.
      *
-     *      Any beacon rewards earned on top of the principal are NOT recorded
-     *      here — they remain on the balance and are correctly attributed as
-     *      rewards by the next _syncRewards().
+     *      The observed return, capped at the retired nominal principal, is
+     *      restored to bufferedQRL. This makes unused exit proceeds eligible
+     *      to fund a later validator. Any surplus remains unbuffered and is
+     *      correctly attributed as rewards by the next _syncRewards().
      *
      *      MVP note: fundValidatorMVP never increments stakedQRL, so this is
      *      only relevant once the real beacon path (fundValidator) is in use.
-     * @param amount Principal returned from the beacon chain (<= stakedQRL)
+     * @param amount Nominal off-contract stake retired (<= stakedQRL)
      */
     function recordValidatorExit(uint256 amount) external onlyOwner {
         if (amount == 0) revert ZeroAmount();
         if (amount > stakedQRL) revert ExceedsStakedAmount();
 
+        // At settled accounting, totalPooledQRL - stakedQRL is the expected
+        // on-contract balance before an exit return. Buffer only liquidity
+        // observed above that baseline, capped at the nominal stake retired.
+        // A slashed exit therefore cannot create unsupported buffer credit.
+        uint256 currentPooled = stQRL.totalPooledQRL();
+        uint256 expectedOnContract = currentPooled > stakedQRL ? currentPooled - stakedQRL : 0;
+        uint256 currentBalance = address(this).balance;
+        uint256 observedReturn = currentBalance > expectedOnContract ? currentBalance - expectedOnContract : 0;
+        uint256 returnedPrincipal = observedReturn < amount ? observedReturn : amount;
+
         stakedQRL -= amount;
+        bufferedQRL += returnedPrincipal;
 
         emit ValidatorExitRecorded(amount, stakedQRL);
     }
 
     /**
-     * @notice Move QRL from pooled accounting to withdrawal reserve
-     * @dev Called by owner to earmark pooled QRL for pending withdrawals.
-     *      This does NOT accept ETH - it reclassifies existing contract balance
-     *      from totalPooledQRL to withdrawalReserve.
+     * @notice Earmark liquid pooled QRL for pending withdrawals
+     * @dev Reserved QRL remains in totalPooledQRL until claim burns the matching
+     *      shares. Keeping both assets and shares in the conversion totals
+     *      prevents deposits during the queue from receiving inflated shares.
      *
-     *      Invariant maintained: address(this).balance = totalPooledQRL + withdrawalReserve
+     *      Invariant maintained: address(this).balance + stakedQRL = totalPooledQRL
      *
-     *      For MVP: pooled QRL is in the contract, so we just reclassify.
+     *      For MVP: pooled QRL is in the contract, so this earmarks liquidity.
      *      For production: call this after validator exit proceeds arrive and
      *      _syncRewards() has already attributed them to totalPooledQRL.
      *
-     * @param amount Amount to move from pooled to withdrawal reserve
+     * @param amount Amount of liquid pooled QRL to earmark
      */
     function fundWithdrawalReserve(uint256 amount) external onlyOwner {
         if (amount == 0) revert ZeroAmount();
 
-        uint256 currentPooled = stQRL.totalPooledQRL();
-        if (amount > currentPooled) revert InsufficientBuffer();
+        if (_permissionlessSyncAllowed()) {
+            _syncRewards();
+        } else {
+            _requireAccountingSettled();
+        }
 
+        if (amount > _availableValidatorLiquidity()) revert InsufficientBuffer();
+
+        uint256 availableLiquidity = _availableValidatorLiquidity();
         withdrawalReserve += amount;
-        stQRL.updateTotalPooledQRL(currentPooled - amount);
+
+        // Consume unbuffered rewards first, then remove any remaining amount
+        // from deposit-originated validator liquidity.
+        uint256 unbufferedLiquidity = availableLiquidity > bufferedQRL ? availableLiquidity - bufferedQRL : 0;
+        if (amount > unbufferedLiquidity) {
+            uint256 bufferedAmountReserved = amount - unbufferedLiquidity;
+            bufferedQRL -= bufferedAmountReserved;
+            bufferedQRLInReserve += bufferedAmountReserved;
+        }
 
         emit WithdrawalReserveFunded(amount);
+    }
+
+    /**
+     * @notice Release liquid QRL that no longer needs to remain earmarked
+     * @dev This is used after a queued withdrawal is cancelled or its required
+     *      payout falls. Only the portion originally taken from bufferedQRL is
+     *      restored to the validator buffer. This avoids treating rewards or
+     *      MVP-simulated stake as fresh validator principal.
+     * @param amount Amount of withdrawal reserve to release
+     */
+    function releaseWithdrawalReserve(uint256 amount) external onlyOwner {
+        if (amount == 0) revert ZeroAmount();
+        if (amount > withdrawalReserve) revert InsufficientReserve();
+
+        uint256 bufferRestored = amount < bufferedQRLInReserve ? amount : bufferedQRLInReserve;
+        withdrawalReserve -= amount;
+        bufferedQRLInReserve -= bufferRestored;
+        bufferedQRL += bufferRestored;
+
+        emit WithdrawalReserveReleased(amount, bufferRestored);
     }
 
     // =============================================================
@@ -774,8 +865,16 @@ contract DepositPoolV2 {
      * @notice Check if validator funding is possible
      */
     function canFundValidator() external view returns (bool possible, uint256 bufferedAmount) {
-        possible = bufferedQRL >= VALIDATOR_STAKE;
+        possible = bufferedQRL >= VALIDATOR_STAKE && _availableValidatorLiquidity() >= VALIDATOR_STAKE;
         bufferedAmount = bufferedQRL;
+    }
+
+    /**
+     * @dev On-contract QRL that has not been earmarked for withdrawals.
+     */
+    function _availableValidatorLiquidity() internal view returns (uint256) {
+        uint256 balance = address(this).balance;
+        return balance > withdrawalReserve ? balance - withdrawalReserve : 0;
     }
 
     // =============================================================
@@ -842,21 +941,29 @@ contract DepositPoolV2 {
 
     /**
      * @notice Emergency withdrawal of stuck funds
-     * @dev Only for recovery of accidentally sent tokens, not pool funds.
-     *      Can only withdraw excess balance that's not part of pooled QRL or withdrawal reserve.
+     * @dev Native balance deltas are treated as pooled rewards after stQRL is
+     *      configured because they cannot be distinguished from validator
+     *      rewards. Recovery is therefore limited to demonstrably unaccounted
+     *      funds, primarily before pool initialization.
      * @param to Recipient address
      * @param amount Amount to withdraw
      */
-    function emergencyWithdraw(address to, uint256 amount) external onlyOwner {
+    function emergencyWithdraw(address to, uint256 amount) external onlyOwner nonReentrant {
         if (to == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
 
-        // Calculate recoverable amount: balance - on-contract pooled funds - withdrawal reserve.
+        if (address(stQRL) != address(0)) {
+            _requireAccountingSettled();
+        }
+
+        // Calculate recoverable amount from balance minus on-contract pooled funds.
         // totalPooledQRL includes stakedQRL, which lives off-contract at the beacon
         // deposit contract, so it must be excluded when comparing against this balance.
         uint256 pooled = address(stQRL) != address(0) ? stQRL.totalPooledQRL() : 0;
         uint256 onContractPooled = pooled > stakedQRL ? pooled - stakedQRL : 0;
-        uint256 totalProtocolFunds = onContractPooled + withdrawalReserve;
+        // withdrawalReserve is a subset of pooled assets. Use the larger value
+        // defensively if accounting is temporarily stale instead of counting it twice.
+        uint256 totalProtocolFunds = onContractPooled > withdrawalReserve ? onContractPooled : withdrawalReserve;
         uint256 currentBalance = address(this).balance;
         uint256 recoverableAmount = currentBalance > totalProtocolFunds ? currentBalance - totalProtocolFunds : 0;
 
@@ -881,7 +988,7 @@ contract DepositPoolV2 {
      *      Incoming ETH is NOT auto-classified. It increases address(this).balance,
      *      and the next _syncRewards() call will detect it as a balance increase
      *      and attribute it to totalPooledQRL. The owner can then call
-     *      fundWithdrawalReserve() to reclassify it for pending withdrawals.
+     *      fundWithdrawalReserve() to earmark it for pending withdrawals.
      */
     receive() external payable {
         // No automatic accounting - _syncRewards() will detect the balance change

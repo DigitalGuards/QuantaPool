@@ -81,8 +81,8 @@ export interface WithdrawalRequestView {
   id: number;
   shares: bigint;
   /**
-   * Exact QRL payout, snapshotted by the contract at request time.
-   * claimWithdrawal() pays this amount - not the current share value.
+   * Current QRL estimate while pending, or the settled payout after claim.
+   * Pending shares continue receiving rewards and bearing slashing losses.
    */
   qrlPayout: bigint;
   requestBlock: bigint;
@@ -853,7 +853,12 @@ export class PoolStore {
     const view: WithdrawalRequestView = {
       id,
       shares: asBig(live.shares),
-      qrlPayout: asBig(stored.qrlAmount),
+      qrlPayout:
+        asBig(live.shares) === 0n
+          ? 0n
+          : live.claimed
+            ? asBig(stored.qrlAmount)
+            : asBig(live.currentQRLValue),
       requestBlock: asBig(live.requestBlock),
       canClaim: Boolean(live.canClaim),
       blocksRemaining: asBig(live.blocksRemaining),
