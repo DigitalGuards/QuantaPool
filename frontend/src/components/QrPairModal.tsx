@@ -25,7 +25,7 @@ export const QrPairModal = observer(() => {
     el.setAttribute("uri", uri);
     if (statusRef.current) el.setAttribute("status", statusRef.current);
     const onNew = () => void poolStore.newConnection();
-    const onDismiss = () => poolStore.cancelPairing();
+    const onDismiss = () => void poolStore.cancelPairing();
     el.addEventListener("qrl-new-connection", onNew);
     el.addEventListener("qrl-cancel", onDismiss);
     hostRef.current?.append(el);
