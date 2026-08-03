@@ -1,3 +1,12 @@
+terraform {
+  required_providers {
+    hcloud = {
+      source  = "hetznercloud/hcloud"
+      version = "~> 1.45"
+    }
+  }
+}
+
 # QuantaPool Backup Node Module
 # Deploys hot standby node (beacon only, validator keys NOT active)
 
@@ -183,7 +192,7 @@ resource "hcloud_server" "backup" {
   name        = var.name
   server_type = var.server_type
   image       = local.image
-  datacenter  = var.datacenter
+  location    = var.datacenter
   ssh_keys    = var.ssh_key_ids
   labels      = var.labels
   user_data   = data.template_file.cloud_init.rendered
@@ -210,7 +219,7 @@ resource "hcloud_server_network" "backup" {
 # Volume for blockchain data
 resource "hcloud_volume" "data" {
   name      = "${var.name}-data"
-  size      = 150  # GB - slightly smaller than primary
+  size      = 150 # GB - slightly smaller than primary
   server_id = hcloud_server.backup.id
   automount = true
   format    = "ext4"

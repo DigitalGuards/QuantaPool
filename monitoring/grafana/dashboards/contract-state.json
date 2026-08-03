@@ -208,7 +208,7 @@
   "time": { "from": "now-6h", "to": "now" },
   "timepicker": {},
   "timezone": "",
-  "title": "QuantaPool — Contract State (v2)",
+  "title": "QuantaPool - Contract State (v2)",
   "uid": "quantapool-contracts-v2",
   "version": 1,
   "weekStart": ""

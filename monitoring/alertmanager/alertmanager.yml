@@ -48,7 +48,7 @@ receivers:
   - name: 'warning'
   - name: 'info'
 
-# Inhibition rules — suppress noisy downstream alerts when the upstream is known
+# Inhibition rules - suppress noisy downstream alerts when the upstream is known
 # to be broken. Alert names here must match the rules in
 # prometheus/rules/contract-alerts.yml / validator-alerts.yml / system-alerts.yml.
 inhibit_rules:

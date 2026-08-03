@@ -23,10 +23,15 @@
   "license": "GPL-3.0",
   "dependencies": {
     "@theqrl/wallet.js": "^3.0.1",
-    "@theqrl/web3": "^0.4.0",
+    "@theqrl/web3": "^0.4.4",
     "dotenv": "^17.4.2"
   },
   "devDependencies": {
     "solc": "^0.8.34"
+  },
+  "overrides": {
+    "tmp": "^0.2.7",
+    "follow-redirects": "^1.16.0",
+    "ws": "^8.21.0"
   }
 }

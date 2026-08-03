@@ -44,26 +44,36 @@ function compile(contractName) {
     const output = JSON.parse(solc.compile(JSON.stringify(input)));
 
     // Check for errors
+    let hasErrors = false;
     if (output.errors) {
         output.errors.forEach(err => {
             if (err.severity === 'error') {
                 console.error(err.formattedMessage);
-                return null;
+                hasErrors = true;
             } else {
                 console.warn(err.formattedMessage);
             }
         });
     }
 
-    const contract = output.contracts[`${contractName}.sol`][contractName];
+    if (hasErrors) return null;
+
+    const sourceContracts = output.contracts?.[`${contractName}.sol`] || {};
+    const normalizedName = contractName.replace(/-/g, '').toLowerCase();
+    const resolvedName = Object.keys(sourceContracts).find(
+        name => name.toLowerCase() === normalizedName
+    );
+    const contract = resolvedName ? sourceContracts[resolvedName] : null;
 
     if (!contract) {
-        console.error(`Failed to compile ${contractName}`);
+        console.error(
+            `Failed to locate ${contractName} in compiler output (${Object.keys(sourceContracts).join(', ') || 'none'})`
+        );
         return null;
     }
 
     const artifact = {
-        contractName,
+        contractName: resolvedName,
         abi: contract.abi,
         bytecode: '0x' + contract.evm.bytecode.object
     };
@@ -81,7 +91,7 @@ const args = process.argv.slice(2);
 
 if (args.length > 0) {
     // Compile specific contract
-    compile(args[0]);
+    if (!compile(args[0])) process.exitCode = 1;
 } else {
     // Compile all .sol files in contracts directory
     const files = fs.readdirSync(contractsDir).filter(f => f.endsWith('.sol'));
@@ -89,9 +99,11 @@ if (args.length > 0) {
     if (files.length === 0) {
         console.log('No .sol files found in contracts/solidity/');
     } else {
+        let failed = false;
         files.forEach(file => {
             const contractName = file.replace('.sol', '');
-            compile(contractName);
+            if (!compile(contractName)) failed = true;
         });
+        if (failed) process.exitCode = 1;
     }
 }

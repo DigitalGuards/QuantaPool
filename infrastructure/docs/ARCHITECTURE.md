@@ -158,8 +158,8 @@ Validator Created → Beacon Deposit → Validator Active
 ### Rewards Flow
 
 ```
-Validator Earnings → Oracle Reports Balance →
-RewardsOracle Updates stQRL → Exchange Rate Increases
+Validator Earnings → Withdrawal Sweep to Pool →
+_syncRewards() Detects Balance Increase → Exchange Rate Increases
 ```
 
 ## Monitoring Architecture

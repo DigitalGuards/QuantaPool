@@ -1,3 +1,12 @@
+terraform {
+  required_providers {
+    hcloud = {
+      source  = "hetznercloud/hcloud"
+      version = "~> 1.45"
+    }
+  }
+}
+
 # QuantaPool Networking Module
 # Creates private network infrastructure for validator nodes
 

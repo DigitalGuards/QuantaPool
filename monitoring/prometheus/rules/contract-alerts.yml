@@ -75,7 +75,7 @@ groups:
           summary: "Withdrawal reserve is low while withdrawals are pending"
           description: "Reserve: {{ $value | printf \"%.0f\" }} QRL. Owner must call fundWithdrawalReserve() to unblock claims."
 
-      # Slashing detected — critical, may indicate validator misbehavior
+      # Slashing detected - critical, may indicate validator misbehavior
       - alert: SlashingDetected
         expr: increase(quantapool_slashing_events_total[15m]) > 0
         for: 0m
@@ -96,7 +96,7 @@ groups:
           description: "Contract exporter experiencing high RPC error rate. Check RPC endpoint availability."
 
       # TVL exceeds validator capacity (more capital pooled than the existing
-      # validators can account for — signal to fund more)
+      # validators can account for - signal to fund more)
       - alert: TVLValidatorMismatch
         expr: (quantapool_total_pooled_qrl / 40000) - quantapool_validator_count > 1
         for: 1h

@@ -1,5 +1,5 @@
 [Unit]
-Description=go-qrl Execution Client
+Description=QRL execution client (gqrl)
 Documentation=https://github.com/theQRL/go-qrl
 After=network-online.target
 Wants=network-online.target
@@ -8,56 +8,39 @@ Wants=network-online.target
 Type=simple
 User={{ gqrl_user }}
 Group={{ gqrl_group }}
-Restart=always
-RestartSec=5
+WorkingDirectory={{ gqrl_data_dir }}
+Restart=on-failure
+RestartSec=10
 TimeoutStopSec=180
 
 # Security hardening
 NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=full
-ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths={{ gqrl_data_dir }} /var/log/gqrl
 
 ExecStart={{ gqrl_binary_path }} \
-{% if gqrl_network == "testnet" %}
-  --{{ gqrl_network }} \
-{% endif %}
-  --datadir {{ gqrl_data_dir }} \
+  --networkid {{ gqrl_chain_id }} \
+  --datadir={{ gqrl_data_dir }} \
+  --nat=extip:{{ gqrl_nat_extip }} \
   --port {{ gqrl_port }} \
-  --syncmode {{ gqrl_syncmode }} \
-  --gcmode {{ gqrl_gcmode }} \
-  --cache {{ gqrl_cache }} \
-  --maxpeers {{ gqrl_max_peers }} \
-{% if gqrl_bootnodes | length > 0 %}
-  --bootnodes {{ gqrl_bootnodes | join(',') }} \
-{% endif %}
+  --syncmode={{ gqrl_syncmode }} \
   --http \
-  --http.addr {{ gqrl_http_addr }} \
-  --http.port {{ gqrl_http_port }} \
-  --http.api {{ gqrl_http_api }} \
-  --http.corsdomain "{{ gqrl_http_corsdomain }}" \
-  --http.vhosts "{{ gqrl_http_vhosts }}" \
-  --ws \
-  --ws.addr {{ gqrl_http_addr }} \
-  --ws.port {{ gqrl_ws_port }} \
-  --authrpc.addr {{ gqrl_authrpc_addr }} \
-  --authrpc.port {{ gqrl_authrpc_port }} \
-  --authrpc.vhosts "{{ gqrl_authrpc_vhosts }}" \
-  --authrpc.jwtsecret {{ jwt_secret_path }} \
+  --http.addr={{ gqrl_http_addr }} \
+  --http.port={{ gqrl_http_port }} \
+  --http.api={{ gqrl_http_api }} \
+  --authrpc.addr={{ gqrl_authrpc_addr }} \
+  --authrpc.port={{ gqrl_authrpc_port }} \
+  --authrpc.jwtsecret={{ jwt_secret_path }} \
 {% if gqrl_metrics_enabled %}
-  --metrics \
-  --metrics.addr {{ gqrl_metrics_addr }} \
-  --metrics.port {{ gqrl_metrics_port }} \
+  --metrics --metrics.addr={{ gqrl_metrics_addr }} --metrics.port={{ gqrl_metrics_port }}
 {% endif %}
-  --verbosity {{ gqrl_verbosity }}
 
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=gqrl
 
 # Resource limits
-LimitNOFILE=65535
-LimitNPROC=65535
+LimitNOFILE=65536
 
 [Install]
 WantedBy=multi-user.target

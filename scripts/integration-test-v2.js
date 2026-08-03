@@ -94,16 +94,6 @@ async function tx(web3, method, account, to, label, { value = 0n } = {}) {
         ? receipt.transactionHash
         : '0x' + Buffer.from(receipt.transactionHash).toString('hex');
     console.log(`  → ${label} : ${hash}`);
-    // The qrlwallet.com RPC proxy sometimes serves eth_call from a slightly
-    // stale node for ~1 block after a tx mines, which makes state reads right
-    // after a write return pre-tx values. Wait until head ≥ receipt.blockNumber
-    // before returning so downstream reads see the effect.
-    const receiptBlock = BigInt(receipt.blockNumber);
-    for (let i = 0; i < 30; i++) {
-        const head = BigInt(await web3.qrl.getBlockNumber());
-        if (head >= receiptBlock) break;
-        await new Promise(r => setTimeout(r, 500));
-    }
     return receipt;
 }
 
@@ -200,7 +190,7 @@ async function main() {
         const beforeRate = BigInt(await stQRL.methods.getExchangeRate().call());
         const beforeRewards = BigInt((await pool.methods.getRewardStats().call()).totalRewards);
         const donate = 1n * 10n ** 18n;
-        // Send raw QRL to pool address — triggers receive(), bumps balance only
+        // Send raw QRL to pool address - triggers receive(), bumps balance only
         const baseGasPrice = BigInt((await web3.qrl.getGasPrice()) || 1_000_000_000);
         await web3.qrl.sendTransaction({
             type: '0x2',
@@ -226,7 +216,7 @@ async function main() {
         const balShares = BigInt(await stQRL.methods.balanceOf(account.address).call());
         const reqShares = balShares / 2n;
         if (reqShares === 0n) {
-            console.log('  (skipping — no shares to withdraw)');
+            console.log('  (skipping - no shares to withdraw)');
         } else {
             const lockedBefore = BigInt(await stQRL.methods.lockedSharesOf(account.address).call());
             await tx(web3, pool.methods.requestWithdrawal(reqShares.toString()), account, config.contracts.depositPoolV2, `pool.requestWithdrawal(${fmt(reqShares)})`);
@@ -238,14 +228,14 @@ async function main() {
             expect(BigInt(req.shares) === reqShares, `request[${requestId}].shares == requested`);
             expect(!req.canClaim, `canClaim=false (no reserve funded yet)`);
             expect(BigInt(req.blocksRemaining) > 0n, `blocksRemaining=${req.blocksRemaining} (~128 expected)`);
-            console.log(`  qrlAmount snapshot at request: ${fmt(BigInt(req.currentQRLValue))} QRL`);
+            console.log(`  current QRL estimate: ${fmt(BigInt(req.currentQRLValue))} QRL`);
         }
         await dumpStatus(pool);
     }
 
     // ===== Phase 4: validator MVP funding (40,000 QRL) =====
     if (phase === 'validator' || phase === 'all') {
-        console.log('\n[4] Validator MVP funding (40,000 QRL — large deposit + register + fund)');
+        console.log('\n[4] Validator MVP funding (40,000 QRL - large deposit + register + fund)');
         const VALIDATOR_STAKE = 40_000n * 10n ** 18n;
         const buffered = BigInt(await pool.methods.bufferedQRL().call());
         const balQRL = BigInt(await web3.qrl.getBalance(account.address));
@@ -379,7 +369,7 @@ async function main() {
         console.log('\n[7] Validator lifecycle (request-exit → mark-exited)');
         const stats0 = await vm.methods.getStats().call();
         if (BigInt(stats0.active) === 0n) {
-            console.log('  (skipping — no active validators; run `validator` phase first)');
+            console.log('  (skipping - no active validators; run `validator` phase first)');
         } else {
             // Grab the first Active validator id by scanning totalValidators.
             const total = BigInt(await vm.methods.totalValidators().call());
@@ -419,13 +409,13 @@ async function main() {
         const counts = await pool.methods.getWithdrawalRequestCount(account.address).call();
         const total = Number(counts.total);
         if (total === 0) {
-            console.log('  (skipping — no withdrawal requests; run `withdraw` phase first)');
+            console.log('  (skipping - no withdrawal requests; run `withdraw` phase first)');
         } else {
             // Fund reserve for the next pending request.
             const nextIdx = Number(await pool.methods.nextWithdrawalIndex(account.address).call());
             const req = await pool.methods.getWithdrawalRequest(account.address, nextIdx.toString()).call();
             if (req.claimed) {
-                console.log(`  (skipping — next request (idx=${nextIdx}) already claimed)`);
+                console.log(`  (skipping - next request (idx=${nextIdx}) already claimed)`);
             } else {
                 const need = BigInt(req.currentQRLValue);
                 const reserveBefore = BigInt(await pool.methods.withdrawalReserve().call());
@@ -443,7 +433,7 @@ async function main() {
                     const reserveAfter = BigInt(await pool.methods.withdrawalReserve().call());
                     const pooledAfter = BigInt(await stQRL.methods.totalPooledQRL().call());
                     expect(reserveAfter === reserveBefore + delta, `reserve += ${fmt(delta)} QRL`);
-                    expect(pooledAfter === pooledBefore - delta, `pooled -= ${fmt(delta)} QRL (reclassified, not burned)`);
+                    expect(pooledAfter === pooledBefore, `pooled unchanged while reserve and queued shares remain outstanding`);
                 }
 
                 // Claim should still revert because 128 blocks haven't elapsed
@@ -457,7 +447,7 @@ async function main() {
                         { match: 'WithdrawalNotReady' }
                     );
                 } else {
-                    ok(`${blocksRemaining} blocks remain — claim would succeed`);
+                    ok(`${blocksRemaining} blocks remain - claim would succeed`);
                 }
             }
         }
@@ -471,10 +461,10 @@ async function main() {
         const counts = await pool.methods.getWithdrawalRequestCount(account.address).call();
         const total = Number(counts.total);
         if (total === 0 || nextIdx >= total) {
-            console.log('  (skipping — no pending claimable request)');
+            console.log('  (skipping - no pending claimable request)');
         } else {
             const req = await pool.methods.getWithdrawalRequest(account.address, nextIdx.toString()).call();
-            console.log(`  target: request[${nextIdx}] shares=${fmt(BigInt(req.shares))} qrlAmount=${fmt(BigInt(req.currentQRLValue))} canClaim=${req.canClaim} blocksRemaining=${req.blocksRemaining}`);
+            console.log(`  target: request[${nextIdx}] shares=${fmt(BigInt(req.shares))} currentEstimate=${fmt(BigInt(req.currentQRLValue))} canClaim=${req.canClaim} blocksRemaining=${req.blocksRemaining}`);
             if (!req.canClaim) {
                 console.log(`  ✗ not yet claimable. Retry in ~${Math.ceil(Number(req.blocksRemaining) * 60 / 60)} min, or use \`wait-claim\`.`);
                 return;
@@ -506,7 +496,7 @@ async function main() {
                        - BigInt(await stQRL.methods.lockedSharesOf(account.address).call());
         const amount = 1n * 10n ** 18n; // 1 share
         if (unlocked < amount) {
-            console.log(`  (skipping — need ≥1 unlocked share, have ${fmt(unlocked)})`);
+            console.log(`  (skipping - need ≥1 unlocked share, have ${fmt(unlocked)})`);
             return;
         }
         const lockedBefore = BigInt(await stQRL.methods.lockedSharesOf(account.address).call());
@@ -542,7 +532,7 @@ async function main() {
         const held = BigInt(await stQRL.methods.balanceOf(account.address).call());
         const locked = BigInt(await stQRL.methods.lockedSharesOf(account.address).call());
         if (locked === 0n) {
-            console.log('  (skipping — no locked shares; run `withdraw` phase first)');
+            console.log('  (skipping - no locked shares; run `withdraw` phase first)');
             return;
         }
         const unlocked = held - locked;
@@ -607,7 +597,7 @@ async function main() {
         const amount = 1n * 10n ** 18n; // 1 share
 
         if (held < amount) {
-            console.log(`  (skipping — balance=${fmt(held)} < 1 share)`);
+            console.log(`  (skipping - balance=${fmt(held)} < 1 share)`);
             return;
         }
 

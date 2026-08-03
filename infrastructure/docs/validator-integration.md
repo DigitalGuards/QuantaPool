@@ -1,3 +1,9 @@
+> **DEPRECATED (v1 doc).** This guide describes the v1 contracts (RewardsOracle,
+> OperatorRegistry, stub fundValidator). Everything listed under "What's Missing"
+> shipped in v2: real beacon deposits via fundValidator(), trustless reward sync,
+> and the ValidatorManager lifecycle. See docs/V2-DEPLOYMENT-STATUS.md and
+> docs/architecture.md for the current system. Kept for historical context only.
+
 # Validator Integration Guide
 
 ## Current State (MVP)

@@ -41,7 +41,7 @@ groups:
           severity: warning
         annotations:
           summary: "Go-QRL has no peers"
-          description: "Go-QRL has {{ $value }} peers — node is effectively isolated."
+          description: "Go-QRL has {{ $value }} peers - node is effectively isolated."
 
       # Low peer count - consensus
       # p2p_peer_count is split by state ("Connected", "Bad", "Disconnected", ...).
