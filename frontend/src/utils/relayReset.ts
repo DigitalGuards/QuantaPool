@@ -90,3 +90,26 @@ export class ConnectionAttemptGuard {
     this.current = null;
   }
 }
+
+/** Deduplicates work within one channel without blocking a replacement channel. */
+export class ChannelTaskGuard {
+  private current: { channelId: string; task: Promise<void> } | null = null;
+
+  run(channelId: string, start: () => Promise<void>): Promise<void> {
+    if (this.current?.channelId === channelId) return this.current.task;
+
+    const work = start();
+    const tracked = work.finally(() => {
+      if (this.current?.task === tracked) this.current = null;
+    });
+    this.current = { channelId, task: tracked };
+    return tracked;
+  }
+
+  isPending(channelId?: string): boolean {
+    return (
+      this.current !== null &&
+      (channelId === undefined || this.current.channelId === channelId)
+    );
+  }
+}

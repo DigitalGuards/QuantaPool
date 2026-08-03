@@ -15,6 +15,7 @@ import { formatUnits, parseUnits } from "@/utils/format";
 import { requireQrlAccount } from "@/utils/qrlAddress";
 import {
   activateExtensionAfterRelayRetirement,
+  ChannelTaskGuard,
   ConnectionAttemptGuard,
   RelayResetGuard,
   shouldIgnoreRelayResetEvent,
@@ -249,7 +250,7 @@ export class PoolStore {
    * this gate that would pop an unsolicited QR the user never asked for.
    */
   private relayEstablished = false;
-  private relayAuthorization: Promise<void> | null = null;
+  private relayAuthorization = new ChannelTaskGuard();
   private relayResetGuard = new RelayResetGuard();
   private connectionAttemptGuard = new ConnectionAttemptGuard();
   private walletsInitialized = false;
@@ -914,16 +915,16 @@ export class PoolStore {
 
   /** Adopt an authorized cache on reconnect, or prompt on a fresh pairing. */
   private authorizeRelayAccount(qrl: QRLConnect): Promise<void> {
-    if (this.relayAuthorization) return this.relayAuthorization;
-    const authorization = this.authorizeRelayAccountOnce(qrl).finally(() => {
-      if (this.relayAuthorization === authorization) this.relayAuthorization = null;
-    });
-    this.relayAuthorization = authorization;
-    return authorization;
+    const channelId = qrl.getChannelId();
+    return this.relayAuthorization.run(channelId, () =>
+      this.authorizeRelayAccountOnce(qrl, channelId),
+    );
   }
 
-  private async authorizeRelayAccountOnce(qrl: QRLConnect): Promise<void> {
-    const channelId = qrl.getChannelId();
+  private async authorizeRelayAccountOnce(
+    qrl: QRLConnect,
+    channelId: string,
+  ): Promise<void> {
     try {
       const cached = qrl.getAccounts();
       if (!Array.isArray(cached)) throw new Error("Wallet returned an invalid QRL account cache");

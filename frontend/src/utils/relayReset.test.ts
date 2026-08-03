@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   activateExtensionAfterRelayRetirement,
+  ChannelTaskGuard,
   ConnectionAttemptGuard,
   RelayResetGuard,
   shouldIgnoreRelayResetEvent,
@@ -118,4 +119,44 @@ test("rejected extension approval cannot activate the extension transport", asyn
     /user rejected/,
   );
   assert.deepEqual(order, ["retire relay", "request approval"]);
+});
+
+test("authorization work deduplicates per channel without blocking a replacement", async () => {
+  const guard = new ChannelTaskGuard();
+  let resolveOld!: () => void;
+  let resolveNew!: () => void;
+  let starts = 0;
+  const oldTask = guard.run(
+    "old-channel",
+    () =>
+      new Promise<void>((resolve) => {
+        starts += 1;
+        resolveOld = resolve;
+      }),
+  );
+  assert.equal(
+    guard.run("old-channel", async () => {
+      starts += 1;
+    }),
+    oldTask,
+  );
+
+  const newTask = guard.run(
+    "new-channel",
+    () =>
+      new Promise<void>((resolve) => {
+        starts += 1;
+        resolveNew = resolve;
+      }),
+  );
+  assert.notEqual(newTask, oldTask);
+  assert.equal(starts, 2);
+  assert.equal(guard.isPending("new-channel"), true);
+
+  resolveOld();
+  await oldTask;
+  assert.equal(guard.isPending("new-channel"), true);
+  resolveNew();
+  await newTask;
+  assert.equal(guard.isPending(), false);
 });
