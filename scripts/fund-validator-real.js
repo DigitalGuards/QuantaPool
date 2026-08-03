@@ -5,7 +5,7 @@
 //      and confirm all checks pass. This script re-runs the same assertions
 //      in-process but `verify-deposit-data.js` prints nicer output.
 //   2. Deployer balance has ≥ 40,001 QRL (40k deposit + gas buffer).
-//   3. v2.2 pool addresses are in config/testnet-hyperion.json.
+//   3. The active pool addresses are in config/testnet-hyperion.json.
 //
 // Usage: node scripts/fund-validator-real.js <deposit_data.json>
 require('dotenv').config({ path: '.env' });

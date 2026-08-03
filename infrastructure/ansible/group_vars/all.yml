@@ -9,7 +9,7 @@ qrl_chain_id: 1337
 qrl_network: testnet
 qrl_rpc_url: "https://qrlwallet.com/api/qrl-rpc/testnet"
 
-# Contract addresses (testnet v2.2)
+# Legacy v2.2 contract addresses retained for validator-stake monitoring during migration.
 stqrl_address: "QA2f23388d1e3986416A36d2Ef113850D6900b69C"
 deposit_pool_address: "Q109d7C528a67b80eb638D4C85e7C4545ef9Bb9aC"
 validator_manager_address: "QA5b6e85B7713670589e4eAf2F039380Ec2792c8C"
