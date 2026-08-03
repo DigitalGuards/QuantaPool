@@ -120,17 +120,22 @@ If slashing occurs (pool drops to 950 QRL):
 
 Unstaking is a two-step flow. The QRL is never burned; the stQRL shares are.
 
-1. **Request** (`requestWithdrawal(shares)`): your shares are locked (non-transferable, still on your balance) and the payout is snapshotted at the current exchange rate. A 128-block delay (~2 hours) starts. You can `cancelWithdrawal()` any time before claiming; the shares simply unlock.
-2. **Claim** (`claimWithdrawal()`, FIFO per account): after the delay, the locked shares are burned (sent to the zero address, total supply decreases) and you receive exactly the snapshotted QRL amount from the withdrawal reserve. Rate movements between request and claim neither help nor hurt you; rewards earned in that window go to the remaining holders.
+1. **Request** (`requestWithdrawal(shares)`): your shares are locked (non-transferable, still on your balance) and the contract returns a current QRL estimate. A 128-block delay (~2 hours) starts. You can `cancelWithdrawal()` any time before claiming; the shares simply unlock.
+2. **Claim** (`claimWithdrawal()`, FIFO per account): after the delay and accounting settlement, the locked shares are valued at the current exchange rate and burned. You receive that settled QRL amount from the withdrawal reserve. Queued shares continue receiving rewards and bearing slashing losses until claim.
 
-**Example:** you hold 1,000 stQRL at rate 1.05. Request locks the shares and snapshots 1,050 QRL. After 128 blocks you claim: 1,000 stQRL burns, you receive 1,050 QRL, even if the rate moved to 1.06 while you waited.
+**Example:** you hold 1,000 stQRL at rate 1.05. Request locks the shares and estimates 1,050 QRL. If the settled rate is 1.06 at claim, 1,000 stQRL burns and you receive 1,060 QRL. If slashing reduces the settled rate, the claim decreases proportionally.
 
 ### Where does the claim QRL come from?
 
 The withdrawal reserve never holds the full TVL; it only covers pending claims. Pooled QRL lives in three places (all visible on-chain): validators (40,000 QRL each, staked on the beacon chain), the deposit buffer (accumulating toward the next validator), and the withdrawal reserve. Claims are sourced in this order:
 
-1. **Deposit flow first**: QRL in the buffer is reclassified into the reserve, so withdrawals are netted against incoming stake.
+1. **Deposit flow first**: QRL in the buffer is earmarked in the reserve, so withdrawals are netted against incoming stake. Reserved QRL remains in pooled accounting until claim burns the matching shares.
 2. **Validator exit if needed**: validator stake is all-or-nothing; you cannot partially withdraw from a validator. If the buffer cannot cover pending claims, one validator exits fully, its 40,000 QRL returns, claims are paid, and the remainder goes back to the buffer.
+
+If a funded request is cancelled or its settled payout falls, the operator can
+call `releaseWithdrawalReserve(amount)`. The contract restores only liquidity
+that originally came from `bufferedQRL`, so simulated stake and unbuffered
+rewards cannot be counted again as fresh validator principal.
 
 So if 5 validators are full and someone claims a 5,000 QRL position, that 5,000 comes from the buffer/new deposits if available, otherwise one validator exits and the leftover 35,000 refills the buffer. Same model as Lido and Rocket Pool.
 

@@ -36,3 +36,42 @@ jobs:
 
       - name: Run Forge tests
         run: forge test -vvv
+
+  javascript:
+    name: Deployment tooling and frontend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - name: Install deployment dependencies
+        run: npm ci
+
+      - name: Compile Solidity deployment artifacts
+        run: npm run compile
+
+      - name: Test deployment safety controls
+        run: node scripts/deploy-hyperion-safety.test.js
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Lint frontend
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build

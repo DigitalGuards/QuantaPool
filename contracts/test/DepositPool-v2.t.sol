@@ -186,11 +186,11 @@ contract DepositPoolV2Test is Test {
         vm.prank(user1);
         pool.deposit{value: 100 ether}();
 
-        // Request withdrawal FIRST (captures QRL value at current 1:1 rate)
+        // Request withdrawal first. The returned value is the current estimate.
         vm.prank(user1);
         pool.requestWithdrawal(50 ether);
 
-        // Fund withdrawal reserve AFTER request (reclassify pooled QRL for the claim)
+        // Earmark liquid QRL for the claim.
         pool.fundWithdrawalReserve(50 ether);
 
         // Wait for withdrawal delay
@@ -266,15 +266,14 @@ contract DepositPoolV2Test is Test {
         // User's shares now worth 110 QRL (approx due to virtual shares)
         assertApproxEqRel(token.getQRLValue(user1), 110 ether, 1e14);
 
-        // Request withdrawal of all shares BEFORE funding reserve
-        // (so shares are valued at current rate: ~110 QRL for 100 shares)
+        // Request withdrawal of all shares before funding reserve.
         vm.prank(user1);
         (, uint256 qrlAmount) = pool.requestWithdrawal(100 ether);
 
         // Approx due to virtual shares
         assertApproxEqRel(qrlAmount, 110 ether, 1e14);
 
-        // Fund withdrawal reserve (reclassify from totalPooledQRL to cover the claim)
+        // Earmark enough liquid QRL to cover the claim.
         pool.fundWithdrawalReserve(token.totalPooledQRL());
 
         vm.roll(block.number + 129);
@@ -310,15 +309,24 @@ contract DepositPoolV2Test is Test {
         // User's shares now worth less (90 QRL instead of 100) (approx)
         assertApproxEqRel(token.getQRLValue(user1), 90 ether, 1e14);
 
-        // Request withdrawal of all shares FIRST (captures slashed QRL value ~90)
+        // Request withdrawal of all shares after the loss is synchronized.
         vm.prank(user1);
         (, uint256 qrlAmount) = pool.requestWithdrawal(100 ether);
 
         // Should only get ~90 QRL (slashed amount) (approx due to virtual shares)
         assertApproxEqRel(qrlAmount, 90 ether, 1e14);
 
-        // Fund withdrawal reserve AFTER request (reclassify pooled QRL for the claim)
+        // Earmark liquid QRL for the claim.
         pool.fundWithdrawalReserve(token.totalPooledQRL());
+
+        vm.roll(block.number + pool.WITHDRAWAL_DELAY());
+        (,,, bool canClaim,,) = pool.getWithdrawalRequest(user1, 0);
+        assertTrue(canClaim);
+        uint256 balanceBefore = user1.balance;
+        vm.prank(user1);
+        uint256 claimed = pool.claimWithdrawal();
+        assertEq(claimed, 90 ether);
+        assertEq(user1.balance - balanceBefore, 90 ether);
     }
 
     function test_SlashingDetected_EmitsEvent() public {
@@ -457,12 +465,11 @@ contract DepositPoolV2Test is Test {
 
         assertEq(token.balanceOf(user1), amount);
 
-        // Request withdrawal FIRST (captures QRL value at current rate)
+        // Request withdrawal first, then earmark liquid QRL.
         uint256 shares = token.sharesOf(user1);
         vm.prank(user1);
         pool.requestWithdrawal(shares);
 
-        // Fund reserve AFTER request (reclassify deposited QRL for the claim)
         pool.fundWithdrawalReserve(amount);
 
         vm.roll(block.number + 129);
@@ -575,7 +582,7 @@ contract DepositPoolV2Test is Test {
         vm.prank(user1);
         pool.deposit{value: 100 ether}();
 
-        // Request FIRST (captures QRL value), then fund reserve
+        // Request first, then fund reserve.
         vm.prank(user1);
         pool.requestWithdrawal(50 ether);
 
@@ -715,20 +722,22 @@ contract DepositPoolV2Test is Test {
         pool.transferOwnership(newOwner);
     }
 
-    function test_EmergencyWithdraw() public {
+    function test_EmergencyWithdraw_UnsyncedRewardsBecomePooled() public {
         vm.prank(user1);
         pool.deposit{value: 100 ether}();
 
-        // Send some excess funds to the contract (stuck tokens)
-        vm.deal(address(pool), 110 ether); // 100 pooled + 10 excess
+        // Native inflows are indistinguishable from validator rewards.
+        vm.deal(address(pool), 110 ether);
 
         address recipient = address(0x999);
-        uint256 balanceBefore = recipient.balance;
-
-        // Can only withdraw excess (10 ether)
+        vm.expectRevert(DepositPoolV2.AccountingNotSettled.selector);
         pool.emergencyWithdraw(recipient, 10 ether);
 
-        assertEq(recipient.balance - balanceBefore, 10 ether);
+        pool.syncRewards();
+        assertEq(pool.totalRewardsReceived(), 10 ether);
+        vm.expectRevert(DepositPoolV2.ExceedsRecoverableAmount.selector);
+        pool.emergencyWithdraw(recipient, 10 ether);
+        assertEq(recipient.balance, 0);
     }
 
     function test_EmergencyWithdraw_ExceedsRecoverable_Reverts() public {
@@ -841,7 +850,7 @@ contract DepositPoolV2Test is Test {
     }
 
     function test_FundWithdrawalReserve() public {
-        // Need deposits first so there's totalPooledQRL to reclassify
+        // Need liquid pooled QRL to earmark.
         vm.prank(user1);
         pool.deposit{value: 100 ether}();
 
@@ -851,11 +860,12 @@ contract DepositPoolV2Test is Test {
         pool.fundWithdrawalReserve(50 ether);
 
         assertEq(pool.withdrawalReserve(), reserveBefore + 50 ether);
-        assertEq(token.totalPooledQRL(), pooledBefore - 50 ether);
+        assertEq(token.totalPooledQRL(), pooledBefore);
+        assertEq(pool.bufferedQRL(), 50 ether);
     }
 
     function test_FundWithdrawalReserve_EmitsEvent() public {
-        // Need deposits first so there's totalPooledQRL to reclassify
+        // Need liquid pooled QRL to earmark.
         vm.prank(user1);
         pool.deposit{value: 100 ether}();
 
@@ -880,7 +890,7 @@ contract DepositPoolV2Test is Test {
         assertEq(token.totalPooledQRL(), 200 ether);
         assertEq(token.totalShares(), 200 ether);
 
-        // Both request withdrawals FIRST (captures QRL value at 1:1 rate)
+        // Both users request withdrawals at the current 1:1 estimate.
         vm.prank(user1);
         pool.requestWithdrawal(50 ether);
 
@@ -889,11 +899,11 @@ contract DepositPoolV2Test is Test {
 
         assertEq(pool.totalWithdrawalShares(), 100 ether);
 
-        // Fund withdrawal reserve AFTER requests (reclassify enough for both claims)
+        // Earmark enough liquid QRL for both claims.
         pool.fundWithdrawalReserve(100 ether);
 
-        // Verify reserve and pooled state
-        assertEq(token.totalPooledQRL(), 100 ether);
+        // Reserved assets and queued shares both remain in conversion totals.
+        assertEq(token.totalPooledQRL(), 200 ether);
         assertEq(pool.withdrawalReserve(), 100 ether);
 
         // Wait for delay
@@ -1213,6 +1223,54 @@ contract DepositPoolV2Test is Test {
         pool.syncRewards();
         assertEq(token.totalPooledQRL(), 40000 ether);
         assertEq(pool.totalRewardsReceived(), 0, "principal must not count as rewards");
+        assertEq(pool.bufferedQRL(), 40000 ether, "returned principal must refill buffer");
+    }
+
+    function test_RecordValidatorExit_RemainderCanFundNextValidator() public {
+        _stubDepositContract();
+        _fundBufferForValidator();
+        pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+
+        vm.prank(user1);
+        pool.requestWithdrawal(5000 ether);
+
+        vm.deal(address(pool), 40000 ether);
+        pool.recordValidatorExit(40000 ether);
+        pool.fundWithdrawalReserve(5000 ether);
+
+        assertEq(pool.bufferedQRL(), 35000 ether);
+        assertEq(pool.bufferedQRLInReserve(), 5000 ether);
+
+        vm.roll(block.number + pool.WITHDRAWAL_DELAY());
+        vm.prank(user1);
+        assertEq(pool.claimWithdrawal(), 5000 ether);
+
+        vm.deal(user2, 5000 ether);
+        vm.prank(user2);
+        pool.deposit{value: 5000 ether}();
+
+        assertEq(pool.bufferedQRL(), 40000 ether);
+        pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(2)));
+        assertEq(pool.stakedQRL(), 40000 ether);
+        assertEq(address(pool).balance, 0);
+    }
+
+    function testFuzz_RecordValidatorExit_BuffersOnlyObservedPrincipal(uint256 returnedAmount) public {
+        returnedAmount = bound(returnedAmount, 0, 80000 ether);
+
+        _stubDepositContract();
+        _fundBufferForValidator();
+        pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+
+        vm.deal(address(pool), returnedAmount);
+        pool.recordValidatorExit(40000 ether);
+
+        uint256 expectedBuffer = returnedAmount < 40000 ether ? returnedAmount : 40000 ether;
+        assertEq(pool.bufferedQRL(), expectedBuffer);
+        assertLe(pool.bufferedQRL(), address(pool).balance);
+
+        pool.syncRewards();
+        assertEq(token.totalPooledQRL(), returnedAmount);
     }
 
     function test_RecordValidatorExit_OnlyOwner() public {
@@ -1239,21 +1297,24 @@ contract DepositPoolV2Test is Test {
         pool.recordValidatorExit(40000 ether + 1);
     }
 
-    function test_EmergencyWithdraw_ExcludesStakedFromProtocolFunds() public {
+    function test_EmergencyWithdraw_BlocksUnsyncedRewardsWhileStaked() public {
         _stubDepositContract();
         _fundBufferForValidator();
         pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
 
-        // Stray 5 QRL is sent in on top of the staked position. It is genuinely
-        // excess (not pooled, not reserved) and must remain recoverable even
-        // though stakedQRL inflates totalPooledQRL.
+        // A 5 QRL balance delta may be a validator reward, so emergency
+        // recovery must wait for owner accounting and cannot extract it.
         vm.deal(address(pool), 5 ether);
 
-        // Recover to a fresh EOA (starts at zero balance, can receive ETH).
         address recipient = address(0xBEEF);
+        vm.expectRevert(DepositPoolV2.AccountingNotSettled.selector);
         pool.emergencyWithdraw(recipient, 5 ether);
-        assertEq(address(pool).balance, 0);
-        assertEq(recipient.balance, 5 ether);
+
+        pool.syncRewards();
+        vm.expectRevert(DepositPoolV2.ExceedsRecoverableAmount.selector);
+        pool.emergencyWithdraw(recipient, 5 ether);
+        assertEq(address(pool).balance, 5 ether);
+        assertEq(recipient.balance, 0);
     }
 
     // =========================================================================
@@ -1262,10 +1323,9 @@ contract DepositPoolV2Test is Test {
     // While principal is staked off-contract (stakedQRL > 0), an exit sweep
     // returns principal to the balance a block before the owner can settle it
     // with recordValidatorExit(). A permissionless sync in that window would
-    // book the principal as a phantom reward and spike the rate, which a
-    // front-runner could snapshot into a withdrawal and drain the pool. So
-    // permissionless reward sync is disabled whenever stakedQRL > 0. With
-    // stakedQRL == 0 (MVP path) it stays fully permissionless. These lock it in.
+    // book the principal as a phantom reward and spike the rate. Permissionless
+    // reward sync and claims with unsettled deltas are disabled whenever
+    // stakedQRL > 0. With stakedQRL == 0, sync stays fully permissionless.
 
     function test_SyncRewards_PermissionlessWhenNoStake() public {
         // No off-contract principal: anyone may sync (trustless path intact).
@@ -1296,27 +1356,35 @@ contract DepositPoolV2Test is Test {
 
     function test_PhantomReward_FrontRunBlockedDuringExit() public {
         _stubDepositContract();
-        _fundBufferForValidator(); // user1 holds 40000 shares
+        vm.deal(user1, 80000 ether);
+        vm.prank(user1);
+        pool.deposit{value: 80000 ether}();
+
+        vm.prank(user1);
+        (, uint256 estimate) = pool.requestWithdrawal(40000 ether);
+        assertEq(estimate, 40000 ether);
+        pool.fundWithdrawalReserve(40000 ether);
+
         pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+        vm.roll(block.number + pool.WITHDRAWAL_DELAY());
 
-        // Exit principal lands in the balance via EIP-4895 BEFORE the owner
-        // settles it: balance = 40k, stakedQRL still = 40k (would read as +40k).
-        vm.deal(address(pool), 40000 ether);
+        // Exit principal lands before owner settlement: balance = 80k and
+        // stakedQRL = 40k, which would incorrectly read as 120k pooled.
+        vm.deal(address(pool), 80000 ether);
 
-        // (a) A permissionless sync that would bank the phantom reward reverts.
         vm.prank(user2);
         vm.expectRevert(DepositPoolV2.NotOwner.selector);
         pool.syncRewards();
 
-        // (b) Front-running via requestWithdrawal must not inflate the rate:
-        // the snapshot reflects the true (pre-exit) value and no phantom
-        // reward is booked, so the inflated rate cannot be locked in.
         vm.prank(user1);
-        (, uint256 snapshot) = pool.requestWithdrawal(40000 ether);
+        vm.expectRevert(DepositPoolV2.AccountingNotSettled.selector);
+        pool.claimWithdrawal();
 
-        assertApproxEqRel(snapshot, 40000 ether, 1e14, "snapshot must use true rate");
+        pool.recordValidatorExit(40000 ether);
+        vm.prank(user1);
+        assertEq(pool.claimWithdrawal(), 40000 ether);
         assertEq(pool.totalRewardsReceived(), 0, "no phantom reward recognized");
-        assertEq(token.totalPooledQRL(), 40000 ether, "exchange rate unchanged");
+        assertEq(token.totalPooledQRL(), 40000 ether, "remaining rate unchanged");
     }
 
     function test_ExitSettlement_ThenPermissionlessSyncResumes() public {
@@ -1353,6 +1421,208 @@ contract DepositPoolV2Test is Test {
         pool.syncRewards();
         assertEq(token.totalPooledQRL(), 40050 ether);
         assertEq(pool.totalRewardsReceived(), 50 ether);
+    }
+
+    // =========================================================================
+    //                    ASSET ACCOUNTING REGRESSIONS
+    // =========================================================================
+
+    function test_ReserveFundingDoesNotDiluteSubsequentDepositor() public {
+        vm.deal(user1, 1000 ether);
+        vm.prank(user1);
+        pool.deposit{value: 1000 ether}();
+
+        vm.prank(user1);
+        (, uint256 estimate) = pool.requestWithdrawal(100 ether);
+        pool.fundWithdrawalReserve(estimate);
+
+        // Reserve funding keeps both the assets and queued shares in the rate.
+        assertEq(token.totalPooledQRL(), 1000 ether);
+        assertEq(token.totalShares(), 1000 ether);
+
+        vm.prank(user2);
+        uint256 user2Shares = pool.deposit{value: 100 ether}();
+        assertEq(user2Shares, 100 ether);
+
+        vm.roll(block.number + pool.WITHDRAWAL_DELAY());
+        vm.prank(user1);
+        assertEq(pool.claimWithdrawal(), 100 ether);
+
+        assertEq(token.getQRLValue(user2), 100 ether);
+        assertEq(token.getQRLValue(user1), 900 ether);
+    }
+
+    function test_DepositAccountsPendingRewardsBeforeMinting() public {
+        vm.deal(user1, 1000 ether);
+        vm.prank(user1);
+        pool.deposit{value: 1000 ether}();
+
+        // Model a reward sweep that changes balance without invoking pool code.
+        vm.deal(address(pool), 1100 ether);
+
+        vm.prank(user2);
+        uint256 user2Shares = pool.deposit{value: 100 ether}();
+
+        assertEq(pool.totalRewardsReceived(), 100 ether);
+        assertEq(token.totalPooledQRL(), 1200 ether);
+        assertLt(user2Shares, 100 ether);
+        assertApproxEqAbs(token.getQRLValue(user2), 100 ether, 2);
+    }
+
+    function test_DepositWhileStakedRequiresBalanceSettlement() public {
+        _stubDepositContract();
+        _fundBufferForValidator();
+        pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+
+        vm.deal(address(pool), 100 ether);
+        vm.prank(user2);
+        vm.expectRevert(DepositPoolV2.AccountingNotSettled.selector);
+        pool.deposit{value: 100 ether}();
+
+        pool.syncRewards();
+        vm.prank(user2);
+        uint256 user2Shares = pool.deposit{value: 100 ether}();
+        assertLt(user2Shares, 100 ether);
+        assertApproxEqAbs(token.getQRLValue(user2), 100 ether, 2);
+    }
+
+    function test_WithdrawalReserveCannotBeFundedIntoValidator() public {
+        _stubDepositContract();
+        vm.deal(user1, 40000 ether);
+        vm.prank(user1);
+        uint256 shares = pool.deposit{value: 40000 ether}();
+
+        vm.prank(user1);
+        (, uint256 estimate) = pool.requestWithdrawal(shares);
+        pool.fundWithdrawalReserve(estimate);
+
+        assertEq(pool.withdrawalReserve(), 40000 ether);
+        assertEq(pool.bufferedQRL(), 0);
+        (bool possible,) = pool.canFundValidator();
+        assertFalse(possible);
+
+        vm.expectRevert(DepositPoolV2.InsufficientBuffer.selector);
+        pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+
+        vm.expectRevert(DepositPoolV2.InsufficientBuffer.selector);
+        pool.fundValidatorMVP();
+
+        vm.roll(block.number + pool.WITHDRAWAL_DELAY());
+        vm.prank(user1);
+        assertEq(pool.claimWithdrawal(), 40000 ether);
+    }
+
+    function test_RepeatedReserveFundingProtectsReserveDuringValidatorFunding() public {
+        _stubDepositContract();
+        vm.deal(user1, 80000 ether);
+        vm.prank(user1);
+        pool.deposit{value: 80000 ether}();
+
+        vm.prank(user1);
+        pool.requestWithdrawal(40000 ether);
+        pool.fundWithdrawalReserve(20000 ether);
+        pool.fundWithdrawalReserve(20000 ether);
+
+        assertEq(pool.withdrawalReserve(), 40000 ether);
+        assertEq(pool.bufferedQRL(), 40000 ether);
+        (bool possible,) = pool.canFundValidator();
+        assertTrue(possible);
+
+        pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+
+        assertEq(address(pool).balance, 40000 ether);
+        assertEq(pool.withdrawalReserve(), 40000 ether);
+        assertEq(pool.bufferedQRL(), 0);
+    }
+
+    function test_ReleaseReserveAfterCancellationRestoresValidatorLiquidity() public {
+        _stubDepositContract();
+        vm.deal(user1, 40000 ether);
+        vm.prank(user1);
+        uint256 shares = pool.deposit{value: 40000 ether}();
+
+        vm.prank(user1);
+        (uint256 requestId,) = pool.requestWithdrawal(shares);
+        pool.fundWithdrawalReserve(40000 ether);
+
+        assertEq(pool.bufferedQRL(), 0);
+        assertEq(pool.bufferedQRLInReserve(), 40000 ether);
+
+        vm.prank(user1);
+        pool.cancelWithdrawal(requestId);
+        pool.releaseWithdrawalReserve(40000 ether);
+
+        assertEq(pool.withdrawalReserve(), 0);
+        assertEq(pool.bufferedQRLInReserve(), 0);
+        assertEq(pool.bufferedQRL(), 40000 ether);
+        (bool possible,) = pool.canFundValidator();
+        assertTrue(possible);
+
+        pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+        assertEq(address(pool).balance, 0);
+    }
+
+    function test_ReleaseReserveDoesNotDoubleCountMvpStakeAsBuffer() public {
+        vm.deal(user1, 80000 ether);
+        vm.prank(user1);
+        pool.deposit{value: 80000 ether}();
+
+        pool.fundValidatorMVP();
+        pool.fundWithdrawalReserve(60000 ether);
+
+        // Forty thousand came from the simulated stake and only twenty
+        // thousand came from the remaining validator buffer.
+        assertEq(pool.bufferedQRL(), 20000 ether);
+        assertEq(pool.bufferedQRLInReserve(), 20000 ether);
+
+        pool.releaseWithdrawalReserve(60000 ether);
+        assertEq(pool.withdrawalReserve(), 0);
+        assertEq(pool.bufferedQRL(), 40000 ether);
+
+        pool.fundValidatorMVP();
+        vm.expectRevert(DepositPoolV2.InsufficientBuffer.selector);
+        pool.fundValidatorMVP();
+    }
+
+    function test_QueuedWithdrawalBearsSlashingBeforeClaim() public {
+        _stubDepositContract();
+        token.setMinStakeBlocks(1536);
+        vm.deal(user1, 10000 ether);
+        vm.deal(user2, 30000 ether);
+
+        vm.prank(user1);
+        uint256 user1Shares = pool.deposit{value: 10000 ether}();
+        vm.prank(user2);
+        pool.deposit{value: 30000 ether}();
+        pool.fundValidator(_validPubkey(), _validCredentials(), _validSignature(), bytes32(uint256(1)));
+
+        vm.roll(block.number + token.minStakeBlocks());
+
+        // Only 30,000 QRL returns from the 40,000 QRL validator.
+        vm.deal(address(pool), 30000 ether);
+        vm.prank(user1);
+        (, uint256 requestEstimate) = pool.requestWithdrawal(user1Shares);
+        assertEq(requestEstimate, 10000 ether);
+
+        vm.roll(block.number + pool.WITHDRAWAL_DELAY());
+        vm.prank(user1);
+        vm.expectRevert(DepositPoolV2.AccountingNotSettled.selector);
+        pool.claimWithdrawal();
+
+        pool.recordValidatorExit(40000 ether);
+        pool.syncRewards();
+        uint256 settledPayout = token.getPooledQRLByShares(user1Shares);
+        assertApproxEqAbs(settledPayout, 7500 ether, 100);
+        assertLt(settledPayout, requestEstimate);
+
+        pool.fundWithdrawalReserve(settledPayout);
+        uint256 balanceBefore = user1.balance;
+        vm.prank(user1);
+        uint256 claimed = pool.claimWithdrawal();
+
+        assertEq(claimed, settledPayout);
+        assertEq(user1.balance - balanceBefore, settledPayout);
+        assertApproxEqAbs(token.getQRLValue(user2), 22500 ether, 1000);
     }
 
     // =========================================================================
