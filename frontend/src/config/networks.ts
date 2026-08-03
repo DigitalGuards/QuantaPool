@@ -24,10 +24,10 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
     explorer: env.VITE_EXPLORER_URL || "https://zondscan.com",
     contracts: {
       // Defaults mirror config/testnet-hyperion.json at the repo root
-      depositPool: env.VITE_DEPOSIT_POOL_ADDRESS || "Q109d7C528a67b80eb638D4C85e7C4545ef9Bb9aC",
-      stQRL: env.VITE_STQRL_ADDRESS || "QA2f23388d1e3986416A36d2Ef113850D6900b69C",
+      depositPool: env.VITE_DEPOSIT_POOL_ADDRESS || "Q8e01Ea0bC7e337806154573A5B46Bb37F50Ea8fC",
+      stQRL: env.VITE_STQRL_ADDRESS || "Q7d4cA4872502a1ab02bCA855C093449aaE2bee58",
       validatorManager:
-        env.VITE_VALIDATOR_MANAGER_ADDRESS || "QA5b6e85B7713670589e4eAf2F039380Ec2792c8C",
+        env.VITE_VALIDATOR_MANAGER_ADDRESS || "Qd84648a8F7314652B3E98D346645415eA03cce5f",
     },
   },
   MAIN_NET: {

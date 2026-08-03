@@ -113,7 +113,7 @@ variable "telegram_chat_id" {
   default     = ""
 }
 
-# Contract Addresses (Testnet v2.2 defaults)
+# Legacy v2.2 defaults retained for validator-stake monitoring during migration.
 variable "stqrl_address" {
   description = "stQRLv2 contract address"
   type        = string

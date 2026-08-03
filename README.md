@@ -70,10 +70,10 @@ QuantaPool/
 │   │   └── ValidatorManager.sol #  Validator lifecycle tracking
 │   ├── hyperion/             #   Auto-synced Hyperion mirrors (.hyp)
 │   │   └── README.md         #     Dialect rules and hypc workflow
-│   └── test/                 #   Foundry test suite (216 tests)
-│       ├── stQRL-v2.t.sol    #     68 core token tests
-│       ├── DepositPool-v2.t.sol  # 93 deposit/withdrawal tests
-│       ├── ValidatorManager.t.sol # 55 validator lifecycle tests
+│   └── test/                 #   Foundry test suite (226 tests)
+│       ├── stQRL-v2.t.sol    #     Core token tests
+│       ├── DepositPool-v2.t.sol  # Deposit/withdrawal tests
+│       ├── ValidatorManager.t.sol # Validator lifecycle tests
 │       └── hyperion/         #     Generated .t.hyp mirrors (reference only)
 ├── build/hyperion/           # hypc output (ABI, bin, manifest.json) - gitignored
 ├── frontend/                 # React staking app (quantapool.com / quantapool.io)
@@ -208,7 +208,7 @@ GitHub Actions runs `forge fmt --check`, `forge build --sizes`, and `forge test 
 
 ## Test Coverage
 
-- **216 tests passing** (68 stQRL-v2 + 93 DepositPool-v2 + 55 ValidatorManager)
+- **226 tests passing** across stQRL-v2, DepositPool-v2, and ValidatorManager
 - Share/QRL conversion math, multi-user rewards, slashing scenarios
 - Withdrawal flow with 128-block delay enforcement
 - Validator lifecycle (registration, activation, exit, slashing)
@@ -218,7 +218,7 @@ GitHub Actions runs `forge fmt --check`, `forge build --sizes`, and `forge test 
 
 ## Status
 
-**v2.2 live on QRL v2 testnet** with two funded validators, full integration test coverage, and the staking frontend serving at [quantapool.com](https://quantapool.com) and [quantapool.io](https://quantapool.io). A v2.3 redeploy is pending to ship the off-contract stake accounting fix (PR #20); until then the real `fundValidator()` beacon path stays off-limits on the live pool. Addresses and operational detail: `docs/V2-DEPLOYMENT-STATUS.md`.
+**v2.3 is deployed and paused on QRL v2 testnet** with the reviewed accounting and launch-safety fixes. The legacy v2.2 pool is also paused while its historical validator stake is migration-bound. The staking frontend serves at [quantapool.com](https://quantapool.com) and [quantapool.io](https://quantapool.io). Keep v2.3 paused until beacon exit and reward settlement can be independently verified. Addresses and operational detail: `docs/V2-DEPLOYMENT-STATUS.md`.
 
 ### Roadmap
 
@@ -228,7 +228,8 @@ GitHub Actions runs `forge fmt --check`, `forge build --sizes`, and `forge test 
 - [x] Key management tooling
 - [x] Deploy v2 contracts to QRL v2 testnet (v2.2, two validators funded)
 - [x] Staking frontend live at quantapool.com and quantapool.io
-- [ ] Redeploy as v2.3 with the off-contract stake accounting fix
+- [x] Redeploy paused v2.3 with off-contract stake accounting and security fixes
+- [ ] Complete legacy migration and independently verified settlement procedures
 - [ ] Integrate staking UI into [qrlwallet.com](https://qrlwallet.com)
 
 ## Security
