@@ -44,10 +44,7 @@ export const StatsPage = observer(() => {
                   : null
               }
             />
-            <Row
-              label="Total stQRL shares"
-              value={pool ? formatAmount(pool.totalShares) : null}
-            />
+            <Row label="Total stQRL shares" value={pool ? formatAmount(pool.totalShares) : null} />
             <Row
               label="Exchange rate"
               value={pool ? `1 stQRL = ${formatRate(pool.exchangeRate)} ${NATIVE_UNIT}` : null}
@@ -78,7 +75,7 @@ export const StatsPage = observer(() => {
           </CardContent>
         </Card>
 
-        <Card className="border-l-2 border-l-blue-accent">
+        <Card className="border-l-2 border-l-identity-accent">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Validators</CardTitle>
           </CardHeader>
@@ -103,7 +100,7 @@ export const StatsPage = observer(() => {
           </CardContent>
         </Card>
 
-        <Card className="border-l-2 border-l-blue-accent">
+        <Card className="border-l-2 border-l-identity-accent">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Rewards</CardTitle>
           </CardHeader>
@@ -143,7 +140,7 @@ export const StatsPage = observer(() => {
                     href={getExplorerAddressUrl(address)}
                     target="_blank"
                     rel="noreferrer"
-                    className="font-data text-xs text-blue-accent hover:underline"
+                    className="font-data text-xs text-identity-accent hover:underline"
                   >
                     {shortenAddress(address, 6)}
                   </a>

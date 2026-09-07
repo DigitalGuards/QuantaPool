@@ -12,7 +12,7 @@ const ACTIVITY_META: Record<
 > = {
   deposit: { label: "Staked", icon: ArrowDownToLine, color: "text-success" },
   request: { label: "Withdrawal requested", icon: Clock, color: "text-secondary" },
-  claim: { label: "Withdrawal claimed", icon: ArrowUpFromLine, color: "text-blue-accent" },
+  claim: { label: "Withdrawal claimed", icon: ArrowUpFromLine, color: "text-identity-accent" },
   cancel: { label: "Request cancelled", icon: Undo2, color: "text-muted-foreground" },
 };
 
@@ -35,7 +35,7 @@ export const ActivityCard = observer(() => {
             href={getExplorerAddressUrl(account.address)}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 text-xs text-blue-accent hover:underline"
+            className="inline-flex items-center gap-1 text-xs text-identity-accent hover:underline"
           >
             View on Zondscan <ExternalLink className="h-3 w-3" />
           </a>
@@ -82,7 +82,7 @@ export const ActivityCard = observer(() => {
                       href={getExplorerTxUrl(item.txHash)}
                       target="_blank"
                       rel="noreferrer"
-                      className="shrink-0 text-muted-foreground hover:text-blue-accent"
+                      className="shrink-0 text-muted-foreground hover:text-identity-accent"
                       aria-label="View transaction on explorer"
                     >
                       <ExternalLink className="h-4 w-4" />
@@ -95,8 +95,7 @@ export const ActivityCard = observer(() => {
         )}
         {poolStore.activity.length > MAX_ROWS && (
           <p className="pt-2 text-center text-xs text-muted-foreground">
-            Showing the latest {MAX_ROWS} of {poolStore.activity.length}. Full history on
-            Zondscan.
+            Showing the latest {MAX_ROWS} of {poolStore.activity.length}. Full history on Zondscan.
           </p>
         )}
       </CardContent>

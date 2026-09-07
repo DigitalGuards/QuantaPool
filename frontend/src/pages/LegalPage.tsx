@@ -15,13 +15,17 @@ function Section({
   return (
     <Card
       className={
-        accent === "secondary" ? "border-l-2 border-l-secondary" : "border-l-2 border-l-blue-accent"
+        accent === "secondary"
+          ? "border-l-2 border-l-secondary"
+          : "border-l-2 border-l-identity-accent"
       }
     >
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
           <Icon
-            className={accent === "secondary" ? "h-5 w-5 text-secondary" : "h-5 w-5 text-blue-accent"}
+            className={
+              accent === "secondary" ? "h-5 w-5 text-secondary" : "h-5 w-5 text-identity-accent"
+            }
           />
           {title}
         </CardTitle>
@@ -53,8 +57,8 @@ export function LegalPage() {
         </p>
         <p>
           stQRL is a valueless test token minted by an experimental testnet contract. It is not
-          offered to the public as a crypto-asset. QRL 2.0 has no mainnet yet, and QuantaPool is
-          not deployed on any mainnet. If a mainnet deployment happens in the future, it will be
+          offered to the public as a crypto-asset. QRL 2.0 has no mainnet yet, and QuantaPool is not
+          deployed on any mainnet. If a mainnet deployment happens in the future, it will be
           announced separately and will operate under its own terms, structure, and documentation.
         </p>
       </Section>
@@ -69,9 +73,9 @@ export function LegalPage() {
         <p>
           Because everything here is limited to valueless test assets, no crypto-asset services
           within the meaning of Regulation (EU) 2023/1114 (MiCA) are provided, and nothing on this
-          site is an offer, solicitation, or recommendation to buy, sell, or stake any
-          crypto-asset, nor investment, legal, or tax advice. Displayed exchange rates and rewards
-          describe testnet contract state, not returns on an investment.
+          site is an offer, solicitation, or recommendation to buy, sell, or stake any crypto-asset,
+          nor investment, legal, or tax advice. Displayed exchange rates and rewards describe
+          testnet contract state, not returns on an investment.
         </p>
       </Section>
 
@@ -79,9 +83,9 @@ export function LegalPage() {
         <p>
           This site and the underlying contracts are provided as-is and as-available, without
           warranties of any kind, in line with sections 15 and 16 of the GPL-3.0 license. This is
-          experimental software under active development; expect bugs, resets, and breaking
-          changes. To the maximum extent permitted by law, DigitalGuards accepts no liability for
-          any loss or damage arising from its use.
+          experimental software under active development; expect bugs, resets, and breaking changes.
+          To the maximum extent permitted by law, DigitalGuards accepts no liability for any loss or
+          damage arising from its use.
         </p>
       </Section>
 
@@ -93,7 +97,7 @@ export function LegalPage() {
             href="https://github.com/DigitalGuards/QuantaPool"
             target="_blank"
             rel="noreferrer"
-            className="text-blue-accent hover:underline"
+            className="text-identity-accent hover:underline"
           >
             github.com/DigitalGuards/QuantaPool
           </a>
@@ -103,18 +107,17 @@ export function LegalPage() {
 
       <Section icon={Building2} title="Provider">
         <p>
-          This site is operated by DigitalGuards, a sole proprietorship (eenmanszaak) registered
-          in the Netherlands, Chamber of Commerce (KvK) number 91987482. Contact:{" "}
-          <a href="mailto:info@digitalguards.nl" className="text-blue-accent hover:underline">
+          This site is operated by DigitalGuards, a sole proprietorship (eenmanszaak) registered in
+          the Netherlands, Chamber of Commerce (KvK) number 91987482. Contact:{" "}
+          <a href="mailto:info@digitalguards.nl" className="text-identity-accent hover:underline">
             info@digitalguards.nl
           </a>
-          . The full imprint and the legal documents for the MyQRLWallet products are published
-          at{" "}
+          . The full imprint and the legal documents for the MyQRLWallet products are published at{" "}
           <a
             href="https://qrlwallet.com/legal"
             target="_blank"
             rel="noreferrer"
-            className="text-blue-accent hover:underline"
+            className="text-identity-accent hover:underline"
           >
             qrlwallet.com/legal
           </a>
