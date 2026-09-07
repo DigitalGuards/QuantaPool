@@ -38,8 +38,8 @@ export const WalletPickerModal = observer(() => {
         <CardContent className="space-y-2">
           {wallets.length === 0 ? (
             <p className="rounded-md border border-border bg-muted/40 p-3 text-center text-sm text-muted-foreground">
-              No QRL wallets detected. Install the QRL Web3 Wallet extension, or use MyQRLWallet
-              on mobile or desktop.
+              No QRL wallets detected. Install the QRL Web3 Wallet extension, or use MyQRLWallet on
+              mobile or desktop.
             </p>
           ) : (
             wallets.map((w) => (
@@ -54,7 +54,7 @@ export const WalletPickerModal = observer(() => {
                   <span className="h-8 w-8 rounded-md bg-muted" />
                 )}
                 <span className="flex-1 font-medium">{w.name}</span>
-                <span className="font-data text-xs text-blue-accent">{w.rdns}</span>
+                <span className="font-data text-xs text-identity-accent">{w.rdns}</span>
               </button>
             ))
           )}

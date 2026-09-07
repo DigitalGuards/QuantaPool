@@ -97,23 +97,25 @@ export const WithdrawalsPage = observer(() => {
                   Available: {unlockedShares !== null ? formatAmount(unlockedShares) : "-"} stQRL
                 </span>
               </div>
-              {account && account.immatureShares > 0n && (() => {
-                const blocksLeft =
-                  poolStore.currentBlock > 0n && account.matureAtBlock > poolStore.currentBlock
-                    ? account.matureAtBlock - poolStore.currentBlock
-                    : null;
-                return (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    <span className="font-data">
-                      {formatAmount(account.immatureShares)} stQRL
-                    </span>{" "}
-                    still maturing
-                    {blocksLeft !== null
-                      ? `, available in ${blocksToTime(blocksLeft, BLOCK_TIME_SECONDS)}`
-                      : ""}
-                  </p>
-                );
-              })()}
+              {account &&
+                account.immatureShares > 0n &&
+                (() => {
+                  const blocksLeft =
+                    poolStore.currentBlock > 0n && account.matureAtBlock > poolStore.currentBlock
+                      ? account.matureAtBlock - poolStore.currentBlock
+                      : null;
+                  return (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      <span className="font-data">
+                        {formatAmount(account.immatureShares)} stQRL
+                      </span>{" "}
+                      still maturing
+                      {blocksLeft !== null
+                        ? `, available in ${blocksToTime(blocksLeft, BLOCK_TIME_SECONDS)}`
+                        : ""}
+                    </p>
+                  );
+                })()}
               <CardDescription>
                 Withdrawals unlock after {WITHDRAWAL_DELAY_BLOCKS} blocks (
                 {blocksToTime(WITHDRAWAL_DELAY_BLOCKS, BLOCK_TIME_SECONDS)}).
@@ -168,7 +170,7 @@ export const WithdrawalsPage = observer(() => {
 
         {/* Claim */}
         <TabsContent value="claim">
-          <Card className="border-l-2 border-l-blue-accent">
+          <Card className="border-l-2 border-l-identity-accent">
             <CardHeader className="pb-4">
               <CardTitle className="text-xl">Claim</CardTitle>
               <CardDescription>
@@ -189,8 +191,8 @@ export const WithdrawalsPage = observer(() => {
                     >
                       <div>
                         <p className="font-data font-medium">
-                          {formatAmount(request.shares)} stQRL →{" "}
-                          {formatAmount(request.qrlPayout)} {NATIVE_UNIT}{" "}
+                          {formatAmount(request.shares)} stQRL → {formatAmount(request.qrlPayout)}{" "}
+                          {NATIVE_UNIT}{" "}
                           <span className="font-sans text-xs text-muted-foreground">estimate</span>
                         </p>
                         <p className="text-xs text-muted-foreground">

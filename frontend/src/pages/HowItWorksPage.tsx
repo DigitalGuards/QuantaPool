@@ -28,13 +28,17 @@ function Section({
   return (
     <Card
       className={
-        accent === "secondary" ? "border-l-2 border-l-secondary" : "border-l-2 border-l-blue-accent"
+        accent === "secondary"
+          ? "border-l-2 border-l-secondary"
+          : "border-l-2 border-l-identity-accent"
       }
     >
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
           <Icon
-            className={accent === "secondary" ? "h-5 w-5 text-secondary" : "h-5 w-5 text-blue-accent"}
+            className={
+              accent === "secondary" ? "h-5 w-5 text-secondary" : "h-5 w-5 text-identity-accent"
+            }
           />
           {title}
         </CardTitle>
@@ -78,8 +82,8 @@ export function HowItWorksPage() {
         <p>
           Running your own QRL validator requires 40,000 Quanta and a server that stays online
           around the clock. QuantaPool pools deposits from many stakers, runs the validators for
-          you, and shares the rewards, so you can stake any amount above the minimum and stay
-          liquid the whole time.
+          you, and shares the rewards, so you can stake any amount above the minimum and stay liquid
+          the whole time.
         </p>
       </Section>
 
@@ -99,16 +103,16 @@ export function HowItWorksPage() {
 
       <Section icon={TrendingUp} title="Step 2: Rewards grow the exchange rate" accent="blue">
         <p>
-          Validators earn rewards for proposing and attesting blocks. Those rewards flow back to
-          the pool and raise the <strong>stQRL → QRL exchange rate</strong>. Example: you stake
-          1,000 Quanta at a rate of 1.00 and receive 1,000 stQRL. A year later the rate is 1.05,
-          and your same 1,000 stQRL is now worth 1,050 Quanta.
+          Validators earn rewards for proposing and attesting blocks. Those rewards flow back to the
+          pool and raise the <strong>stQRL → QRL exchange rate</strong>. Example: you stake 1,000
+          Quanta at a rate of 1.00 and receive 1,000 stQRL. A year later the rate is 1.05, and your
+          same 1,000 stQRL is now worth 1,050 Quanta.
         </p>
         <p>
           Reward detection is <strong>trustless</strong>: the contract reads its own balance
-          increases on-chain instead of relying on a price oracle or an operator's word. Anyone
-          can trigger a reward sync. The protocol currently takes <strong>no fee</strong>: 100%
-          of rewards go to stakers.
+          increases on-chain instead of relying on a price oracle or an operator's word. Anyone can
+          trigger a reward sync. The protocol currently takes <strong>no fee</strong>: 100% of
+          rewards go to stakers.
         </p>
       </Section>
 
@@ -149,8 +153,11 @@ export function HowItWorksPage() {
           </li>
         </ul>
         <p>
-          You can audit all three at any time on the <Link to="/stats" className="text-blue-accent hover:underline">Stats page</Link> or
-          directly on the block explorer.
+          You can audit all three at any time on the{" "}
+          <Link to="/stats" className="text-identity-accent hover:underline">
+            Stats page
+          </Link>{" "}
+          or directly on the block explorer.
         </p>
       </Section>
 
@@ -174,8 +181,8 @@ export function HowItWorksPage() {
           </li>
         </ul>
         <p>
-          Like all DeFi, smart-contract risk is never zero. Never stake more than you can afford
-          to lock up.
+          Like all DeFi, smart-contract risk is never zero. Never stake more than you can afford to
+          lock up.
         </p>
       </Section>
 
@@ -186,13 +193,13 @@ export function HowItWorksPage() {
             href="https://qrlwallet.com"
             target="_blank"
             rel="noreferrer"
-            className="text-blue-accent hover:underline"
+            className="text-identity-accent hover:underline"
           >
             MyQRLWallet
           </a>
           . Today you connect with the QRL Wallet browser extension; staking directly from the
-          MyQRLWallet mobile app via the wallet-connect bridge is on the roadmap, so your stQRL
-          will show up right next to your QRL.
+          MyQRLWallet mobile app via the wallet-connect bridge is on the roadmap, so your stQRL will
+          show up right next to your QRL.
         </p>
       </Section>
 

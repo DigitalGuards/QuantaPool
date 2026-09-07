@@ -128,9 +128,7 @@ export const StakePage = observer(() => {
               disabled={poolStore.tx.state === "pending"}
             />
 
-            {validationError && (
-              <p className="text-sm text-destructive">{validationError}</p>
-            )}
+            {validationError && <p className="text-sm text-destructive">{validationError}</p>}
 
             <div className="space-y-1.5 rounded-md border border-border/60 bg-muted/20 p-3 text-sm">
               <div className="flex justify-between">
@@ -164,7 +162,12 @@ export const StakePage = observer(() => {
             )}
 
             {account ? (
-              <Button className="w-full" size="lg" disabled={!canStake} onClick={() => void onStake()}>
+              <Button
+                className="w-full"
+                size="lg"
+                disabled={!canStake}
+                onClick={() => void onStake()}
+              >
                 <Zap className="h-4 w-4" />
                 {poolStore.tx.state === "pending" ? "Waiting for confirmation…" : "Stake QRL"}
               </Button>
@@ -183,7 +186,7 @@ export const StakePage = observer(() => {
 
         {/* Position */}
         {account && (
-          <Card className="border-l-2 border-l-blue-accent">
+          <Card className="border-l-2 border-l-identity-accent">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Your position</CardTitle>
             </CardHeader>
@@ -209,7 +212,10 @@ export const StakePage = observer(() => {
               {account.lockedShares > 0n && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Locked in withdrawals</span>
-                  <Link to="/withdrawals" className="font-data text-blue-accent hover:underline">
+                  <Link
+                    to="/withdrawals"
+                    className="font-data text-identity-accent hover:underline"
+                  >
                     {formatAmount(account.lockedShares)} stQRL
                   </Link>
                 </div>
@@ -229,7 +235,7 @@ export const StakePage = observer(() => {
       <section className="mx-auto max-w-3xl pb-8">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-semibold">FAQ</h2>
-          <Link to="/how-it-works" className="text-sm text-blue-accent hover:underline">
+          <Link to="/how-it-works" className="text-sm text-identity-accent hover:underline">
             Read the full guide →
           </Link>
         </div>

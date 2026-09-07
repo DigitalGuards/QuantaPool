@@ -17,39 +17,29 @@ export const Header = observer(function Header() {
 
   return (
     <header className="sticky top-0 z-20 border-b border-border/60 bg-background/80 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-4 px-4">
-        <div className="flex items-center gap-6">
+      <div className="mx-auto flex min-h-18 max-w-5xl flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 py-3 sm:flex-nowrap sm:py-0">
+        <div className="flex items-center gap-8 sm:self-stretch">
           <Link to="/" aria-label="QuantaPool home">
             <Logo />
           </Link>
-          <nav className="hidden items-center gap-1 md:flex">
+          <nav aria-label="Main navigation" className="hidden items-stretch gap-6 lg:flex">
             {navItems.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  cn(
-                    "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:text-foreground",
-                  )
-                }
-              >
+              <NavLink key={item.to} to={item.to} end className="header-nav-link">
                 {item.label}
               </NavLink>
             ))}
           </nav>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-accent/30 bg-blue-accent/10 px-2.5 py-0.5 text-xs font-medium text-blue-accent">
+        <div className="flex w-full items-center justify-end gap-3 sm:w-auto">
+          <span
+            className="inline-flex items-center gap-2 text-xs font-medium text-muted-foreground"
+            title={poolStore.rpcError ? "Network unavailable" : poolStore.network.name}
+          >
             <span
               aria-hidden
               className={cn(
-                "glow-dot h-1.5 w-1.5 rounded-full",
-                poolStore.rpcError
-                  ? "bg-destructive text-destructive"
-                  : "bg-success text-success",
+                "h-1.5 w-1.5 rounded-full",
+                poolStore.rpcError ? "bg-destructive text-destructive" : "bg-success text-success",
               )}
             />
             {poolStore.network.shortName}
@@ -58,18 +48,12 @@ export const Header = observer(function Header() {
         </div>
       </div>
       {/* Mobile nav */}
-      <nav className="flex items-center justify-around border-t border-border/60 py-2 md:hidden">
+      <nav
+        aria-label="Mobile navigation"
+        className="flex items-center justify-around border-t border-border/60 lg:hidden"
+      >
         {navItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            className={({ isActive }) =>
-              cn(
-                "px-3 py-1 text-sm font-medium",
-                isActive ? "text-primary" : "text-muted-foreground hover:text-foreground",
-              )
-            }
-          >
+          <NavLink key={item.to} to={item.to} end className="header-nav-link">
             {item.label}
           </NavLink>
         ))}
