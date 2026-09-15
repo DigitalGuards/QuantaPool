@@ -1,8 +1,35 @@
-> **DEPRECATED (v1 doc).** This guide describes the v1 contracts (RewardsOracle,
-> OperatorRegistry, stub fundValidator). Everything listed under "What's Missing"
-> shipped in v2: real beacon deposits via fundValidator(), trustless reward sync,
-> and the ValidatorManager lifecycle. See docs/V2-DEPLOYMENT-STATUS.md and
-> docs/architecture.md for the current system. Kept for historical context only.
+> **Historical v1/v2 guide.** The old testnet experiments are abandoned as
+> development targets. See [testnet retirement](../../docs/TESTNET-RETIREMENT.md)
+> and the [native-QRL architecture](../../docs/architecture.md). All workflow,
+> token accounting and proposed upstream changes below are historical context.
+
+## Historical v2.4 security gates
+
+The retired Hyperion token contracts and QIP-55 lifecycle tooling are documented
+in `docs/legacy/V2-ARCHITECTURE.md` and `docs/V2-DEPLOYMENT-STATUS.md`. The former
+terminal-receipt proposal in `docs/TERMINAL-WITHDRAWAL-RECEIPTS.md` is outside the
+native redesign, which works against unmodified QRL implementations.
+
+Before enabling a fee-bearing validator deployment:
+
+1. Pin reviewed source commits and source-built images for Qrysm, go-qrl, and
+   qrl-package. A floating branch or `latest` image is outside the reviewed
+   release boundary.
+2. Verify every validator's suggested fee recipient is the Q128 DepositPool
+   address when priority fees are intended to enter pooled reward accounting.
+3. Set a full QIP-55 `protocolFeeRecipient` in the guarded Hyperion deployment
+   config. This is the immutable recipient of the 10% performance-fee shares,
+   which is separate from Qrysm's block priority-fee recipient.
+4. Keep contracts paused until constructor arguments, runtime bytecode, owner,
+   reciprocal links, deposit target, protocol fee recipient, and Qrysm fee
+   recipient are read back from the target chain.
+5. Keep cohort safety locks enabled until the terminal receipt proposal is
+   implemented and validated across both clients.
+6. After the last terminal settlement, keep accounting-changing operations
+   locked until a newer finalized Qrysm checkpoint and its canonical execution
+   payload pass the lifecycle tool's exact `finalizeProtocolFeeEpoch(...)`
+   postcondition checks. The finalized balance is a floor; any positive
+   receipt-time drift is synchronized as fee-exempt and verified after mining.
 
 # Validator Integration Guide
 

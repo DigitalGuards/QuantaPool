@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma hyperion >=0.0;
+
+/// @dev TEST ONLY. Mutable synthetic checkpoint authority for component tests.
+///      No production deployment may use this contract as a trust anchor.
+contract FixtureFinality {
+    uint64 public constant genesisTime = 1_000;
+    uint64 public constant secondsPerSlot = 3;
+    uint64 public constant slotsPerEpoch = 8;
+    uint64 public constant maxAgeSlots = 64;
+    uint64 public constant recoveryWindowSlots = 4096;
+    uint64 private slot;
+    bytes32 private root;
+    bytes32 public finalizedHeaderRoot;
+    uint8 public status;
+    bytes32 public syncDomain;
+    constructor(uint64 initialSlot, bytes32 stateRoot, bytes32 headerRoot) {
+        slot = initialSlot; root = stateRoot; finalizedHeaderRoot = headerRoot;
+    }
+    function set(uint64 newSlot, bytes32 stateRoot, bytes32 headerRoot) external {
+        slot = newSlot; root = stateRoot; finalizedHeaderRoot = headerRoot;
+    }
+    function expire() external { status = 2; }
+    function setSyncDomain(bytes32 value) external { syncDomain = value; }
+    function economicCheckpoint() external view returns (uint64, bytes32) {
+        require(status != 2 && block.timestamp >= genesisTime &&
+            (block.timestamp - genesisTime) / secondsPerSlot >= slot &&
+            (block.timestamp - genesisTime) / secondsPerSlot - slot <= maxAgeSlots, "unavailable checkpoint");
+        return (slot, root);
+    }
+}

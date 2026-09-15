@@ -1,33 +1,32 @@
 {
   "name": "quantapool",
   "version": "0.1.0",
-  "description": "Post-quantum liquid staking protocol for QRL",
+  "description": "Native QRL non-custodial pooled staking",
   "main": "index.js",
   "scripts": {
-    "compile": "node scripts/compile.js",
-    "compile:solidity": "node scripts/compile.js",
-    "sync:hyperion": "node scripts/sync-hyperion.js",
+    "compile": "node scripts/compile-hyperion.js",
     "compile:hyperion": "node scripts/compile-hyperion.js",
-    "deploy:test": "node scripts/deploy-test-token.js",
-    "deploy": "node scripts/deploy.js",
-    "deploy:hyperion": "node scripts/deploy-hyperion.js",
-    "test": "node scripts/test.js"
+    "test": "node scripts/test.js",
+    "test:model": "node --test native/accounting-model.test.js",
+    "test:tooling": "node --test scripts/*.test.js",
+    "test:vm": "node native/testing/run.js",
+    "test:proofs": "node native/proofs/run.js",
+    "test:finality": "node native/finality/run.js"
   },
   "keywords": [
     "qrl",
-    "liquid-staking",
-    "post-quantum",
-    "defi"
+    "pooled-staking",
+    "post-quantum"
   ],
   "author": "DigitalGuards",
   "license": "GPL-3.0",
   "dependencies": {
-    "@theqrl/wallet.js": "^3.0.1",
-    "@theqrl/web3": "^0.4.4",
+    "@noble/hashes": "^2.3.0",
+    "@theqrl/mldsa87": "^2.1.4",
+    "@theqrl/qrl-cryptography": "^0.3.1",
+    "@theqrl/wallet.js": "^6.2.4",
+    "@theqrl/web3": "^1.0.3",
     "dotenv": "^17.4.2"
-  },
-  "devDependencies": {
-    "solc": "^0.8.34"
   },
   "overrides": {
     "tmp": "^0.2.7",

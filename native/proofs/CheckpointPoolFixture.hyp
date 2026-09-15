@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma hyperion >=0.0;
+
+/// @dev TEST ONLY: measures captured history proofs independently of the ledger.
+contract CheckpointPoolFixture {
+    address public immutable portfolio;
+    uint8 public stage;
+    uint256 public settlements;
+    constructor(address portfolioAddress) { portfolio = portfolioAddress; }
+    function settleCheckpoint() external { settlements++; stage = 1; }
+    function activateDeposits(uint256 limit) external returns (uint256) {
+        require(stage == 1 && limit == 32, "test stage"); stage = 2; return 0;
+    }
+    function processQueue(uint256 limit) external returns (uint256) {
+        require(stage == 2 && limit == 32, "test stage"); stage = 0; return 0;
+    }
+}

@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-09-15",
+  "purpose": "Pinned native QRL source qualification. Execution tests use unmodified go-qrl QRVM.",
+  "repositories": {
+    "go-qrl": {
+      "repository": "https://github.com/cyyber/go-qrl.git",
+      "branch": "main",
+      "commit": "9b404c38a63bfebe07cfd07b5f5d144d1c2cf9b9",
+      "requiredCommits": [
+        "f313724147f8fd39f63e0e75c43de4ee6153a615",
+        "81cad58b9599367c336e4dcb5bb331a632d31d97",
+        "a09cf0d9f46991ce3fa6450c01d9cb02700f1db0",
+        "fa2cc537b32caebf1969dbb384e17d8d7e096116"
+      ],
+      "goTests": {
+        "tags": [],
+        "packages": [
+          "./common",
+          "./accounts/abi",
+          "./core/vm"
+        ],
+        "pattern": "Test(IsAddress|MustParseAddress|MustParseMixedcaseAddress|Address|Mixedcase|PrecompiledDepositroot|DepositrootInputLayout|PrecompiledMLDSA87|ABI|Abi|Pack|Unpack|Type|Event|Method|DefaultFunctionParsing)"
+      }
+    },
+    "qrysm": {
+      "repository": "https://github.com/cyyber/qrysm.git",
+      "branch": "main",
+      "commit": "3b816311ac3e86b7a7af40a062ae290318554f7a",
+      "requiredCommits": [
+        "4f84e81b88b3dab985ff3b1fb1a89ace15e5a82d",
+        "820954d3a2877d4e04e34f23276b478a5e4f2266",
+        "a0c6ec51ee557fb2365f029013665dfaee8b3c06",
+        "734600fc68829cf147020705250683c10657f862"
+      ],
+      "goTests": {
+        "tags": [
+          "develop"
+        ],
+        "packages": [
+          "./config/params",
+          "./contracts/deposit",
+          "./beacon-chain/core/blocks"
+        ],
+        "pattern": "Test(Validate|UnmarshalConfig|Register_MinimumDepositBoundary|DepositInput|VerifyDepositSignature|ProcessDeposit|ProcessDeposits|ProcessVoluntaryExits|VerifyExitAndSignature|ProcessWithdrawals|ProcessBlindWithdrawals|Config_Mainnet|Config_Default)"
+      }
+    },
+    "hyperion": {
+      "repository": "https://github.com/cyyber/hyperion.git",
+      "branch": "main",
+      "commit": "cee9d335984c139c1dc0b0e84ec13290031ea4b1",
+      "requiredCommits": [
+        "3232b592ae89d68dd3301c4cb842a43445555f3c",
+        "27b4107544b34cabd1e5d7d0c30b27b3f0345486",
+        "2b9a0f1d5352cf7a4d64718fb04b4b6640041ba1"
+      ]
+    },
+    "qrvmone": {
+      "repository": "https://github.com/cyyber/qrvmone.git",
+      "branch": "main",
+      "commit": "bca84a21a046bc8506ee4b7a89b31ac9e621904f",
+      "requiredCommits": [],
+      "submodules": {
+        "qrvmc": "b70fb65874ce9a50a55475f800dcb33e39a5a261"
+      }
+    }
+  },
+  "reviewedProtocol": {
+    "addressBytes": 64,
+    "vmWordBytes": 64,
+    "hashBytes": 32,
+    "validatorStakeQrl": "40000",
+    "minimumBeaconDepositQrl": "2000",
+    "randaoCommitmentBytes": 32,
+    "publicKeyBytes": 2592,
+    "signatureBytes": 4627,
+    "slotsPerEpoch": 128,
+    "secondsPerSlot": 60,
+    "minimumActiveEpochsBeforeVoluntaryExit": 16,
+    "syncCommitteeSize": 128,
+    "epochsPerSyncCommitteePeriod": 8
+  }
+}

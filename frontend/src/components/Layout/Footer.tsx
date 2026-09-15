@@ -7,8 +7,8 @@ export function Footer() {
   return (
     <footer className="mt-auto border-t border-border/60">
       <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-3 px-4 py-6 text-xs text-muted-foreground sm:flex-row">
-        <span>QuantaPool: post-quantum liquid staking for QRL</span>
-        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+        <span>QuantaPool: native QRL pooled staking</span>
+        <div className="flex flex-wrap justify-center gap-x-5 gap-y-3">
           <a
             href="https://qrlwallet.com"
             target="_blank"
@@ -33,14 +33,16 @@ export function Footer() {
           >
             QuantaSwap
           </a>
-          <a
-            href={poolStore.network.explorer}
-            target="_blank"
-            rel="noreferrer"
-            className="hover:text-foreground"
-          >
-            Explorer
-          </a>
+          {poolStore.network.explorer && (
+            <a
+              href={poolStore.network.explorer}
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-foreground"
+            >
+              Explorer
+            </a>
+          )}
           <a
             href="https://github.com/DigitalGuards/QuantaPool"
             target="_blank"

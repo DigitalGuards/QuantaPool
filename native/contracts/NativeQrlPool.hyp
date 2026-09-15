@@ -1,0 +1,141 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma hyperion >=0.0;
+
+import "./NativeLedger.hyp";
+import "./NativePortfolioVerifier.hyp";
+
+interface INativeFundingGate {
+    function pool() external view returns (address);
+    function portfolio() external view returns (address);
+    function finality() external view returns (address);
+    function inFlightAt(uint64 executionBlock, uint64 consumedDepositIndex) external view returns (uint256);
+}
+
+/// @notice Native QRL pooled positions backed by complete finalized proofs.
+/// @dev The immutable gate can release exactly one protocol top-up only after
+///      proving canonical bootstrap ownership and publishing its signed exit.
+contract NativeQrlPool is NativeLedger {
+    uint256 public constant VALIDATOR_SIZE = 40_000 quanta;
+    uint256 public constant BOOTSTRAP_AMOUNT = 2_000 quanta;
+    uint256 public constant TOP_UP_AMOUNT = 38_000 quanta;
+    uint256 public constant LIQUIDITY_BUFFER_BPS = 500;
+
+    struct Snapshot {
+        uint64 slot;
+        uint64 executionBlock;
+        uint64 depositIndex;
+        uint256 cash;
+        uint256 validatorBalance;
+        uint256 withdrawals;
+        bytes32 stateRoot;
+        bytes32 headerRoot;
+        uint64 registeredCount;
+        uint256 deposits;
+        uint256 admissions;
+    }
+
+    INativeEconomicFinality public immutable finality;
+    NativePortfolioVerifier public immutable portfolio;
+    INativeFundingGate public immutable fundingGate;
+    uint64 public immutable genesisTime;
+    uint64 public immutable secondsPerSlot;
+    uint64 public immutable maxAgeSlots;
+    uint64 public immutable initialPoolCheckpointSlot;
+    uint64 public immutable poolRecoveryWindowSlots;
+    uint64 public appliedSlot;
+    bytes32 public appliedStateRoot;
+    uint256 public lastValidatorBalance;
+    uint256 public lastWithdrawals;
+    uint256 public lastDeposits;
+    uint256 public lastAdmissions;
+
+    constructor(address finalityAddress, address portfolioAddress, address gateAddress,
+        address immutableFeeRecipient, uint256 minimumDeposit)
+        NativeLedger(immutableFeeRecipient, minimumDeposit)
+    {
+        require(finalityAddress.code.length != 0 && portfolioAddress.code.length != 0 &&
+            gateAddress.code.length != 0, "configuration");
+        finality = INativeEconomicFinality(finalityAddress);
+        portfolio = NativePortfolioVerifier(portfolioAddress);
+        fundingGate = INativeFundingGate(gateAddress);
+        require(portfolio.pool() == address(this) && address(portfolio.finality()) == finalityAddress &&
+            fundingGate.pool() == address(this) && fundingGate.portfolio() == portfolioAddress &&
+            fundingGate.finality() == finalityAddress, "binding");
+        genesisTime = finality.genesisTime();
+        secondsPerSlot = finality.secondsPerSlot();
+        maxAgeSlots = finality.maxAgeSlots();
+        (uint64 initialSlot, ) = finality.economicCheckpoint();
+        initialPoolCheckpointSlot = initialSlot;
+        poolRecoveryWindowSlots = finality.recoveryWindowSlots();
+        require(poolRecoveryWindowSlots > maxAgeSlots, "recovery window");
+    }
+
+    /// @dev Sole release path: the immutable gate authenticates the bootstrap,
+    ///      validates and stores its public exit, and forwards this exact amount
+    ///      to the canonical native deposit contract in the same transaction.
+    function adoptAndReleaseBootstrap(address bootstrapper) external guarded {
+        require(msg.sender == address(fundingGate), "only immutable gate");
+        _normalOpen();
+        require(_stagingCheckpointFresh(lastCheckpointId) && queueHead == _requests.length, "funding unavailable");
+        (uint64 slot, bytes32 root) = finality.economicCheckpoint();
+        require(slot == appliedSlot && root == appliedStateRoot && portfolio.snapshotId() == lastCheckpointId,
+            "settle current root");
+        require(freeCash() >= TOP_UP_AMOUNT + _mulDiv(riskAssets + BOOTSTRAP_AMOUNT,
+            LIQUIDITY_BUFFER_BPS, 10000, true), "liquidity buffer");
+        _admitCapital(bootstrapper, BOOTSTRAP_AMOUNT);
+        (bool ok, ) = address(fundingGate).call{value: TOP_UP_AMOUNT}("");
+        require(ok, "native funding failed");
+    }
+
+    function _snapshot() private view returns (Snapshot memory value) {
+        (bool ok, bytes memory data) = address(portfolio).staticcall(abi.encodeWithSignature("latestSnapshot()"));
+        require(ok, "snapshot unavailable");
+        value = abi.decode(data, (Snapshot));
+    }
+
+    function _consumeCheckpoint() internal override returns (Checkpoint memory point) {
+        finality.economicCheckpoint();
+        Snapshot memory value = _snapshot();
+        require(_slotFresh(value.slot) && value.registeredCount == portfolio.registryCount(), "portfolio stale");
+        uint256 positive = value.validatorBalance + value.withdrawals - lastWithdrawals;
+        uint256 negative = lastValidatorBalance + value.deposits - lastDeposits + value.admissions - lastAdmissions;
+        require(positive <= uint256(type(int256).max) && negative <= uint256(type(int256).max), "economic bound");
+        point = Checkpoint(portfolio.snapshotId(), value.executionBlock,
+            value.cash + value.validatorBalance + fundingGate.inFlightAt(value.executionBlock, value.depositIndex),
+            int256(positive) - int256(negative));
+        lastValidatorBalance = value.validatorBalance;
+        lastWithdrawals = value.withdrawals;
+        lastDeposits = value.deposits;
+        lastAdmissions = value.admissions;
+        appliedSlot = value.slot;
+        appliedStateRoot = value.stateRoot;
+    }
+
+    function _allValidatorsTerminal() internal view override returns (bool) {
+        Snapshot memory value = _snapshot();
+        return value.slot == appliedSlot && value.stateRoot == appliedStateRoot &&
+            value.registeredCount == portfolio.registryCount() &&
+            portfolio.terminalValidatorCount() == value.registeredCount && value.validatorBalance == 0 &&
+            fundingGate.inFlightAt(value.executionBlock, value.depositIndex) == 0;
+    }
+
+    /// @notice Only a complete checkpoint applied to this pool renews its deadline.
+    function poolRecoveryDeadlineSlot() public view returns (uint256) {
+        return uint256(lastCheckpointId == 0 ? initialPoolCheckpointSlot : appliedSlot) + poolRecoveryWindowSlots;
+    }
+    /// @return 0 Normal requests permitted, 1 finality catch-up, 2 irreversible recovery eligibility.
+    function poolStatus() public view returns (uint8) {
+        if (recovering) return 2;
+        if (block.timestamp >= genesisTime && (block.timestamp - genesisTime) / secondsPerSlot > poolRecoveryDeadlineSlot()) return 2;
+        return finality.status();
+    }
+    function _authorityStatus() internal view override returns (uint8) { return poolStatus(); }
+    function _stagingCheckpointFresh(uint64 id) internal view override returns (bool) {
+        return id != 0 && id == lastCheckpointId && _slotFresh(appliedSlot) && poolStatus() == 0;
+    }
+    function _slotFresh(uint64 slot) private view returns (bool) {
+        if (block.timestamp < genesisTime) return false;
+        uint256 nowSlot = (block.timestamp - genesisTime) / secondsPerSlot;
+        return slot <= nowSlot && nowSlot - slot <= maxAgeSlots;
+    }
+}

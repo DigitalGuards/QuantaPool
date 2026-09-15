@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma hyperion >=0.0;
+
+/// @dev TEST ONLY. Supplies an explicitly synthetic full-registry gate input.
+///      Real portfolio capacity is tested separately through 64 authenticated admissions.
+contract GateCapacityFixture {
+    address public immutable finality;
+    address public immutable pool;
+    address public immutable gate;
+    uint64 public constant registryCount = 64;
+    constructor(address verifier, address predictedPool, address predictedGate) {
+        finality = verifier; pool = predictedPool; gate = predictedGate;
+    }
+}

@@ -89,18 +89,8 @@ variable "qrl_rpc_url" {
   type        = string
 }
 
-variable "stqrl_address" {
-  description = "stQRLv2 contract address"
-  type        = string
-}
-
-variable "deposit_pool_address" {
-  description = "DepositPoolV2 contract address"
-  type        = string
-}
-
-variable "validator_manager_address" {
-  description = "ValidatorManager contract address"
+variable "native_pool_address" {
+  description = "Native 64-byte QRL pool contract address"
   type        = string
 }
 
@@ -138,9 +128,8 @@ data "template_file" "cloud_init" {
           TELEGRAM_BOT_TOKEN=${var.telegram_bot_token}
           TELEGRAM_CHAT_ID=${var.telegram_chat_id}
           QRL_RPC_URL=${var.qrl_rpc_url}
-          STQRL_ADDRESS=${var.stqrl_address}
-          DEPOSIT_POOL_ADDRESS=${var.deposit_pool_address}
-          VALIDATOR_MANAGER_ADDRESS=${var.validator_manager_address}
+          NATIVE_POOL_ADDRESS=${var.native_pool_address}
+          QRL_CHAIN_ID=${var.qrl_chain_id}
 
       - path: /etc/ssh/sshd_config.d/hardening.conf
         permissions: '0644'
@@ -231,4 +220,9 @@ output "public_ip" {
 output "private_ip" {
   description = "Private IP address"
   value       = hcloud_server_network.monitoring.ip
+}
+
+variable "qrl_chain_id" {
+  description = "Expected native network chain ID"
+  type        = number
 }

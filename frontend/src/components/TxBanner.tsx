@@ -24,8 +24,12 @@ export const TxBanner = observer(() => {
       {tx.state === "pending" && (
         <Loader2 className="h-5 w-5 shrink-0 animate-spin text-identity-accent" />
       )}
-      {tx.state === "confirmed" && <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />}
-      {tx.state === "failed" && <XCircle className="h-5 w-5 shrink-0 text-destructive" />}
+      {tx.state === "confirmed" && (
+        <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
+      )}
+      {tx.state === "failed" && (
+        <XCircle className="h-5 w-5 shrink-0 text-destructive" />
+      )}
 
       <div className="min-w-0 flex-1 text-sm">
         <p className="font-medium">
@@ -35,10 +39,14 @@ export const TxBanner = observer(() => {
           {tx.state === "failed" && " failed"}
         </p>
         {tx.state === "pending" && !tx.txHash && (
-          <p className="text-muted-foreground">Confirm the transaction in your wallet.</p>
+          <p className="text-muted-foreground">
+            Confirm the transaction in your wallet.
+          </p>
         )}
-        {tx.error && <p className="truncate text-muted-foreground">{tx.error}</p>}
-        {tx.txHash && (
+        {tx.error && (
+          <p className="break-words text-muted-foreground">{tx.error}</p>
+        )}
+        {tx.txHash && poolStore.network.explorer && (
           <a
             href={getExplorerTxUrl(tx.txHash)}
             target="_blank"

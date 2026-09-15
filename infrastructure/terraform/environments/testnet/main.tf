@@ -24,11 +24,10 @@ module "quantapool" {
   enable_backup_node = true
   enable_monitoring  = false # Hetzner quota: 2 primary IPs. Reuse node #1 monitoring for now.
 
-  # Legacy v2.2 addresses remain monitored while historical stake is migration-bound.
-  stqrl_address             = "QA2f23388d1e3986416A36d2Ef113850D6900b69C"
-  deposit_pool_address      = "Q109d7C528a67b80eb638D4C85e7C4545ef9Bb9aC"
-  validator_manager_address = "QA5b6e85B7713670589e4eAf2F039380Ec2792c8C"
-  qrl_rpc_url               = "https://qrlwallet.com/api/qrl-rpc/testnet"
+  # Fresh native deployment configuration is required.
+  native_pool_address = var.native_pool_address
+  qrl_chain_id        = var.qrl_chain_id
+  qrl_rpc_url         = "https://qrlwallet.com/api/qrl-rpc/testnet"
 
   # Alerting (optional)
   discord_webhook_url = var.discord_webhook_url
@@ -102,4 +101,13 @@ output "ssh_commands" {
 output "ansible_inventory" {
   value     = module.quantapool.ansible_inventory
   sensitive = false
+}
+
+variable "native_pool_address" {
+  description = "Explicit native 64-byte pool address"
+  type        = string
+}
+
+variable "qrl_chain_id" {
+  type = number
 }

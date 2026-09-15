@@ -5,29 +5,29 @@ const CANONICAL_ORIGIN = "https://quantapool.com";
 
 const ROUTE_META: Record<string, { title: string; description: string }> = {
   "/": {
-    title: "QuantaPool | Liquid Staking on QRL 2.0",
+    title: "QuantaPool | Native QRL Pooled Staking",
     description:
-      "Stake QRL, receive stQRL, and earn validator rewards automatically. QuantaPool is liquid staking on QRL 2.0, the post-quantum blockchain, built by DigitalGuards.",
+      "Native QRL pooled staking with internal positions, deterministic rewards and user-triggered QRL claims.",
   },
   "/withdrawals": {
-    title: "Withdrawals | QuantaPool",
+    title: "Withdrawals and Rewards | QuantaPool",
     description:
-      "Request and claim QRL withdrawals from your stQRL position on QuantaPool, liquid staking on QRL 2.0, the post-quantum blockchain.",
+      "Request native QRL withdrawals, claim reserved cash and manage pending deposits.",
   },
   "/stats": {
     title: "Protocol Stats | QuantaPool",
     description:
-      "Live QuantaPool protocol statistics: total QRL staked, stQRL exchange rate, and validator status on QRL 2.0, the post-quantum blockchain.",
+      "Native pool assets, cash reserves, pending deposits and earned operator fees.",
   },
   "/how-it-works": {
     title: "How It Works | QuantaPool",
     description:
-      "How QuantaPool liquid staking works: deposit QRL, mint stQRL shares, earn validator rewards, and withdraw on QRL 2.0, the post-quantum blockchain.",
+      "Native validator funding, authenticated accounting, withdrawal queues, losses and recovery.",
   },
   "/legal": {
-    title: "Legal Notice | QuantaPool",
+    title: "Project Status and Legal Notice | QuantaPool",
     description:
-      "Legal notice for QuantaPool: testnet-only scope, no crypto-asset services, open-source license, and provider information.",
+      "Development status, protocol risks, trust assumptions and project information.",
   },
 };
 
@@ -40,6 +40,7 @@ export function RouteSeo() {
   const { pathname } = useLocation();
 
   useEffect(() => {
+    window.scrollTo(0, 0);
     const meta = ROUTE_META[pathname] ?? ROUTE_META["/"];
     const canonicalPath = pathname in ROUTE_META ? pathname : "/";
     const canonicalUrl =

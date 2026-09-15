@@ -113,23 +113,10 @@ variable "telegram_chat_id" {
   default     = ""
 }
 
-# Legacy v2.2 defaults retained for validator-stake monitoring during migration.
-variable "stqrl_address" {
-  description = "stQRLv2 contract address"
+# Fresh native deployment configuration is required.
+variable "native_pool_address" {
+  description = "Native 64-byte QRL pool contract address"
   type        = string
-  default     = "QA2f23388d1e3986416A36d2Ef113850D6900b69C"
-}
-
-variable "deposit_pool_address" {
-  description = "DepositPoolV2 contract address"
-  type        = string
-  default     = "Q109d7C528a67b80eb638D4C85e7C4545ef9Bb9aC"
-}
-
-variable "validator_manager_address" {
-  description = "ValidatorManager contract address"
-  type        = string
-  default     = "QA5b6e85B7713670589e4eAf2F039380Ec2792c8C"
 }
 
 variable "qrl_rpc_url" {
@@ -149,4 +136,9 @@ variable "allowed_grafana_ips" {
   description = "List of IP addresses/CIDRs allowed to access Grafana (e.g., ['1.2.3.4/32']). Empty list allows all."
   type        = list(string)
   default     = [] # Empty = allow all
+}
+
+variable "qrl_chain_id" {
+  description = "Expected native network chain ID"
+  type        = number
 }
