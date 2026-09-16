@@ -2,6 +2,8 @@
 
 Date: 2026-09-15. Scope: the native contract graph, accounting and proof tools, frontend transaction lifecycle, monitoring, dependencies and outgoing repository changes. This is a defensive source and regression review of the implementation candidate. It is not an independent external audit or public-launch approval.
 
+The subsequent [2026-09-16 integration review](MERGE-REVIEW.md) records two additional independent agent passes, a pending-refund discovery fix and added randomized native-VM accounting checks. Contract source remains unchanged by that follow-up.
+
 The publication branch integrates current `origin/dev` revision `50ec49d` with the native redesign. The existing identity/navigation updates and shared pairing UI version 0.2.1 are preserved. Legacy token contracts, token ABIs and executable deployment paths are retired as listed in [the retirement manifest](RETIRED-FILES.json). Historical prototypes and records remain explicitly separated from the active implementation.
 
 ## Resolved findings

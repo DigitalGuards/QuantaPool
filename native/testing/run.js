@@ -17,7 +17,11 @@ const compiler =
 fs.mkdirSync(output, { recursive: true });
 
 function run(command, args, options = {}) {
-  const result = spawnSync(command, args, { cwd: root, encoding: 'utf8', ...options });
+  const result = spawnSync(command, args, {
+    cwd: root,
+    encoding: 'utf8',
+    ...options,
+  });
   if (result.error) throw result.error;
   if (result.status !== 0)
     throw new Error(
@@ -69,7 +73,10 @@ const env = {
 };
 const binary = path.join(output, 'execution');
 run('go', ['test', '-mod=readonly', '-p', '2', '.'], { cwd: moduleDir, env });
-run('go', ['build', '-mod=readonly', '-p', '2', '-o', binary, '.'], { cwd: moduleDir, env });
+run('go', ['build', '-mod=readonly', '-p', '2', '-o', binary, '.'], {
+  cwd: moduleDir,
+  env,
+});
 const generated = run(process.execPath, [path.join(__dirname, 'make-ledger-plan.js'), output]);
 process.stdout.write(generated.stdout);
 const manifest = JSON.parse(fs.readFileSync(path.join(output, 'ledger-plans.json')));
@@ -110,4 +117,70 @@ fs.writeFileSync(
 );
 console.log(
   `PASS ${results.reduce((sum, item) => sum + item.steps, 0)} actual QRVM steps; economic inputs are synthetic fixtures`
+);
+
+// Keep randomized plans isolated while executing the same freshly compiled
+// ledger and source-pinned runner as the deterministic component suite.
+const fuzzStart = process.hrtime.bigint();
+const fuzzOutput = path.join(output, 'fuzz');
+fs.mkdirSync(fuzzOutput, { recursive: true });
+for (const suffix of ['abi', 'bin'])
+  fs.copyFileSync(
+    path.join(output, `LedgerFixture.${suffix}`),
+    path.join(fuzzOutput, `LedgerFixture.${suffix}`)
+  );
+const randomized = run(process.execPath, [
+  path.join(__dirname, 'make-randomized-plans.js'),
+  fuzzOutput,
+]);
+process.stdout.write(randomized.stdout);
+const fuzzManifest = JSON.parse(fs.readFileSync(path.join(fuzzOutput, 'randomized-plans.json')));
+const fuzzResults = [];
+for (const scenario of fuzzManifest.scenarios) {
+  const reportPath = path.join(fuzzOutput, `${scenario.name}-execution.json`);
+  const result = run(binary, [
+    '-plan',
+    path.join(fuzzOutput, scenario.plan),
+    '-report',
+    reportPath,
+  ]);
+  fs.writeFileSync(path.join(fuzzOutput, `${scenario.name}.log`), result.stdout + result.stderr);
+  const report = JSON.parse(fs.readFileSync(reportPath));
+  if (report.steps.length !== scenario.steps)
+    throw new Error(`Incomplete randomized QRVM execution report: ${scenario.name}`);
+  const item = {
+    ...scenario,
+    expectedReverts: report.steps.filter((step) => step.expectedRevert).length,
+    maxGasBeforeRefund: Math.max(...report.steps.map((step) => step.gasBeforeRefund || 0)),
+  };
+  fuzzResults.push(item);
+  console.log(
+    `PASS seeded ${item.name}: ${item.steps} QRVM steps, ${item.expectedReverts} expected reverts`
+  );
+}
+const digest = (file) => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+fs.writeFileSync(
+  path.join(fuzzOutput, 'randomized-results.json'),
+  JSON.stringify(
+    {
+      evidence: fuzzManifest.evidence,
+      compilerHash,
+      source: sourceLock['go-qrl'],
+      ledgerSourceSha256: digest(path.join(__dirname, '../contracts/NativeLedger.hyp')),
+      modelSha256: digest(path.join(__dirname, '../accounting-model.js')),
+      generatorSha256: digest(path.join(__dirname, 'make-randomized-plans.js')),
+      fixtureBytecodeSha256: digest(path.join(fuzzOutput, 'LedgerFixture.bin')),
+      runnerSha256: digest(binary),
+      runtimeBytes: runtime.length / 2,
+      elapsedSeconds: Number(process.hrtime.bigint() - fuzzStart) / 1e9,
+      randomActions: fuzzManifest.randomActions,
+      coverage: fuzzManifest.coverage,
+      results: fuzzResults,
+    },
+    null,
+    2
+  ) + '\n'
+);
+console.log(
+  `PASS ${fuzzResults.reduce((sum, item) => sum + item.steps, 0)} additional seeded QRVM steps; ${fuzzManifest.randomActions} randomized action selections`
 );
