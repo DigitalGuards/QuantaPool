@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: GPL-3.0
+// TEST ONLY. Exercises payment rollback and callback handling in the native ledger.
+pragma hyperion >=0.0;
+import "../contracts/NativeLedger.hyp";
+
+contract ClaimReceiverFixture {
+    NativeLedger public immutable ledger;
+    bool public rejectPayment;
+    bool public attemptCallback;
+    bool public callbackBlocked;
+    uint256 public received;
+
+    constructor(address target) { ledger = NativeLedger(payable(target)); }
+    function configure(bool reject, bool callback) external {
+        rejectPayment = reject;
+        attemptCallback = callback;
+    }
+    function deposit() external payable returns (uint256) { return ledger.deposit{value: msg.value}(); }
+    function requestAll() external returns (uint256) { return ledger.requestWithdrawal(type(uint256).max); }
+    function claim() external returns (uint256) { return ledger.claim(); }
+    receive() external payable {
+        require(!rejectPayment, "fixture rejects payment");
+        received += msg.value;
+        if (attemptCallback) {
+            (bool ok, ) = address(ledger).call(abi.encodeWithSignature("claim()"));
+            require(!ok, "callback unexpectedly succeeded");
+            callbackBlocked = true;
+        }
+    }
+}

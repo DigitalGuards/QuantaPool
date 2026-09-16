@@ -1,0 +1,19 @@
+{
+  "qualifiedAt": "2026-09-15",
+  "branch": "main",
+  "go-qrl": "9b404c38a63bfebe07cfd07b5f5d144d1c2cf9b9",
+  "qrysm": "3b816311ac3e86b7a7af40a062ae290318554f7a",
+  "hyperion": "cee9d335984c139c1dc0b0e84ec13290031ea4b1",
+  "qrl-genesis-generator": "97d65b671a7b86602e932b6e2ec1e0a9bd5ca22c",
+  "qrl-package": "04fd3133a7107229531da425dc750129bb691514",
+  "chainId": 3151916,
+  "genesisForkVersion": "0x31519160",
+  "secondsPerSlot": 3,
+  "slotsPerEpoch": 8,
+  "executionFollowDistance": 512,
+  "executionVotingEpochs": 64,
+  "validatorCount": 64,
+  "canonicalDepositRuntimeSha256": "73b5c62b351824e49a9681e99813d70ee3f1238372a79e0dd1afac5f88700fc1",
+  "minimumDepositQrl": 2000,
+  "goBuildToolchain": "go1.26.5"
+}

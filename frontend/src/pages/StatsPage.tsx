@@ -1,157 +1,140 @@
 import { observer } from "mobx-react-lite";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/UI/Card";
-import { Skeleton } from "@/components/UI/Skeleton";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/UI/Card";
 import { useStore } from "@/stores/store";
-import { getExplorerAddressUrl, NATIVE_UNIT, VALIDATOR_STAKE_QRL } from "@/config/networks";
-import { formatAmount, formatRate, formatUsd, shortenAddress } from "@/utils/format";
-
-function Row({ label, value }: { label: string; value: React.ReactNode | null }) {
-  return (
-    <div className="flex items-center justify-between text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-data font-medium">{value ?? <Skeleton className="h-4 w-20" />}</span>
-    </div>
-  );
-}
+import { formatAmount, shortenAddress } from "@/utils/format";
+import { getExplorerAddressUrl } from "@/config/networks";
 
 export const StatsPage = observer(() => {
   const { poolStore } = useStore();
-  const pool = poolStore.pool;
-  const { contracts } = poolStore.network;
-
-  const bufferProgress = pool
-    ? Math.min(100, Number((pool.buffered * 100n) / VALIDATOR_STAKE_QRL))
-    : 0;
-
+  const pool = poolStore.pool,
+    address = poolStore.network.contracts.nativePool;
+  const rows = [
+    [
+      pool?.recovering ? "Frozen pool checkpoint value" : "Pool position value",
+      pool?.riskAssets,
+    ],
+    ["Available pool cash", pool?.freeCash],
+    ["Reserved user claims", pool?.claimReserve],
+    ["Pending deposits", pool?.pendingTotal],
+    ["Earned operator fee reserve", pool?.feeReserve],
+    ...(pool?.recovering
+      ? [["Recovery cash paid", pool.recoveryPaid] as const]
+      : []),
+    ["Minimum deposit", pool?.minDeposit],
+  ] as const;
   return (
     <div className="page-enter mx-auto max-w-3xl space-y-4 py-6">
       <h1 className="text-2xl font-bold">Protocol stats</h1>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Card className="border-l-2 border-l-secondary sm:col-span-2">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Pool</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Row
-              label={`Total pooled ${NATIVE_UNIT}`}
-              value={
-                pool
-                  ? `${formatAmount(pool.totalPooled)} ${NATIVE_UNIT}${(() => {
-                      const usd = poolStore.usdValue(pool.totalPooled);
-                      return usd !== null ? ` (≈ ${formatUsd(usd)})` : "";
-                    })()}`
-                  : null
-              }
-            />
-            <Row label="Total stQRL shares" value={pool ? formatAmount(pool.totalShares) : null} />
-            <Row
-              label="Exchange rate"
-              value={pool ? `1 stQRL = ${formatRate(pool.exchangeRate)} ${NATIVE_UNIT}` : null}
-            />
-            <Row
-              label="Withdrawal reserve"
-              value={pool ? `${formatAmount(pool.reserveBalance)} ${NATIVE_UNIT}` : null}
-            />
-            <Row
-              label="Shares pending withdrawal"
-              value={pool ? formatAmount(pool.pendingWithdrawalShares) : null}
-            />
-            <Row
-              label="Deposits"
-              value={
-                pool ? (
-                  pool.paused ? (
-                    <span className="text-secondary">Paused</span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 text-success">
-                      <span aria-hidden className="glow-dot h-1.5 w-1.5 rounded-full bg-success" />
-                      Open
-                    </span>
-                  )
-                ) : null
-              }
-            />
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-2 border-l-identity-accent">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Validators</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Row label="Active" value={pool ? pool.activeValidators.toString() : null} />
-            <Row label="Pending" value={pool ? pool.pendingValidators.toString() : null} />
-            <Row label="Funded by pool" value={pool ? pool.validators.toString() : null} />
-            <div className="pt-2">
-              <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-                <span>Next validator (40,000 {NATIVE_UNIT})</span>
-                <span className="font-data">
-                  {pool ? `${formatAmount(pool.buffered, 18, 0)} ${NATIVE_UNIT} buffered` : ""}
-                </span>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-secondary transition-all"
-                  style={{ width: `${bufferProgress}%` }}
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-2 border-l-identity-accent">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Rewards</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Row
-              label="Total rewards"
-              value={pool ? `${formatAmount(pool.totalRewards)} ${NATIVE_UNIT}` : null}
-            />
-            <Row
-              label="Slashing losses"
-              value={pool ? `${formatAmount(pool.totalSlashing)} ${NATIVE_UNIT}` : null}
-            />
-            <Row
-              label="Net rewards"
-              value={pool ? `${formatAmount(pool.netRewards)} ${NATIVE_UNIT}` : null}
-            />
-            <Row label="Protocol fee" value="None" />
-          </CardContent>
-        </Card>
-
-        <Card className="sm:col-span-2">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Contracts ({poolStore.network.name})</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {(
-              [
-                ["DepositPool", contracts.depositPool],
-                ["stQRL token", contracts.stQRL],
-                ["ValidatorManager", contracts.validatorManager],
-              ] as const
-            ).map(([label, address]) => (
-              <div key={label} className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">{label}</span>
-                {address ? (
-                  <a
-                    href={getExplorerAddressUrl(address)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-data text-xs text-identity-accent hover:underline"
-                  >
-                    {shortenAddress(address, 6)}
-                  </a>
-                ) : (
-                  <span className="text-xs text-muted-foreground">Not deployed</span>
-                )}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-xl">Native pool accounting</CardTitle>
+          <CardDescription>
+            {pool?.recovering
+              ? "Frozen checkpoint value is a historical reference retained after recovery payments. Cash, reserves and recovery payments are current contract reads."
+              : "Position value reflects the last applied authenticated checkpoint. Pool cash and reserves are current contract reads."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <dl className="space-y-3">
+            {rows.map(([label, value]) => (
+              <div
+                key={label}
+                className="flex flex-wrap justify-between gap-2 text-sm"
+              >
+                <dt className="text-muted-foreground">{label}</dt>
+                <dd className="font-data break-all">
+                  {value === undefined
+                    ? "Unavailable"
+                    : `${formatAmount(value)} QRL`}
+                </dd>
               </div>
             ))}
-          </CardContent>
-        </Card>
-      </div>
+          </dl>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-xl">Settlement and fees</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <p>
+            Last applied execution block:{" "}
+            <span className="font-data">
+              {pool?.lastCheckpointBlock.toString() ?? "Unavailable"}
+            </span>
+          </p>
+          <p>
+            Accounting mode:{" "}
+            {pool
+              ? pool.recovering
+                ? "Permanent recovery"
+                : pool.poolStatus === 2n
+                  ? "Cash recovery available"
+                  : pool.poolStatus === 1n
+                    ? "Verification needs catch-up"
+                    : pool.stage !== 0n
+                      ? "Processing checkpoint batches"
+                      : "Normal accounting"
+              : "Unavailable"}
+          </p>
+          <p>
+            Accounting recovery deadline: slot{" "}
+            <span className="font-data">
+              {pool?.poolRecoveryDeadlineSlot.toString() ?? "Unavailable"}
+            </span>
+            . Only a completed and applied pool checkpoint can extend this
+            deadline.
+          </p>
+          <p className="text-muted-foreground">
+            The immutable operator fee is 10% of eligible net consensus gains
+            realized when a user payout is reserved. Prior losses and fee-exempt
+            contributions constrain the fee. The recipient can receive earned
+            fees only.
+          </p>
+          <p className="text-muted-foreground">
+            There is no promised APR. Principal and unreserved earnings may fall
+            after validator losses. Execution tips have operator-controlled
+            routing; the pool cannot guarantee receipt of every tip.
+          </p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-xl">Deployment</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          <p>
+            {poolStore.network.name} · Chain{" "}
+            {poolStore.network.chainId?.toString() ?? "not configured"}
+          </p>
+          <p className="text-muted-foreground">Native pool address</p>
+          {address ? (
+            <a
+              href={getExplorerAddressUrl(address)}
+              target={poolStore.network.explorer ? "_blank" : undefined}
+              rel="noreferrer"
+              title={address}
+              className="block break-all font-data text-xs text-identity-accent"
+            >
+              {shortenAddress(address)}
+            </a>
+          ) : (
+            <p className="text-muted-foreground">No deployment configured</p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Validator admission, public signed exits, portfolio proofs and
+            finality verification are enforced through immutable contract
+            bindings. See the source and deployment configuration for their
+            exact addresses and trust parameters.
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 });

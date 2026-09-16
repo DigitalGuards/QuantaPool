@@ -1,0 +1,79 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma hyperion >=0.0;
+
+interface IProbeBeaconDeposit {
+    function deposit(bytes calldata key, bytes calldata recipient, bytes calldata randao, bytes calldata signature, bytes32 root) external payable;
+}
+
+/// @notice Disposable single-validator cash-return experiment, without a staking ledger.
+/// @dev The test controls a fresh validator key. Secure canonical admission and
+///      finalized validator-state authentication are separate dependencies.
+///      Returned cash repays all contributed principal before earning a 10% fee.
+///      This conservative cash basis postpones fee earning until capital recovery.
+contract NativeReturnProbe {
+    address public immutable beneficiary;
+    address public immutable feeRecipient;
+    IProbeBeaconDeposit public immutable beacon;
+    uint256 public fundedPrincipal;
+    uint256 public principalPaid;
+    uint256 public rewardsPaid;
+    uint256 public feesPaid;
+    bool private entered;
+
+    constructor(address depositContract, address operatorFeeRecipient) {
+        require(depositContract.code.length != 0 && operatorFeeRecipient != address(0), "invalid fixture configuration");
+        beneficiary = msg.sender;
+        feeRecipient = operatorFeeRecipient;
+        beacon = IProbeBeaconDeposit(depositContract);
+    }
+
+    modifier guarded() {
+        require(!entered, "reentrant call");
+        entered = true;
+        _;
+        entered = false;
+    }
+
+    function fund(bytes calldata key, bytes calldata randao, bytes calldata signature, bytes32 root) external payable guarded {
+        require(msg.sender == beneficiary && fundedPrincipal == 0 && msg.value == 40_000 quanta, "invalid fixture funding");
+        fundedPrincipal = msg.value;
+        beacon.deposit{value: msg.value}(key, abi.encodePacked(address(this)), randao, signature, root);
+    }
+
+    function accounting() public view returns (uint256 returned, uint256 principal, uint256 rewards, uint256 fee) {
+        returned = address(this).balance + principalPaid + rewardsPaid + feesPaid;
+        principal = returned < fundedPrincipal ? returned : fundedPrincipal;
+        uint256 surplus = returned - principal;
+        fee = surplus / 10;
+        rewards = surplus - fee;
+    }
+
+    function claimPrincipal() external guarded {
+        (, uint256 principal, , ) = accounting();
+        uint256 amount = principal - principalPaid;
+        require(amount != 0, "no principal");
+        principalPaid = principal;
+        _pay(beneficiary, amount);
+    }
+
+    function claimRewards() external guarded {
+        (, , uint256 rewards, ) = accounting();
+        uint256 amount = rewards - rewardsPaid;
+        require(amount != 0, "no rewards");
+        rewardsPaid = rewards;
+        _pay(beneficiary, amount);
+    }
+
+    function claimFees() external guarded {
+        (, , , uint256 fee) = accounting();
+        uint256 amount = fee - feesPaid;
+        require(amount != 0, "no earned fees");
+        feesPaid = fee;
+        _pay(feeRecipient, amount);
+    }
+
+    function _pay(address recipient, uint256 amount) private {
+        (bool ok, ) = recipient.call{value: amount}("");
+        require(ok, "payment failed");
+    }
+}

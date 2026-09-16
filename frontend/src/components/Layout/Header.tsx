@@ -22,9 +22,17 @@ export const Header = observer(function Header() {
           <Link to="/" aria-label="QuantaPool home">
             <Logo />
           </Link>
-          <nav aria-label="Main navigation" className="hidden items-stretch gap-6 lg:flex">
+          <nav
+            aria-label="Main navigation"
+            className="hidden items-stretch gap-6 lg:flex"
+          >
             {navItems.map((item) => (
-              <NavLink key={item.to} to={item.to} end className="header-nav-link">
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end
+                className="header-nav-link"
+              >
                 {item.label}
               </NavLink>
             ))}
@@ -32,14 +40,20 @@ export const Header = observer(function Header() {
         </div>
         <div className="flex w-full items-center justify-end gap-3 sm:w-auto">
           <span
-            className="inline-flex items-center gap-2 text-xs font-medium text-muted-foreground"
-            title={poolStore.rpcError ? "Network unavailable" : poolStore.network.name}
+            className="hidden items-center gap-2 text-xs font-medium text-muted-foreground sm:inline-flex"
+            title={
+              !poolStore.pool || poolStore.rpcError
+                ? "Network unavailable"
+                : poolStore.network.name
+            }
           >
             <span
               aria-hidden
               className={cn(
                 "h-1.5 w-1.5 rounded-full",
-                poolStore.rpcError ? "bg-destructive text-destructive" : "bg-success text-success",
+                !poolStore.pool || poolStore.rpcError
+                  ? "bg-destructive text-destructive"
+                  : "bg-success text-success",
               )}
             />
             {poolStore.network.shortName}

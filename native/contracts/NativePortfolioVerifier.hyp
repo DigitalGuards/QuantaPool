@@ -1,0 +1,325 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma hyperion >=0.0;
+
+import "./NativeAccountProof.hyp";
+import "./NativeSSZ.hyp";
+
+interface INativeEconomicFinality {
+    function economicCheckpoint() external view returns (uint64, bytes32);
+    function finalizedHeaderRoot() external view returns (bytes32);
+    function genesisTime() external view returns (uint64);
+    function secondsPerSlot() external view returns (uint64);
+    function slotsPerEpoch() external view returns (uint64);
+    function maxAgeSlots() external view returns (uint64);
+    function recoveryWindowSlots() external view returns (uint64);
+    function status() external view returns (uint8);
+}
+
+/// @notice Complete matched native account, validator and consensus-flow proofs.
+/// @dev Immutable bindings; only the pool admits canonical bootstrap validators.
+///      Anyone can complete ordered bounded checkpoint work or discard stale work.
+///      This contract holds no funds and assigns no user or operator balances.
+contract NativePortfolioVerifier {
+    uint256 private constant BOOTSTRAP_BASE_UNITS = 2_000 quanta;
+    uint64 private constant BOOTSTRAP_SHOR = 2_000_000_000_000;
+    uint64 private constant FAR_FUTURE = type(uint64).max;
+    uint256 private constant SHOR_BASE_UNITS = 1 shor;
+    uint256 private constant MAX_BATCH = 4;
+
+    struct CashCheckpoint {
+        bytes32 executionStateRoot;
+        uint64 executionBlock;
+        uint64 executionDepositIndex;
+        bytes32[] executionStateRootBranch;
+        bytes32[] executionBlockBranch;
+        bytes32[] executionDepositIndexBranch;
+        bytes[] accountProof;
+    }
+
+    struct BlockWitness {
+        NativeSSZ.Header header;
+        NativeSSZ.Withdrawal[] withdrawals;
+        NativeSSZ.DepositSummary[] deposits;
+        bytes32[] withdrawalsBranch;
+        bytes32[] depositsBranch;
+    }
+
+    struct Registration {
+        uint64 index;
+        bytes32 publicKeyRoot;
+        uint64 admissionSlot;
+    }
+
+    struct Observation {
+        uint64 generation;
+        uint64 slot;
+        uint64 balanceShor;
+        bool terminal;
+        bool slashed;
+    }
+
+    struct Pending {
+        bool active;
+        uint64 generation;
+        uint64 slot;
+        uint64 executionBlock;
+        uint64 executionDepositIndex;
+        uint64 registryCount;
+        uint64 validatorCursor;
+        uint64 lastWalkSlot;
+        bytes32 stateRoot;
+        bytes32 headerRoot;
+        bytes32 walkRoot;
+        uint256 cash;
+        uint256 validatorBalance;
+        uint256 withdrawals;
+        uint256 deposits;
+        uint256 totalDepositsSeen;
+        uint256 terminalCount;
+    }
+
+    struct Snapshot {
+        uint64 slot;
+        uint64 executionBlock;
+        uint64 executionDepositIndex;
+        uint256 cash;
+        uint256 validatorBalance;
+        uint256 cumulativeWithdrawals;
+        bytes32 stateRoot;
+        bytes32 headerRoot;
+        uint64 registryCount;
+        uint256 cumulativeDeposits;
+        uint256 cumulativeAdmissions;
+    }
+
+    INativeEconomicFinality public immutable finality;
+    address public immutable pool;
+    address public immutable gate;
+    uint64 public immutable genesisTime;
+    uint64 public immutable secondsPerSlot;
+    uint64 public immutable slotsPerEpoch;
+    uint64 public immutable maxAgeSlots;
+    bytes32 public immutable initialHeaderRoot;
+    uint64 public immutable initialSlot;
+
+    Registration[] private registrations;
+    mapping(uint64 => uint256) public indexPositionPlusOne;
+    mapping(bytes32 => uint256) public keyPositionPlusOne;
+    mapping(uint64 => Observation) private currentObservations;
+    mapping(uint64 => Observation) private previousObservations;
+    Pending private pending;
+    Snapshot private snapshot;
+    uint64 private generation;
+    uint64 private acceptedGeneration;
+    uint64 public snapshotId;
+    uint64 public lastRegistryMutationBlock;
+    uint256 public terminalValidatorCount;
+
+    event ValidatorRegistered(uint64 index, bytes32 publicKeyRoot, uint64 admissionSlot);
+    event CheckpointStarted(uint64 generation, uint64 slot, uint64 registryCount);
+    event CheckpointCompleted(uint64 snapshotId, uint64 slot, uint256 cash, uint256 validatorBalance);
+    event CheckpointAborted(uint64 generation, uint64 slot);
+
+    constructor(address finalityVerifier, address predictedPool, address predictedGate) {
+        require(finalityVerifier.code.length != 0 && predictedPool != address(0) && predictedGate != address(0), "bad binding");
+        finality = INativeEconomicFinality(finalityVerifier);
+        pool = predictedPool;
+        gate = predictedGate;
+        (uint64 slot, bytes32 root) = finality.economicCheckpoint();
+        bytes32 headerRoot = finality.finalizedHeaderRoot();
+        require(root != bytes32(0) && headerRoot != bytes32(0), "bad checkpoint");
+        initialSlot = slot;
+        initialHeaderRoot = headerRoot;
+        genesisTime = finality.genesisTime();
+        secondsPerSlot = finality.secondsPerSlot();
+        slotsPerEpoch = finality.slotsPerEpoch();
+        maxAgeSlots = finality.maxAgeSlots();
+        require(secondsPerSlot != 0 && slotsPerEpoch != 0 && maxAgeSlots != 0, "bad binding");
+    }
+
+    function registryCount() external view returns (uint64) { return uint64(registrations.length); }
+
+    function registeredValidator(uint256 position) external view returns (uint64 index, bytes32 publicKeyRoot, uint64 admissionSlot) {
+        Registration storage value = registrations[position];
+        return (value.index, value.publicKeyRoot, value.admissionSlot);
+    }
+
+    function registerValidator(NativeSSZ.ValidatorWitness calldata witness, bytes calldata publicKey)
+        external returns (uint64 admissionSlot, uint256 baselineBaseUnits)
+    {
+        require(msg.sender == gate, "only immutable gate");
+        require(!pending.active, "checkpoint registry locked");
+        require(indexPositionPlusOne[witness.index] == 0 && keyPositionPlusOne[witness.publicKeyRoot] == 0, "already registered");
+        require(NativeSSZ.publicKeyRoot(publicKey) == witness.publicKeyRoot, "wrong deposit public key");
+        (uint64 slot, bytes32 root) = finality.economicCheckpoint();
+        uint64 balance = NativeSSZ.validatorBalance(root, witness, pool);
+        require(balance == BOOTSTRAP_SHOR && witness.effectiveBalance == BOOTSTRAP_SHOR && !witness.slashed &&
+            witness.activationEpoch == FAR_FUTURE && witness.exitEpoch == FAR_FUTURE &&
+            witness.withdrawableEpoch == FAR_FUTURE, "ineligible bootstrap validator");
+        require(registrations.length < 64 && block.number < type(uint64).max, "registry bound");
+        registrations.push(Registration(witness.index, witness.publicKeyRoot, slot));
+        indexPositionPlusOne[witness.index] = registrations.length;
+        keyPositionPlusOne[witness.publicKeyRoot] = registrations.length;
+        lastRegistryMutationBlock = uint64(block.number);
+        emit ValidatorRegistered(witness.index, witness.publicKeyRoot, slot);
+        return (slot, BOOTSTRAP_BASE_UNITS);
+    }
+
+    function beginCheckpoint(CashCheckpoint calldata checkpoint) external {
+        require(!pending.active, "checkpoint already pending");
+        (uint64 slot, bytes32 root) = finality.economicCheckpoint();
+        uint64 previousSlot = snapshotId == 0 ? initialSlot : snapshot.slot;
+        require(slot > previousSlot, "checkpoint did not advance");
+        require(checkpoint.executionBlock > lastRegistryMutationBlock &&
+            checkpoint.executionBlock >= snapshot.executionBlock &&
+            checkpoint.executionDepositIndex >= snapshot.executionDepositIndex, "invalid execution cutoff");
+        require(checkpoint.executionStateRootBranch.length == 9 && checkpoint.executionBlockBranch.length == 9 &&
+            checkpoint.executionDepositIndexBranch.length == 5, "invalid proof length");
+        NativeSSZ.branch(root, checkpoint.executionStateRoot, 898, checkpoint.executionStateRootBranch);
+        NativeSSZ.branch(root, NativeSSZ.uint64Root(checkpoint.executionBlock), 902, checkpoint.executionBlockBranch);
+        NativeSSZ.branch(root, NativeSSZ.uint64Root(checkpoint.executionDepositIndex), 42, checkpoint.executionDepositIndexBranch);
+        uint256 cash = NativeAccountProof.balance(checkpoint.executionStateRoot, pool, checkpoint.accountProof);
+        bytes32 headerRoot = finality.finalizedHeaderRoot();
+        require(headerRoot != bytes32(0), "bad checkpoint");
+        generation++;
+        pending.active = true;
+        pending.generation = generation;
+        pending.slot = slot;
+        pending.executionBlock = checkpoint.executionBlock;
+        pending.executionDepositIndex = checkpoint.executionDepositIndex;
+        pending.registryCount = uint64(registrations.length);
+        pending.lastWalkSlot = slot;
+        pending.stateRoot = root;
+        pending.headerRoot = headerRoot;
+        pending.walkRoot = headerRoot;
+        pending.cash = cash;
+        emit CheckpointStarted(generation, slot, uint64(registrations.length));
+    }
+
+    function appendValidators(NativeSSZ.ValidatorWitness[] calldata witnesses) external {
+        _livePending();
+        require(witnesses.length != 0 && witnesses.length <= MAX_BATCH &&
+            uint256(pending.validatorCursor) + witnesses.length <= pending.registryCount, "validator batch bound");
+        for (uint256 i = 0; i < witnesses.length; i++) {
+            NativeSSZ.ValidatorWitness calldata witness = witnesses[i];
+            Registration storage registration = registrations[pending.validatorCursor];
+            require(witness.index == registration.index && witness.publicKeyRoot == registration.publicKeyRoot, "wrong portfolio order");
+            uint64 balance = NativeSSZ.validatorBalance(pending.stateRoot, witness, pool);
+            uint64 epoch = pending.slot / slotsPerEpoch;
+            bool terminal = balance == 0 && witness.activationEpoch != FAR_FUTURE &&
+                witness.exitEpoch != FAR_FUTURE && witness.exitEpoch <= epoch &&
+                witness.withdrawableEpoch != FAR_FUTURE && witness.withdrawableEpoch <= epoch;
+            Observation storage current = currentObservations[witness.index];
+            if (current.generation == acceptedGeneration && acceptedGeneration != 0) previousObservations[witness.index] = current;
+            currentObservations[witness.index] = Observation(pending.generation, pending.slot, balance, terminal, witness.slashed);
+            pending.validatorBalance += uint256(balance) * SHOR_BASE_UNITS;
+            if (terminal) pending.terminalCount++;
+            pending.validatorCursor++;
+        }
+    }
+
+    function appendBlocks(BlockWitness[] calldata blocks) external {
+        _livePending();
+        require(blocks.length != 0 && blocks.length <= MAX_BATCH, "block batch bound");
+        bytes32 stopRoot = snapshotId == 0 ? initialHeaderRoot : snapshot.headerRoot;
+        uint64 stopSlot = snapshotId == 0 ? initialSlot : snapshot.slot;
+        for (uint256 i = 0; i < blocks.length; i++) {
+            require(pending.walkRoot != stopRoot, "complete history already supplied");
+            BlockWitness calldata item = blocks[i];
+            require(item.header.slot > stopSlot && item.header.slot <= pending.lastWalkSlot &&
+                NativeSSZ.headerRoot(item.header) == pending.walkRoot, "broken header ancestry");
+            if (pending.walkRoot == pending.headerRoot) {
+                require(item.header.slot == pending.slot && item.header.stateRoot == pending.stateRoot, "wrong finalized header");
+            }
+            require(item.withdrawalsBranch.length == 8 && item.depositsBranch.length == 4, "invalid proof length");
+            NativeSSZ.branch(item.header.bodyRoot, NativeSSZ.withdrawalsRoot(item.withdrawals), 414, item.withdrawalsBranch);
+            NativeSSZ.branch(item.header.bodyRoot, NativeSSZ.depositsRoot(item.deposits), 22, item.depositsBranch);
+            for (uint256 j = 0; j < item.withdrawals.length; j++) {
+                NativeSSZ.Withdrawal calldata withdrawal = item.withdrawals[j];
+                uint256 position = indexPositionPlusOne[withdrawal.validatorIndex];
+                if (position != 0 && item.header.slot > registrations[position - 1].admissionSlot &&
+                    keccak256(withdrawal.recipient) == keccak256(abi.encodePacked(pool))) {
+                    pending.withdrawals += uint256(withdrawal.amountShor) * SHOR_BASE_UNITS;
+                }
+            }
+            for (uint256 j = 0; j < item.deposits.length; j++) {
+                NativeSSZ.DepositSummary calldata deposit = item.deposits[j];
+                uint256 position = keyPositionPlusOne[deposit.publicKeyRoot];
+                if (position != 0 && item.header.slot > registrations[position - 1].admissionSlot) {
+                    pending.deposits += uint256(deposit.amountShor) * SHOR_BASE_UNITS;
+                }
+            }
+            pending.totalDepositsSeen += item.deposits.length;
+            pending.walkRoot = item.header.parentRoot;
+            pending.lastWalkSlot = item.header.slot - 1;
+        }
+    }
+
+    function finalizeCheckpoint() external {
+        _livePending();
+        require(pending.validatorCursor == pending.registryCount, "incomplete checkpoint");
+        require(pending.walkRoot == (snapshotId == 0 ? initialHeaderRoot : snapshot.headerRoot), "incomplete checkpoint");
+        if (snapshotId != 0) {
+            require(uint256(pending.executionDepositIndex) - snapshot.executionDepositIndex == pending.totalDepositsSeen,
+                "incomplete checkpoint");
+        }
+        snapshot = Snapshot(pending.slot, pending.executionBlock, pending.executionDepositIndex,
+            pending.cash, pending.validatorBalance, snapshot.cumulativeWithdrawals + pending.withdrawals,
+            pending.stateRoot, pending.headerRoot, pending.registryCount,
+            snapshot.cumulativeDeposits + pending.deposits,
+            uint256(pending.registryCount) * BOOTSTRAP_BASE_UNITS);
+        acceptedGeneration = pending.generation;
+        terminalValidatorCount = pending.terminalCount;
+        snapshotId++;
+        emit CheckpointCompleted(snapshotId, pending.slot, pending.cash, pending.validatorBalance);
+        delete pending;
+    }
+
+    function abortStaleCheckpoint() external {
+        require(pending.active, "no pending checkpoint");
+        require(_nowSlot() - pending.slot > maxAgeSlots || finality.status() == 2, "checkpoint remains live");
+        emit CheckpointAborted(pending.generation, pending.slot);
+        delete pending;
+    }
+
+    function checkpointProgress() external view returns (
+        bool active, uint64 slot, uint64 registeredCount, uint64 validatorCursor, bytes32 nextHeaderRoot
+    ) {
+        return (pending.active, pending.slot, pending.registryCount, pending.validatorCursor, pending.walkRoot);
+    }
+
+    /// @notice Results are visible only after complete checkpoint commitment.
+    /// @dev A terminal zero is a snapshot, not a promise against future deposits.
+    function validatorObservation(uint64 index) external view returns (
+        uint64 slot, uint64 balanceShor, bool terminal, bool slashed
+    ) {
+        Observation memory value = currentObservations[index];
+        if (value.generation != acceptedGeneration) value = previousObservations[index];
+        if (acceptedGeneration == 0 || value.generation != acceptedGeneration) return (0, 0, false, false);
+        return (value.slot, value.balanceShor, value.terminal, value.slashed);
+    }
+
+    function latestSnapshot() external view returns (
+        uint64 slot, uint64 executionBlock, uint64 executionDepositIndex, uint256 cash,
+        uint256 validatorBalanceBaseUnits, uint256 cumulativeNativeWithdrawals,
+        bytes32 stateRoot, bytes32 headerRoot, uint64 registeredCount,
+        uint256 cumulativeValidatorDepositsBaseUnits, uint256 cumulativeAdmissionPrincipalBaseUnits
+    ) {
+        return (snapshot.slot, snapshot.executionBlock, snapshot.executionDepositIndex, snapshot.cash,
+            snapshot.validatorBalance, snapshot.cumulativeWithdrawals, snapshot.stateRoot, snapshot.headerRoot,
+            snapshot.registryCount, snapshot.cumulativeDeposits, snapshot.cumulativeAdmissions);
+    }
+
+    function _livePending() private view {
+        require(pending.active, "no pending checkpoint");
+        // This rejects expired or economically stale finality authority. A newer
+        // accepted root can coexist with an earlier still-fresh staged snapshot.
+        finality.economicCheckpoint();
+        require(_nowSlot() - pending.slot <= maxAgeSlots, "stale staged checkpoint");
+    }
+
+    function _nowSlot() private view returns (uint256) {
+        require(block.timestamp >= genesisTime, "bad checkpoint");
+        return (block.timestamp - genesisTime) / secondsPerSlot;
+    }
+}

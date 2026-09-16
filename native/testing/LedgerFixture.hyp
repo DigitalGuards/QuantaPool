@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: GPL-3.0
+// TEST ONLY. Synthetic economic setters are forbidden in production deployments.
+pragma hyperion >=0.0;
+import "../contracts/NativeLedger.hyp";
+contract LedgerFixture is NativeLedger {
+    Checkpoint private selected;
+    uint8 public fixtureStatus;
+    bool public fixtureFresh = true;
+    bool public fixtureTerminal = true;
+    constructor(address fee) NativeLedger(fee, 1) {}
+    function setCheckpoint(uint64 id, uint64 number, uint256 gross, int256 delta) external {
+        selected = Checkpoint(id, number, gross, delta);
+    }
+    function fixtureCashCredit() external payable {}
+    function fixtureCashDebit(uint256 amount) external { (bool ok, ) = address(0).call{value: amount}(""); require(ok); }
+    function setStatus(uint8 value) external { fixtureStatus = value; }
+    function setFresh(bool value) external { fixtureFresh = value; }
+    function setTerminal(bool value) external { fixtureTerminal = value; }
+    function _authorityStatus() internal view override returns (uint8) { return fixtureStatus; }
+    function _consumeCheckpoint() internal view override returns (Checkpoint memory) { return selected; }
+    function _allValidatorsTerminal() internal view override returns (bool) { return fixtureTerminal; }
+    function _stagingCheckpointFresh(uint64) internal view override returns (bool) { return fixtureFresh; }
+}

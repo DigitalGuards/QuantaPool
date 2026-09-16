@@ -1,0 +1,124 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma hyperion >=0.0;
+
+interface IProbeFinalizedState {
+    function finalizedSlot() external view returns (uint64);
+    function finalizedStateRoot() external view returns (bytes32);
+    function genesisTime() external view returns (uint64);
+    function secondsPerSlot() external view returns (uint64);
+    function slotsPerEpoch() external view returns (uint64);
+}
+
+/// @notice Authenticate one fixed local validator under a separate finality verifier.
+/// @dev This records observations only. It accepts no funds, allocates no economic
+///      balances and cannot classify losses or reconcile execution withdrawals.
+///      Its verifier inherits the explicit bootstrap and committee assumptions.
+contract FinalizedValidatorRecordProbe {
+    uint64 private constant FAR_FUTURE_EPOCH = type(uint64).max;
+    uint256 private constant VALIDATOR_LIMIT = uint256(1) << 40;
+
+    struct Record {
+        uint64 index;
+        bytes32 publicKeyRoot;
+        bytes withdrawalRecipient;
+        uint64 effectiveBalance;
+        bool slashed;
+        uint64 activationEligibilityEpoch;
+        uint64 activationEpoch;
+        uint64 exitEpoch;
+        uint64 withdrawableEpoch;
+        bytes32 randaoCommitment;
+        bytes32[] validatorBranch;
+        bytes32 balanceChunk;
+        bytes32[] balanceBranch;
+    }
+
+    IProbeFinalizedState public immutable verifier;
+    uint64 public immutable validatorIndex;
+    bytes32 public immutable validatorPublicKeyRoot;
+    address public immutable poolRecipient;
+    uint64 public immutable maximumStateAgeSlots;
+    bool public hasObservation;
+    uint64 public observedSlot;
+    uint64 public balanceShor;
+    bool public terminal;
+
+    constructor(address finalityVerifier, uint64 index, bytes32 publicKeyRoot, address recipient, uint64 stateAgeSlots) {
+        require(finalityVerifier.code.length != 0 && index < VALIDATOR_LIMIT &&
+            publicKeyRoot != bytes32(0) && stateAgeSlots != 0, "invalid configuration");
+        verifier = IProbeFinalizedState(finalityVerifier);
+        validatorIndex = index;
+        validatorPublicKeyRoot = publicKeyRoot;
+        poolRecipient = recipient;
+        maximumStateAgeSlots = stateAgeSlots;
+    }
+
+    function observe(Record calldata record, bytes32[] calldata slotBranch) external {
+        uint64 slot = verifier.finalizedSlot();
+        bytes32 root = verifier.finalizedStateRoot();
+        require(root != bytes32(0) && (!hasObservation || slot > observedSlot), "checkpoint did not advance");
+        require(block.timestamp >= verifier.genesisTime(), "future state");
+        uint256 currentSlot = (block.timestamp - verifier.genesisTime()) / verifier.secondsPerSlot();
+        require(slot <= currentSlot && currentSlot - slot <= maximumStateAgeSlots, "stale or future state");
+        require(slotBranch.length == 5, "invalid slot proof");
+        _branch(root, _uint64Root(slot), 34, slotBranch);
+        require(record.index == validatorIndex && record.publicKeyRoot == validatorPublicKeyRoot, "wrong registered identity");
+        require(record.withdrawalRecipient.length == 64 &&
+            keccak256(record.withdrawalRecipient) == keccak256(abi.encodePacked(poolRecipient)), "wrong withdrawal recipient");
+        require(record.validatorBranch.length == 46 && record.balanceBranch.length == 44, "invalid branch length");
+        uint64 validatorCount = _uint64At(record.validatorBranch[40], 0);
+        uint64 balanceCount = _uint64At(record.balanceBranch[38], 0);
+        require(record.validatorBranch[40] == _uint64Root(validatorCount) &&
+            record.balanceBranch[38] == _uint64Root(balanceCount) &&
+            validatorCount == balanceCount && validatorCount <= VALIDATOR_LIMIT && record.index < validatorCount, "invalid list length");
+        _branch(root, _validatorRoot(record), (uint256(43) << 41) + record.index, record.validatorBranch);
+        _branch(root, record.balanceChunk, (uint256(44) << 39) + record.index / 4, record.balanceBranch);
+        uint64 balance = _uint64At(record.balanceChunk, uint256(record.index % 4) * 8);
+        uint64 epoch = slot / verifier.slotsPerEpoch();
+        bool isTerminal = balance == 0 && record.activationEpoch != FAR_FUTURE_EPOCH &&
+            record.exitEpoch != FAR_FUTURE_EPOCH && record.exitEpoch <= epoch &&
+            record.withdrawableEpoch != FAR_FUTURE_EPOCH && record.withdrawableEpoch <= epoch;
+        hasObservation = true;
+        observedSlot = slot;
+        balanceShor = balance;
+        terminal = isTerminal;
+    }
+
+    function _validatorRoot(Record calldata record) private pure returns (bytes32) {
+        bytes32[16] memory nodes;
+        nodes[0] = record.publicKeyRoot;
+        nodes[1] = sha256(record.withdrawalRecipient);
+        nodes[2] = _uint64Root(record.effectiveBalance);
+        nodes[3] = _uint64Root(record.slashed ? 1 : 0);
+        nodes[4] = _uint64Root(record.activationEligibilityEpoch);
+        nodes[5] = _uint64Root(record.activationEpoch);
+        nodes[6] = _uint64Root(record.exitEpoch);
+        nodes[7] = _uint64Root(record.withdrawableEpoch);
+        nodes[8] = record.randaoCommitment;
+        for (uint256 width = 16; width > 1; width /= 2) {
+            for (uint256 i = 0; i < width / 2; i++) {
+                nodes[i] = sha256(abi.encodePacked(nodes[i * 2], nodes[i * 2 + 1]));
+            }
+        }
+        return nodes[0];
+    }
+
+    function _uint64Root(uint64 value) private pure returns (bytes32) {
+        bytes memory encoded = new bytes(32);
+        for (uint256 i = 0; i < 8; i++) encoded[i] = bytes1(uint8(value >> (i * 8)));
+        return bytes32(encoded);
+    }
+
+    function _uint64At(bytes32 chunk, uint256 offset) private pure returns (uint64 value) {
+        for (uint256 i = 0; i < 8; i++) value |= uint64(uint8(chunk[offset + i])) << uint64(i * 8);
+    }
+
+    function _branch(bytes32 root, bytes32 leaf, uint256 index, bytes32[] calldata branch) private pure {
+        bytes32 node = leaf;
+        for (uint256 i = 0; i < branch.length; i++) {
+            node = index % 2 == 0 ? sha256(abi.encodePacked(node, branch[i])) : sha256(abi.encodePacked(branch[i], node));
+            index /= 2;
+        }
+        require(index == 1 && node == root, "invalid Merkle proof");
+    }
+}

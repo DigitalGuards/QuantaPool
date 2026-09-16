@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma hyperion >=0.0;
+
+import "./NativePortfolioVerifier.hyp";
+
+interface INativeCheckpointPool {
+    function portfolio() external view returns (address);
+    function stage() external view returns (uint8);
+    function settleCheckpoint() external;
+    function activateDeposits(uint256 limit) external returns (uint256);
+    function processQueue(uint256 limit) external returns (uint256);
+}
+
+/// @notice Permissionless bounded execution of existing checkpoint operations.
+/// @dev Immutable destinations, typed calls, no funds, authority or accounting.
+contract NativeCheckpointExecutor {
+    NativePortfolioVerifier public immutable portfolio;
+    INativeCheckpointPool public immutable pool;
+
+    constructor(address portfolioAddress, address poolAddress) {
+        require(portfolioAddress.code.length != 0 && poolAddress.code.length != 0, "configuration");
+        portfolio = NativePortfolioVerifier(portfolioAddress);
+        pool = INativeCheckpointPool(poolAddress);
+        require(portfolio.pool() == poolAddress && pool.portfolio() == portfolioAddress, "binding");
+    }
+
+    /// @dev Three groups preserve each verifier call's four-block limit and fit
+    ///      the native signed-transaction size bound for ordinary local blocks.
+    ///      Larger withdrawal/deposit lists may require smaller caller batches.
+    function appendAndSettle(NativePortfolioVerifier.BlockWitness[][] calldata groups, bool finish) external {
+        require(groups.length <= 3 && (groups.length != 0 || finish), "batch bound");
+        for (uint256 i = 0; i < groups.length; i++) portfolio.appendBlocks(groups[i]);
+        if (finish) {
+            portfolio.finalizeCheckpoint();
+            pool.settleCheckpoint();
+            pool.activateDeposits(32);
+            if (pool.stage() == 2) pool.processQueue(32);
+        }
+    }
+}

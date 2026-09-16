@@ -14,7 +14,13 @@ interface AmountInputProps {
 const PERCENTAGES = [25, 50, 75] as const;
 
 /** Numeric amount input with the wallet's 25/50/75/Max quick buttons. */
-export function AmountInput({ value, onChange, balance, symbol, disabled }: AmountInputProps) {
+export function AmountInput({
+  value,
+  onChange,
+  balance,
+  symbol,
+  disabled,
+}: AmountInputProps) {
   const setFraction = (percent: number) => {
     if (balance === null) return;
     const amount = (balance * BigInt(percent)) / 100n;
@@ -26,6 +32,7 @@ export function AmountInput({ value, onChange, balance, symbol, disabled }: Amou
       <div className="relative">
         <Input
           inputMode="decimal"
+          aria-label={`Amount in ${symbol}`}
           placeholder="0.0"
           value={value}
           disabled={disabled}

@@ -1,216 +1,88 @@
-import { Link } from "react-router";
-import {
-  ArrowDownToLine,
-  Clock,
-  Coins,
-  Landmark,
-  RefreshCcw,
-  ShieldCheck,
-  TrendingUp,
-  Wallet,
-} from "lucide-react";
-import { Button } from "@/components/UI/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/UI/Card";
-import { BLOCK_TIME_SECONDS, WITHDRAWAL_DELAY_BLOCKS } from "@/config/networks";
-import { blocksToTime } from "@/utils/format";
 
-function Section({
-  icon: Icon,
-  title,
-  children,
-  accent = "secondary",
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  children: React.ReactNode;
-  accent?: "secondary" | "blue";
-}) {
-  return (
-    <Card
-      className={
-        accent === "secondary"
-          ? "border-l-2 border-l-secondary"
-          : "border-l-2 border-l-identity-accent"
-      }
-    >
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Icon
-            className={
-              accent === "secondary" ? "h-5 w-5 text-secondary" : "h-5 w-5 text-identity-accent"
-            }
-          />
-          {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3 text-sm leading-relaxed text-muted-foreground">
-        {children}
-      </CardContent>
-    </Card>
-  );
-}
-
-const WITHDRAWAL_STEPS = [
-  {
-    title: "Request",
-    description:
-      "You choose how much stQRL to unstake. Those shares are locked and continue receiving rewards or bearing slashing changes until they are claimed.",
-  },
-  {
-    title: `Wait ${WITHDRAWAL_DELAY_BLOCKS} blocks (${blocksToTime(WITHDRAWAL_DELAY_BLOCKS, BLOCK_TIME_SECONDS)})`,
-    description:
-      "A protocol-enforced security delay. You can cancel at any point during the wait and your shares unlock immediately.",
-  },
-  {
-    title: "Claim",
-    description:
-      "Once the delay has passed, accounting is settled, and the withdrawal reserve is funded, claim your current QRL value. Requests are paid out oldest-first; your locked shares are burned and the QRL lands in your wallet.",
-  },
-];
-
+const sections = [
+  [
+    "1. Deposit native QRL",
+    "Your wallet sends QRL directly to the pool contract. The deposit stays pending and refundable until a later authenticated checkpoint admits it. A new position receives no earnings or losses from before admission. No transferable staking receipt exists.",
+  ],
+  [
+    "2. Fund native validators",
+    "QRL validators use 40,000 QRL. The validator bootstrapper first supplies its own 2,000 QRL. The immutable gate authenticates the canonical pool withdrawal recipient and publishes a valid signed exit before admitting that capital and releasing the remaining 38,000 QRL atomically. The pool retains a liquidity buffer. Unfinished bootstrap capital can remain locked under the native protocol.",
+  ],
+  [
+    "3. Account for earnings and losses",
+    "Complete finalized portfolio proofs connect validator balances, deposits, withdrawals and the pool execution account. Internal, non-transferable accounting shares spread changes across positions without iterating over users. Principal and unreserved earnings bear losses. Cash gifts and outside validator top-ups are fee-exempt.",
+  ],
+  [
+    "4. Request rewards or withdraw",
+    "Request a QRL amount or the full position. Reward requests draw from earnings above remaining contributed principal basis. All requests enter one deterministic FIFO queue and settle after a future authenticated cutoff. Available cash is reserved first. A request which needs more liquidity waits for validator returns and stays exposed to rewards and losses until reservation.",
+  ],
+  [
+    "5. Claim QRL and pay the earned fee",
+    "Once cash is reserved, claim it directly to the wallet which owns the position. The immutable fee is 10% of eligible net consensus gains at reservation, with prior losses, fee-exempt contributions and fractional fee carry accounted for. Principal is excluded. Only earned fee reserves can be paid to the fixed operator recipient.",
+  ],
+  [
+    "6. Independent exits and recovery",
+    "Each pool admits at most 64 validators over its lifetime. An immutable operator address authorizes new validator preparations. Signed validator exits are stored publicly before pooled top-up funding. An independent relayer can submit them when the unmodified protocol permits. Anyone holding a public signature can also force an eligible early exit, reducing validation uptime. Each replacement validator uses another lifetime admission. This public-exit policy remains subject to review before launch. Eligibility, inclusion and validator withdrawal timing still apply. If finality verification or complete pool accounting exceeds its immutable deadline, anyone can trigger recovery: pending deposit refunds and reserved claims remain payable, and frozen positions receive their share of available and later returned cash without new fees.",
+  ],
+] as const;
 export function HowItWorksPage() {
   return (
-    <div className="page-enter mx-auto max-w-3xl space-y-6 py-6">
-      <div>
-        <h1 className="text-2xl font-bold">How QuantaPool works</h1>
-        <p className="mt-2 text-muted-foreground">
-          A plain-language guide to liquid staking on the QRL network.
-        </p>
-      </div>
-
-      <Section icon={Coins} title="The problem QuantaPool solves">
-        <p>
-          Running your own QRL validator requires 40,000 Quanta and a server that stays online
-          around the clock. QuantaPool pools deposits from many stakers, runs the validators for
-          you, and shares the rewards, so you can stake any amount above the minimum and stay liquid
-          the whole time.
-        </p>
-      </Section>
-
-      <Section icon={Wallet} title="Step 1: Stake QRL, receive stQRL">
-        <p>
-          When you deposit QRL into the pool you receive <strong>stQRL</strong>, a token that
-          represents your share of everything the pool holds. Deposits go into a buffer, and every
-          time the buffer reaches 40,000 Quanta the pool funds a new validator.
-        </p>
-        <p>
-          stQRL is a <strong>fixed-balance</strong> token: your share count stays constant (which
-          keeps accounting and taxes simple), while the <em>QRL value</em> of each share grows as
-          rewards come in. You can hold, transfer, or eventually trade stQRL like any other token.
-          Your underlying stake keeps earning either way.
-        </p>
-      </Section>
-
-      <Section icon={TrendingUp} title="Step 2: Rewards grow the exchange rate" accent="blue">
-        <p>
-          Validators earn rewards for proposing and attesting blocks. Those rewards flow back to the
-          pool and raise the <strong>stQRL → QRL exchange rate</strong>. Example: you stake 1,000
-          Quanta at a rate of 1.00 and receive 1,000 stQRL. A year later the rate is 1.05, and your
-          same 1,000 stQRL is now worth 1,050 Quanta.
-        </p>
-        <p>
-          Reward detection is <strong>trustless</strong>: the contract reads its own balance
-          increases on-chain instead of relying on a price oracle or an operator's word. Anyone can
-          trigger a reward sync. The protocol currently takes <strong>no fee</strong>: 100% of
-          rewards go to stakers.
-        </p>
-      </Section>
-
-      <Section icon={Clock} title="Step 3: Unstake whenever you want">
-        <p>
-          Fresh deposits mature for about a day (1536 blocks) before they can be unstaked or
-          transferred, as protection against deposit/withdraw griefing. Top-up deposits fold any
-          not-yet-matured shares into a new bucket and restart that timer for that portion only.
-        </p>
-        <ol className="space-y-3">
-          {WITHDRAWAL_STEPS.map((step, index) => (
-            <li key={step.title} className="flex gap-3">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-secondary/15 text-xs font-bold text-secondary">
-                {index + 1}
-              </span>
-              <div>
-                <p className="font-medium text-foreground">{step.title}</p>
-                <p>{step.description}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
-      </Section>
-
-      <Section icon={Landmark} title="Where your QRL actually goes" accent="blue">
-        <p>Pooled QRL only ever sits in three places, all visible on-chain:</p>
-        <ul className="list-disc space-y-1 pl-5">
-          <li>
-            <strong>Validators</strong>: 40,000 Quanta each, staked on the QRL beacon chain earning
-            rewards.
-          </li>
-          <li>
-            <strong>Buffer</strong>: deposits accumulating toward the next validator.
-          </li>
-          <li>
-            <strong>Withdrawal reserve</strong>: QRL set aside to pay out pending withdrawal
-            requests.
-          </li>
-        </ul>
-        <p>
-          You can audit all three at any time on the{" "}
-          <Link to="/stats" className="text-identity-accent hover:underline">
-            Stats page
-          </Link>{" "}
-          or directly on the block explorer.
-        </p>
-      </Section>
-
-      <Section icon={ShieldCheck} title="Security model">
-        <ul className="list-disc space-y-1 pl-5">
-          <li>
-            <strong>Post-quantum signatures.</strong> QRL uses Dilithium ML-DSA-87, designed to
-            withstand quantum computers. Everything QuantaPool does inherits that protection.
-          </li>
-          <li>
-            <strong>Slashing is socialized.</strong> If a validator is penalized, the loss lowers
-            the exchange rate slightly for everyone instead of wiping out unlucky individuals.
-          </li>
-          <li>
-            <strong>No oracle, no custody middlemen.</strong> Rewards are detected from on-chain
-            balance changes; your stQRL is yours, in your own wallet.
-          </li>
-          <li>
-            <strong>Tested contracts.</strong> The protocol ships with an extensive Foundry suite
-            (200+ tests) covering deposits, withdrawals, reward sync, and slashing scenarios.
-          </li>
-        </ul>
-        <p>
-          Like all DeFi, smart-contract risk is never zero. Never stake more than you can afford to
-          lock up.
-        </p>
-      </Section>
-
-      <Section icon={RefreshCcw} title="QuantaPool and MyQRLWallet" accent="blue">
-        <p>
-          QuantaPool is built by the team behind{" "}
-          <a
-            href="https://qrlwallet.com"
-            target="_blank"
-            rel="noreferrer"
-            className="text-identity-accent hover:underline"
-          >
-            MyQRLWallet
-          </a>
-          . Today you connect with the QRL Wallet browser extension; staking directly from the
-          MyQRLWallet mobile app via the wallet-connect bridge is on the roadmap, so your stQRL will
-          show up right next to your QRL.
-        </p>
-      </Section>
-
-      <div className="flex justify-center pt-2 pb-6">
-        <Button size="lg" asChild>
-          <Link to="/">
-            <ArrowDownToLine className="h-4 w-4" />
-            Start staking
-          </Link>
-        </Button>
-      </div>
+    <div className="page-enter mx-auto max-w-3xl space-y-4 py-6">
+      <h1 className="text-2xl font-bold">How native pooled staking works</h1>
+      <p className="text-muted-foreground">
+        Your position is recorded inside immutable contracts. You deposit and
+        receive native QRL.
+      </p>
+      {sections.map(([title, text]) => (
+        <Card key={title}>
+          <CardHeader>
+            <CardTitle className="text-lg">{title}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {text}
+            </p>
+          </CardContent>
+        </Card>
+      ))}
+      <Card className="border-l-2 border-l-secondary">
+        <CardHeader>
+          <CardTitle className="text-lg">
+            Trust and availability limits
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm leading-relaxed text-muted-foreground">
+          <p>
+            The finality verifier starts from an independently reviewed
+            bootstrap checkpoint and the intended network's signing domain. It
+            checks committee signatures and state proofs within fixed fork and
+            recovery-window rules. Committee security, bootstrap correctness and
+            timely proof submission remain assumptions. RPC data alone is not
+            contract authentication.
+          </p>
+          <p>
+            The validator signing key controls consensus participation and
+            execution-tip routing. Withdrawal credentials bind native consensus
+            withdrawals to the pool, but receipt of every execution tip cannot
+            be guaranteed. There is no promise covering tips routed elsewhere.
+          </p>
+          <p>
+            Permissionless execution still needs someone to provide valid
+            proofs, process batches and relay exits. Operator disappearance can
+            delay progress. Permanent recovery distributes cash as it becomes
+            available; it cannot guarantee validator liveness, a recovery date
+            or principal repayment.
+          </p>
+          <p>
+            The pool has no owner balance setter, arbitrary asset rescue,
+            beneficiary override, upgrade authority or discretionary payout
+            selector. It has no lending, leverage, rehypothecation or
+            operator-selected investment strategy. These technical constraints
+            do not establish a regulatory classification or legal approval.
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }

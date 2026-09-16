@@ -1,257 +1,232 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { observer } from "mobx-react-lite";
 import { Link } from "react-router";
-import { Zap } from "lucide-react";
+import { ArrowDownToLine, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/UI/Button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/UI/Card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/UI/Card";
 import { AmountInput } from "@/components/AmountInput";
 import { ActivityCard } from "@/components/ActivityCard";
 import { StatsBar } from "@/components/StatsBar";
-import { NATIVE_UNIT } from "@/config/networks";
 import { useStore } from "@/stores/store";
-import { formatAmount, formatRate, formatUsd, parseUnits } from "@/utils/format";
-
-const FAQ_ITEMS: { question: string; answer: string }[] = [
-  {
-    question: "What is QuantaPool?",
-    answer: `QuantaPool is a decentralized liquid staking protocol for the QRL network. You deposit QRL into the pool, the pool funds validators (40,000 ${NATIVE_UNIT} each), and validator rewards flow back to all stakers automatically.`,
-  },
-  {
-    question: "What is stQRL?",
-    answer:
-      "stQRL is a fixed-balance liquid staking token. Your share balance stays constant while the QRL value of each share grows as the pool earns rewards. Note: freshly minted shares must mature for about a day (1536 blocks) before they can be transferred or queued for withdrawal. Top-up deposits fold any not-yet-matured shares into a new bucket and restart that timer.",
-  },
-  {
-    question: "How do rewards work?",
-    answer:
-      "Rewards are detected trustlessly from validator balance increases, with no oracle involved. They raise the stQRL/QRL exchange rate, so the QRL value of your shares increases over time. The protocol currently charges no fees.",
-  },
-  {
-    question: "How do I unstake?",
-    answer:
-      "Request a withdrawal on the Withdrawals page. Your shares are locked and, after a 128-block delay (about 2 hours), you can claim your QRL. You can cancel a pending request at any time before claiming. Keep in mind that each deposit must mature for about a day (1536 blocks) before those shares can be queued for withdrawal. Top-up deposits restart the maturity timer for any not-yet-matured shares.",
-  },
-  {
-    question: "Is it post-quantum secure?",
-    answer:
-      "Yes. QRL uses the Dilithium ML-DSA-87 signature scheme, which is designed to resist attacks from quantum computers. QuantaPool validators and all transactions inherit this protection.",
-  },
-  {
-    question: "What are the risks?",
-    answer:
-      "Smart-contract risk and validator slashing risk. Slashing losses are socialized: the exchange rate drops proportionally for all holders rather than wiping out individual stakers. The contracts are covered by an extensive Foundry test suite.",
-  },
-];
+import { formatAmount, parseUnits } from "@/utils/format";
 
 export const StakePage = observer(() => {
   const { poolStore } = useStore();
   const [amount, setAmount] = useState("");
-
-  const pool = poolStore.pool;
-  const account = poolStore.account;
-
-  const parsedAmount = useMemo(() => {
-    if (!amount) return null;
-    try {
-      return parseUnits(amount);
-    } catch {
-      return null;
-    }
-  }, [amount]);
-
-  const stakeBalance = poolStore.stakeableBalance;
-
-  const validationError = useMemo(() => {
-    if (!account || !amount) return null;
-    if (parsedAmount === null) return "Enter a valid amount";
-    if (parsedAmount === 0n) return null;
-    if (pool && parsedAmount < pool.minDeposit) {
-      return `Minimum deposit is ${formatAmount(pool.minDeposit)} ${NATIVE_UNIT}`;
-    }
-    if (parsedAmount > account.qrlBalance) return `Insufficient ${NATIVE_UNIT} balance`;
-    return null;
-  }, [account, amount, parsedAmount, pool]);
-
-  const previewShares =
-    parsedAmount !== null && parsedAmount > 0n ? poolStore.sharesForQrl(parsedAmount) : null;
-
-  const canStake =
+  const account = poolStore.account,
+    pool = poolStore.pool;
+  let parsed: bigint | null = null;
+  try {
+    if (amount) parsed = parseUnits(amount);
+  } catch {
+    /* Validation below. */
+  }
+  const error =
+    amount && (parsed === null || parsed === 0n)
+      ? "Enter a positive QRL amount"
+      : parsed !== null && pool && parsed < pool.minDeposit
+        ? `Minimum deposit: ${formatAmount(pool.minDeposit)} QRL`
+        : parsed !== null &&
+            poolStore.stakeableBalance !== null &&
+            parsed > poolStore.stakeableBalance
+          ? "Leave enough QRL in your wallet for transaction fees"
+          : null;
+  const ready =
     !!account &&
-    parsedAmount !== null &&
-    parsedAmount > 0n &&
-    !validationError &&
-    poolStore.tx.state !== "pending" &&
-    !(pool?.paused ?? false);
-
-  const onStake = async () => {
-    if (!canStake) return;
-    const ok = await poolStore.stake(amount);
-    if (ok) setAmount("");
-  };
-
+    poolStore.normalOpen &&
+    parsed !== null &&
+    parsed > 0n &&
+    !error;
+  const rows = account
+    ? pool?.recovering
+      ? ([
+          ["Currently recoverable", account.recoveryClaimable],
+          ["Recovery paid to you", account.recoveryClaimed],
+          ["Reserved claimable QRL", account.claimable],
+          ["Pending deposit", account.pending],
+          ["Frozen checkpoint value", account.qrlValue],
+          ["Frozen principal basis", account.principalBasis],
+        ] as const)
+      : ([
+          ["Staked value", account.qrlValue],
+          ["Remaining principal basis", account.principalBasis],
+          ["Unreserved earnings", account.rewards],
+          ["Claimable QRL", account.claimable],
+          ["Pending deposit", account.pending],
+          ["Principal below basis", account.loss],
+        ] as const)
+    : [];
   return (
-    <div className="page-enter space-y-10">
-      {/* Hero */}
-      <section className="relative pt-10 pb-2 text-center">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 -top-16 h-64 bg-[radial-gradient(ellipse_at_top,hsl(var(--secondary)/0.10),transparent_65%)]"
-        />
-        <h1 className="text-3xl font-black tracking-tight md:text-5xl">
-          Liquid staking for <span className="text-secondary">QRL</span>
+    <div className="page-enter space-y-8 py-8">
+      <section className="mx-auto max-w-2xl text-center">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+          Native QRL pooled staking
+        </p>
+        <h1 className="text-3xl font-bold leading-tight sm:text-4xl">
+          Your QRL. A shared validator pool.
         </h1>
-        <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
-          Stake QRL, receive stQRL, and earn validator rewards automatically, secured by
-          post-quantum cryptography.
+        <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+          Deposit native QRL directly into the pool. Your position, rewards and
+          withdrawals are accounted for on chain, with native QRL returned to
+          your wallet.
+        </p>
+        <p className="mt-3 inline-flex items-center gap-2 text-xs text-identity-accent">
+          <ShieldCheck className="h-4 w-4" /> Non-transferable positions · No
+          guaranteed return
         </p>
       </section>
-
-      {/* Stake widget */}
-      <section className="mx-auto max-w-md space-y-4">
+      <section className="mx-auto grid max-w-3xl gap-4 md:grid-cols-2">
         <Card className="surface-ember">
-          <CardHeader className="pb-4">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-xl">Stake</CardTitle>
-              {account && (
-                <span className="font-data text-xs text-muted-foreground">
-                  Balance: {formatAmount(account.qrlBalance)} {NATIVE_UNIT}
-                </span>
-              )}
-            </div>
+          <CardHeader>
+            <CardTitle className="text-xl">Deposit QRL</CardTitle>
+            <CardDescription>
+              New deposits wait for a future authenticated checkpoint before
+              joining the pool.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Wallet balance:{" "}
+              <span className="font-data">
+                {account
+                  ? `${formatAmount(account.qrlBalance)} QRL`
+                  : "Connect your wallet"}
+              </span>
+            </p>
             <AmountInput
               value={amount}
               onChange={setAmount}
-              balance={stakeBalance}
-              symbol={NATIVE_UNIT}
-              disabled={poolStore.tx.state === "pending"}
+              balance={poolStore.stakeableBalance}
+              symbol="QRL"
+              disabled={!poolStore.normalOpen}
             />
-
-            {validationError && <p className="text-sm text-destructive">{validationError}</p>}
-
-            <div className="space-y-1.5 rounded-md border border-border/60 bg-muted/20 p-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">You will receive</span>
-                <span className="font-data font-medium">
-                  {previewShares !== null ? `≈ ${formatAmount(previewShares)} stQRL` : "-"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Exchange rate</span>
-                <span className="font-data">
-                  {pool ? `1 stQRL = ${formatRate(pool.exchangeRate)} ${NATIVE_UNIT}` : "-"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Minimum deposit</span>
-                <span className="font-data">
-                  {pool ? `${formatAmount(pool.minDeposit)} ${NATIVE_UNIT}` : "-"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Protocol fee</span>
-                <span>None</span>
-              </div>
-            </div>
-
-            {pool?.paused && (
-              <p className="text-sm text-secondary">
-                Deposits are temporarily paused by the protocol.
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              A fixed 10% fee applies only to eligible net consensus gains when
+              cash is reserved for your payout. Principal and fee-exempt gifts
+              are excluded.
+            </p>
+            {pool?.poolStatus === 2n && !pool.recovering && (
+              <p className="rounded-md border border-secondary/40 p-3 text-sm">
+                The accounting deadline has expired. Cash recovery is available
+                on the withdrawals page. Pending deposit refunds and reserved
+                claims remain available.
               </p>
             )}
-
+            {pool?.poolStatus === 1n && (
+              <p className="rounded-md border border-secondary/40 p-3 text-sm">
+                Verification needs to catch up before new staking requests can
+                proceed.
+              </p>
+            )}
+            {pool?.recovering && (
+              <p className="text-sm text-secondary">
+                The pool is in permanent recovery. Existing claims and
+                pending-deposit refunds remain available.
+              </p>
+            )}
+            {pool?.stage !== undefined &&
+              pool.stage !== 0n &&
+              !pool.recovering && (
+                <p className="text-sm text-secondary">
+                  The pool is processing a checkpoint. New actions resume after
+                  its bounded batches finish.
+                </p>
+              )}
             {account ? (
               <Button
                 className="w-full"
                 size="lg"
-                disabled={!canStake}
-                onClick={() => void onStake()}
+                disabled={!ready}
+                onClick={async () => {
+                  if (ready && (await poolStore.stake(amount))) setAmount("");
+                }}
               >
-                <Zap className="h-4 w-4" />
-                {poolStore.tx.state === "pending" ? "Waiting for confirmation…" : "Stake QRL"}
+                <ArrowDownToLine className="h-4 w-4" />
+                Deposit QRL
               </Button>
             ) : (
               <Button
                 className="w-full"
                 size="lg"
-                disabled={poolStore.isConnecting}
-                onClick={() => void poolStore.connect()}
+                disabled={
+                  !poolStore.network.configured || poolStore.isConnecting
+                }
+                onClick={() => poolStore.connect()}
               >
-                {poolStore.isConnecting ? "Connecting…" : "Connect wallet to stake"}
+                Connect wallet to deposit
               </Button>
             )}
           </CardContent>
         </Card>
-
-        {/* Position */}
-        {account && (
-          <Card className="border-l-2 border-l-identity-accent">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Your position</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1.5 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">stQRL balance</span>
-                <span className="font-data font-medium">{formatAmount(account.shares)} stQRL</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Current value</span>
-                <span className="font-data font-medium">
-                  {formatAmount(account.qrlValue)} {NATIVE_UNIT}
-                  {(() => {
-                    const usd = poolStore.usdValue(account.qrlValue);
-                    return usd !== null ? (
-                      <span className="ml-1 text-xs font-normal text-muted-foreground">
-                        ≈ {formatUsd(usd)}
-                      </span>
-                    ) : null;
-                  })()}
-                </span>
-              </div>
-              {account.lockedShares > 0n && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Locked in withdrawals</span>
-                  <Link
-                    to="/withdrawals"
-                    className="font-data text-identity-accent hover:underline"
+        <Card className="border-l-2 border-l-identity-accent">
+          <CardHeader>
+            <CardTitle className="text-xl">
+              {pool?.recovering ? "Your recovery" : "Your position"}
+            </CardTitle>
+            <CardDescription>
+              {pool?.recovering
+                ? "Recoverable cash updates as native QRL reaches the pool."
+                : "Values follow the last applied checkpoint."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {account ? (
+              <dl className="space-y-3">
+                {rows.map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm"
                   >
-                    {formatAmount(account.lockedShares)} stQRL
-                  </Link>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        <ActivityCard />
+                    <dt className="text-muted-foreground">{label}</dt>
+                    <dd className="font-data break-all font-medium">
+                      {formatAmount(value)} QRL
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Connect your wallet to see your principal, earnings and
+                claimable QRL.
+              </p>
+            )}
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {pool?.recovering
+                ? "Frozen checkpoint value and principal basis are historical references that remain unchanged after recovery payments. Your frozen position determines your portion of later returned cash."
+                : "Unreserved earnings and principal remain exposed to validator losses. A withdrawal request stays exposed until native cash is reserved. Principal basis is an accounting reference, not a guaranteed payout."}
+            </p>
+            <Link
+              to="/withdrawals"
+              className="inline-flex text-sm font-medium text-identity-accent hover:underline"
+            >
+              Manage withdrawals and rewards →
+            </Link>
+          </CardContent>
+        </Card>
       </section>
-
       <section className="mx-auto max-w-3xl">
         <StatsBar />
       </section>
-
-      {/* FAQ */}
-      <section className="mx-auto max-w-3xl pb-8">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-semibold">FAQ</h2>
-          <Link to="/how-it-works" className="text-sm text-identity-accent hover:underline">
-            Read the full guide →
-          </Link>
-        </div>
-        <div className="divide-y divide-border/60 rounded-lg border">
-          {FAQ_ITEMS.map((item) => (
-            <details key={item.question} className="group p-4">
-              <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-medium">
-                {item.question}
-                <span className="ml-4 text-muted-foreground transition-transform group-open:rotate-45">
-                  +
-                </span>
-              </summary>
-              <p className="mt-2 text-sm text-muted-foreground">{item.answer}</p>
-            </details>
-          ))}
-        </div>
+      <section className="mx-auto max-w-3xl">
+        <ActivityCard />
+      </section>
+      <section className="mx-auto max-w-3xl rounded-lg border p-5 text-sm leading-relaxed text-muted-foreground">
+        Validator funding uses QRL's native 40,000 QRL size. Withdrawals use
+        available pool cash in queue order, with validator exits where needed.
+        Timing depends on protocol eligibility, finality and liquidity.{" "}
+        <Link
+          to="/how-it-works"
+          className="text-identity-accent hover:underline"
+        >
+          Read the process and trust assumptions.
+        </Link>
       </section>
     </div>
   );

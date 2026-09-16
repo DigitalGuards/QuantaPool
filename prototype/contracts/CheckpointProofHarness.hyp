@@ -1,0 +1,312 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma hyperion >=0.0;
+
+/**
+ * @notice Local SSZ component harness with constructor-pinned fixture checkpoints.
+ * @dev The deployer supplies the trust anchor. This harness does not establish
+ *      consensus finality, verify sync committees, or authenticate live RPC data.
+ *      It accepts no QRL and exposes no method to change its fixture roots,
+ *      registered portfolio, pool recipient, or freshness policy after deployment.
+ *      Observed beacon balance decreases can include withdrawals and losses.
+ *      Native asset reconciliation remains a separate protocol dependency.
+ */
+contract CheckpointProofHarness {
+    uint64 private constant FAR_FUTURE_EPOCH = type(uint64).max;
+    uint64 private constant MINIMUM_BOOTSTRAP_SHOR = 2_000_000_000_000;
+    uint256 private constant VALIDATOR_LIMIT = uint256(1) << 40;
+
+    struct Witness {
+        uint64 index;
+        bytes32 publicKeyRoot;
+        bytes withdrawalRecipient;
+        uint64 effectiveBalance;
+        bool slashed;
+        uint64 activationEligibilityEpoch;
+        uint64 activationEpoch;
+        uint64 exitEpoch;
+        uint64 withdrawableEpoch;
+        bytes32 randaoCommitment;
+        bytes32[] validatorBranch;
+        bytes32 balanceChunk;
+        bytes32[] balanceBranch;
+    }
+
+    address public immutable poolRecipient;
+    uint64 public immutable genesisTime;
+    uint64 public immutable secondsPerSlot;
+    uint64 public immutable slotsPerEpoch;
+    uint64 public immutable maxAgeSlots;
+
+    bytes32[] private _fixtureRoots;
+    uint64[] private _fixtureSlots;
+    uint64[] private _registeredIndices;
+    bytes32[] private _registeredPublicKeyRoots;
+    mapping(uint64 => uint64) private _verifiedBalances;
+    mapping(uint64 => bool) private _terminal;
+
+    bool public hasAcceptedCheckpoint;
+    uint64 public acceptedCheckpointSlot;
+    uint256 public totalValidatorBalanceShor;
+    uint256 public terminalValidatorCount;
+
+    error InvalidFixtureConfiguration();
+    error UnknownFixtureCheckpoint();
+    error StaleCheckpoint();
+    error FutureCheckpoint();
+    error RegressingCheckpoint();
+    error IncompletePortfolio();
+    error WrongRegisteredIdentity();
+    error InvalidProof();
+    error InvalidValidatorLength();
+    error InvalidPublicKey();
+    error WrongWithdrawalRecipient();
+    error IneligibleFundingCandidate();
+    error NonTerminalValidator();
+
+    event FixtureCheckpointAccepted(uint64 slot, uint256 balanceShor, uint256 terminalCount);
+
+    constructor(
+        bytes32[] memory fixtureRoots,
+        uint64[] memory fixtureSlots,
+        uint64 fixtureGenesisTime,
+        uint64 fixtureSecondsPerSlot,
+        uint64 fixtureSlotsPerEpoch,
+        uint64 fixtureMaxAgeSlots,
+        address expectedPoolRecipient,
+        uint64[] memory registeredIndices,
+        bytes32[] memory registeredPublicKeyRoots
+    ) {
+        if (
+            fixtureRoots.length == 0 || fixtureRoots.length > 16 ||
+            fixtureRoots.length != fixtureSlots.length ||
+            registeredIndices.length == 0 || registeredIndices.length > 8 ||
+            registeredIndices.length != registeredPublicKeyRoots.length ||
+            fixtureSecondsPerSlot == 0 || fixtureSlotsPerEpoch == 0 ||
+            expectedPoolRecipient == address(0)
+        ) revert InvalidFixtureConfiguration();
+
+        for (uint256 i = 0; i < fixtureRoots.length; i++) {
+            if (
+                fixtureRoots[i] == bytes32(0) ||
+                (i > 0 && fixtureSlots[i] <= fixtureSlots[i - 1])
+            ) revert InvalidFixtureConfiguration();
+        }
+        for (uint256 i = 0; i < registeredIndices.length; i++) {
+            if (
+                registeredIndices[i] >= VALIDATOR_LIMIT ||
+                registeredPublicKeyRoots[i] == bytes32(0) ||
+                (i > 0 && registeredIndices[i] <= registeredIndices[i - 1])
+            ) revert InvalidFixtureConfiguration();
+            for (uint256 j = 0; j < i; j++) {
+                if (registeredPublicKeyRoots[j] == registeredPublicKeyRoots[i]) {
+                    revert InvalidFixtureConfiguration();
+                }
+            }
+        }
+
+        _fixtureRoots = fixtureRoots;
+        _fixtureSlots = fixtureSlots;
+        _registeredIndices = registeredIndices;
+        _registeredPublicKeyRoots = registeredPublicKeyRoots;
+        poolRecipient = expectedPoolRecipient;
+        genesisTime = fixtureGenesisTime;
+        secondsPerSlot = fixtureSecondsPerSlot;
+        slotsPerEpoch = fixtureSlotsPerEpoch;
+        maxAgeSlots = fixtureMaxAgeSlots;
+    }
+
+    /// @notice Verify one complete registered portfolio at a pinned fixture root.
+    /// @dev All observations commit atomically; fixed order rejects omissions and
+    ///      duplicate indices. Bounded fixture size keeps execution cost bounded.
+    function acceptCheckpoint(
+        uint256 fixtureIndex,
+        bytes32[] calldata slotBranch,
+        Witness[] calldata witnesses
+    ) external {
+        (bytes32 root, uint64 slot) = _checkpoint(fixtureIndex, slotBranch);
+        if (hasAcceptedCheckpoint && slot <= acceptedCheckpointSlot) revert RegressingCheckpoint();
+        if (witnesses.length != _registeredIndices.length) revert IncompletePortfolio();
+
+        uint256 total;
+        uint256 terminalCount;
+        for (uint256 i = 0; i < witnesses.length; i++) {
+            Witness calldata witness = witnesses[i];
+            if (
+                witness.index != _registeredIndices[i] ||
+                witness.publicKeyRoot != _registeredPublicKeyRoots[i]
+            ) revert WrongRegisteredIdentity();
+            uint64 balance = _verifiedBalance(root, witness);
+            bool terminal = _isTerminal(witness, balance, slot / slotsPerEpoch);
+            _verifiedBalances[witness.index] = balance;
+            _terminal[witness.index] = terminal;
+            total += balance;
+            if (terminal) terminalCount++;
+        }
+
+        hasAcceptedCheckpoint = true;
+        acceptedCheckpointSlot = slot;
+        totalValidatorBalanceShor = total;
+        terminalValidatorCount = terminalCount;
+        emit FixtureCheckpointAccepted(slot, total, terminalCount);
+    }
+
+    /// @notice Fixture precondition check for admitting a canonical validator.
+    /// @dev Existing indices are allowed. Their proven recipient must equal the
+    ///      intended pool. The surrounding funding gate must verify this before
+    ///      sending funds and bind its deposit public key to the argument here.
+    function verifyFundingCandidate(
+        uint256 fixtureIndex,
+        bytes32[] calldata slotBranch,
+        Witness calldata witness,
+        bytes calldata publicKey
+    ) external view returns (uint64 balanceShor) {
+        (bytes32 root, ) = _checkpoint(fixtureIndex, slotBranch);
+        if (_publicKeyRoot(publicKey) != witness.publicKeyRoot) revert InvalidPublicKey();
+        balanceShor = _verifiedBalance(root, witness);
+        if (
+            balanceShor < MINIMUM_BOOTSTRAP_SHOR || witness.slashed ||
+            witness.exitEpoch != FAR_FUTURE_EPOCH ||
+            witness.withdrawableEpoch != FAR_FUTURE_EPOCH
+        ) revert IneligibleFundingCandidate();
+    }
+
+    /// @notice A zero balance alone does not establish a terminal validator.
+    function verifyTerminal(
+        uint256 fixtureIndex,
+        bytes32[] calldata slotBranch,
+        Witness calldata witness
+    ) external view returns (bool) {
+        (bytes32 root, uint64 slot) = _checkpoint(fixtureIndex, slotBranch);
+        uint64 balance = _verifiedBalance(root, witness);
+        if (!_isTerminal(witness, balance, slot / slotsPerEpoch)) revert NonTerminalValidator();
+        return true;
+    }
+
+    function verifiedBalanceShor(uint64 index) external view returns (uint64) {
+        return _verifiedBalances[index];
+    }
+
+    function terminalAtLastCheckpoint(uint64 index) external view returns (bool) {
+        return _terminal[index];
+    }
+
+    function publicKeySSZRoot(bytes calldata publicKey) external pure returns (bytes32) {
+        return _publicKeyRoot(publicKey);
+    }
+
+    function validatorSSZRoot(Witness calldata witness) external pure returns (bytes32) {
+        return _validatorRoot(witness);
+    }
+
+    function _checkpoint(uint256 fixtureIndex, bytes32[] calldata slotBranch)
+        private view returns (bytes32 root, uint64 slot)
+    {
+        if (fixtureIndex >= _fixtureRoots.length) revert UnknownFixtureCheckpoint();
+        root = _fixtureRoots[fixtureIndex];
+        slot = _fixtureSlots[fixtureIndex];
+        if (hasAcceptedCheckpoint && slot < acceptedCheckpointSlot) revert RegressingCheckpoint();
+        if (slotBranch.length != 5) revert InvalidProof();
+        _verifyBranch(root, _uint64Root(slot), 34, slotBranch);
+        if (block.timestamp < genesisTime) revert FutureCheckpoint();
+        uint256 currentSlot = (block.timestamp - genesisTime) / secondsPerSlot;
+        if (slot > currentSlot) revert FutureCheckpoint();
+        if (currentSlot - slot > maxAgeSlots) revert StaleCheckpoint();
+    }
+
+    function _verifiedBalance(bytes32 root, Witness calldata witness) private view returns (uint64) {
+        if (witness.validatorBranch.length != 46 || witness.balanceBranch.length != 44) {
+            revert InvalidProof();
+        }
+        // SSZ list lengths occupy a 32-byte, little-endian uint64 root.
+        uint64 validatorCount = _uint64At(witness.validatorBranch[40], 0);
+        uint64 balanceCount = _uint64At(witness.balanceBranch[38], 0);
+        if (
+            witness.validatorBranch[40] != _uint64Root(validatorCount) ||
+            witness.balanceBranch[38] != _uint64Root(balanceCount) ||
+            validatorCount != balanceCount || validatorCount > VALIDATOR_LIMIT ||
+            witness.index >= validatorCount
+        ) revert InvalidValidatorLength();
+
+        _verifyBranch(
+            root,
+            _validatorRoot(witness),
+            (uint256(43) << 41) + witness.index,
+            witness.validatorBranch
+        );
+        _verifyBranch(
+            root,
+            witness.balanceChunk,
+            (uint256(44) << 39) + (witness.index / 4),
+            witness.balanceBranch
+        );
+        if (keccak256(witness.withdrawalRecipient) != keccak256(abi.encodePacked(poolRecipient))) {
+            revert WrongWithdrawalRecipient();
+        }
+        return _uint64At(witness.balanceChunk, uint256(witness.index % 4) * 8);
+    }
+
+    function _isTerminal(Witness calldata witness, uint64 balance, uint64 epoch)
+        private pure returns (bool)
+    {
+        return balance == 0 && witness.activationEpoch != FAR_FUTURE_EPOCH &&
+            witness.exitEpoch != FAR_FUTURE_EPOCH && witness.exitEpoch <= epoch &&
+            witness.withdrawableEpoch != FAR_FUTURE_EPOCH && witness.withdrawableEpoch <= epoch;
+    }
+
+    function _validatorRoot(Witness calldata witness) private pure returns (bytes32) {
+        if (witness.withdrawalRecipient.length != 64) revert WrongWithdrawalRecipient();
+        bytes32[16] memory nodes;
+        nodes[0] = witness.publicKeyRoot;
+        nodes[1] = sha256(witness.withdrawalRecipient);
+        nodes[2] = _uint64Root(witness.effectiveBalance);
+        nodes[3] = _uint64Root(witness.slashed ? 1 : 0);
+        nodes[4] = _uint64Root(witness.activationEligibilityEpoch);
+        nodes[5] = _uint64Root(witness.activationEpoch);
+        nodes[6] = _uint64Root(witness.exitEpoch);
+        nodes[7] = _uint64Root(witness.withdrawableEpoch);
+        nodes[8] = witness.randaoCommitment;
+        for (uint256 width = 16; width > 1; width /= 2) {
+            for (uint256 i = 0; i < width / 2; i++) {
+                nodes[i] = sha256(abi.encodePacked(nodes[i * 2], nodes[i * 2 + 1]));
+            }
+        }
+        return nodes[0];
+    }
+
+    function _publicKeyRoot(bytes calldata publicKey) private pure returns (bytes32) {
+        if (publicKey.length != 2592) revert InvalidPublicKey();
+        bytes32[128] memory nodes;
+        for (uint256 i = 0; i < 81; i++) {
+            nodes[i] = bytes32(publicKey[i * 32:(i + 1) * 32]);
+        }
+        for (uint256 width = 128; width > 1; width /= 2) {
+            for (uint256 i = 0; i < width / 2; i++) {
+                nodes[i] = sha256(abi.encodePacked(nodes[i * 2], nodes[i * 2 + 1]));
+            }
+        }
+        return nodes[0];
+    }
+
+    function _uint64Root(uint64 value) private pure returns (bytes32) {
+        bytes memory encoded = new bytes(32);
+        for (uint256 i = 0; i < 8; i++) encoded[i] = bytes1(uint8(value >> (i * 8)));
+        return bytes32(encoded);
+    }
+
+    function _uint64At(bytes32 chunk, uint256 offset) private pure returns (uint64 value) {
+        for (uint256 i = 0; i < 8; i++) value |= uint64(uint8(chunk[offset + i])) << uint64(i * 8);
+    }
+
+    function _verifyBranch(bytes32 root, bytes32 leaf, uint256 generalizedIndex, bytes32[] calldata branch)
+        private pure
+    {
+        bytes32 node = leaf;
+        for (uint256 i = 0; i < branch.length; i++) {
+            node = generalizedIndex % 2 == 0
+                ? sha256(abi.encodePacked(node, branch[i]))
+                : sha256(abi.encodePacked(branch[i], node));
+            generalizedIndex /= 2;
+        }
+        if (generalizedIndex != 1 || node != root) revert InvalidProof();
+    }
+}

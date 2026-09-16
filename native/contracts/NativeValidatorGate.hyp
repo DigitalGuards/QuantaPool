@@ -1,0 +1,175 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma hyperion >=0.0;
+
+import "./NativePortfolioVerifier.hyp";
+
+interface INativeGatePool {
+    function lastCheckpointId() external view returns (uint64);
+    function lastCheckpointBlock() external view returns (uint64);
+    function appliedSlot() external view returns (uint64);
+    function appliedStateRoot() external view returns (bytes32);
+    function recovering() external view returns (bool);
+    function poolStatus() external view returns (uint8);
+    function stage() external view returns (uint8);
+    function queueHead() external view returns (uint256);
+    function requestCount() external view returns (uint256);
+    function adoptAndReleaseBootstrap(address beneficiary) external;
+}
+
+interface INativeCanonicalDeposit {
+    function deposit(bytes calldata publicKey, bytes calldata recipient, bytes calldata randaoCommitment,
+        bytes calldata signature, bytes32 depositDataRoot) external payable;
+    function get_deposit_count() external view returns (bytes memory);
+}
+
+/// @notice Fixed native validator admission, funding and public exit storage.
+/// @dev Bootstrap capital belongs to its immutable original payer. The pool's
+///      exact top-up passes atomically to the pinned canonical deposit runtime.
+contract NativeValidatorGate {
+    uint256 public constant BOOTSTRAP_AMOUNT = 2_000 quanta;
+    uint256 public constant TOP_UP_AMOUNT = 38_000 quanta;
+    bytes32 public constant DEPOSIT_RUNTIME_SHA256 = 0x73b5c62b351824e49a9681e99813d70ee3f1238372a79e0dd1afac5f88700fc1;
+
+    struct DepositData {
+        bytes publicKey;
+        bytes32 randaoCommitment;
+        bytes signature;
+        bytes32 dataRoot;
+    }
+    struct Preparation { address beneficiary; uint64 executionBlock; bool admitted; }
+    struct Exit { bool funded; bool requested; bytes signature; }
+    struct FundingRecord { uint64 executionBlock; uint64 depositIndex; }
+
+    INativeEconomicFinality public immutable finality;
+    NativePortfolioVerifier public immutable portfolio;
+    INativeGatePool public immutable pool;
+    INativeCanonicalDeposit public immutable beaconDeposit;
+    address public immutable validatorOperator;
+    bytes32 public immutable depositDomain;
+    bytes32 public immutable exitDomain;
+    mapping(bytes32 => Preparation) public preparations;
+    mapping(uint64 => Exit) private exits;
+    FundingRecord[] private funding;
+    uint64[] private fundedIndices;
+    uint256 public nextExitPosition;
+    bool private entered;
+
+    event BootstrapPrepared(bytes32 indexed keyHash, address beneficiary, uint64 depositIndex);
+    event PublicExitStored(uint64 indexed validatorIndex, uint64 epoch, bytes signature);
+    event ValidatorFunded(uint64 indexed validatorIndex, uint64 depositIndex, uint256 amount);
+    event ValidatorExitRequested(uint64 indexed validatorIndex);
+
+    modifier guarded() { require(!entered, "reentrant call"); entered = true; _; entered = false; }
+
+    constructor(address finalityAddress, address portfolioAddress, address predictedPool,
+        address depositAddress, bytes32 genesisValidatorsRoot, bytes4 forkVersion, address operatorAddress) {
+        require(finalityAddress.code.length != 0 && portfolioAddress.code.length != 0 &&
+            predictedPool != address(0) && operatorAddress != address(0) &&
+            depositAddress == address(uint512(0x42424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242424242)) &&
+            sha256(depositAddress.code) == DEPOSIT_RUNTIME_SHA256, "configuration");
+        finality = INativeEconomicFinality(finalityAddress);
+        portfolio = NativePortfolioVerifier(portfolioAddress);
+        pool = INativeGatePool(predictedPool);
+        beaconDeposit = INativeCanonicalDeposit(depositAddress);
+        validatorOperator = operatorAddress;
+        require(portfolio.pool() == predictedPool && portfolio.gate() == address(this) &&
+            address(portfolio.finality()) == finalityAddress, "binding");
+        bytes32 forkRoot = sha256(abi.encodePacked(forkVersion, bytes28(0), genesisValidatorsRoot));
+        bytes32 syncDomain = bytes32(abi.encodePacked(hex"07000000", bytes28(forkRoot)));
+        (bool ok, bytes memory value) = finalityAddress.staticcall(abi.encodeWithSignature("syncDomain()"));
+        require(ok && value.length == 64 && abi.decode(value, (bytes32)) == syncDomain, "signing network");
+        exitDomain = bytes32(abi.encodePacked(hex"04000000", bytes28(forkRoot)));
+        bytes32 depositForkRoot = sha256(abi.encodePacked(forkVersion, bytes28(0), bytes32(0)));
+        depositDomain = bytes32(abi.encodePacked(hex"03000000", bytes28(depositForkRoot)));
+    }
+
+    receive() external payable { require(msg.sender == address(pool) && entered && msg.value == TOP_UP_AMOUNT, "only atomic pool top-up"); }
+
+    function bootstrapValidator(DepositData calldata data) external payable guarded {
+        require(msg.sender == validatorOperator && msg.value == BOOTSTRAP_AMOUNT && finality.status() == 0 && pool.poolStatus() == 0 && portfolio.registryCount() < 64 &&
+            !pool.recovering() && pool.stage() == 0, "bootstrap unavailable");
+        bytes32 keyHash = keccak256(data.publicKey);
+        require(preparations[keyHash].beneficiary == address(0) && block.number < type(uint64).max, "existing preparation");
+        _verifyDeposit(data, 2_000_000_000_000);
+        preparations[keyHash] = Preparation(msg.sender, uint64(block.number), false);
+        uint64 index = _deposit(data, BOOTSTRAP_AMOUNT);
+        emit BootstrapPrepared(keyHash, msg.sender, index);
+    }
+
+    function admitAndFundValidator(NativeSSZ.ValidatorWitness calldata witness,
+        DepositData calldata topup, bytes calldata exitSignature) external guarded {
+        Preparation storage preparation = preparations[keccak256(topup.publicKey)];
+        require(preparation.beneficiary != address(0) && !preparation.admitted && !exits[witness.index].funded,
+            "unknown or funded preparation");
+        (uint64 slot, bytes32 root) = finality.economicCheckpoint();
+        require(slot == pool.appliedSlot() && root == pool.appliedStateRoot() && pool.lastCheckpointId() != 0 &&
+            pool.lastCheckpointBlock() > preparation.executionBlock && portfolio.snapshotId() == pool.lastCheckpointId(), "settle bootstrap cutoff");
+        require(topup.randaoCommitment == witness.randaoCommitment &&
+            NativeSSZ.publicKeyRoot(topup.publicKey) == witness.publicKeyRoot, "wrong prepared key");
+        _verifyDeposit(topup, 38_000_000_000_000);
+        bytes32 exitRoot = sha256(abi.encodePacked(NativeSSZ.uint64Root(0), NativeSSZ.uint64Root(witness.index)));
+        _verifySignature(sha256(abi.encodePacked(exitRoot, exitDomain)), topup.publicKey, exitSignature);
+        portfolio.registerValidator(witness, topup.publicKey);
+        preparation.admitted = true;
+        exits[witness.index] = Exit(true, false, exitSignature);
+        fundedIndices.push(witness.index);
+        emit PublicExitStored(witness.index, 0, exitSignature);
+        pool.adoptAndReleaseBootstrap(preparation.beneficiary);
+        uint64 depositIndex = _deposit(topup, TOP_UP_AMOUNT);
+        require(block.number < type(uint64).max, "block bound");
+        funding.push(FundingRecord(uint64(block.number), depositIndex));
+        emit ValidatorFunded(witness.index, depositIndex, TOP_UP_AMOUNT);
+    }
+
+    function requestNextExit() external guarded returns (uint64 validatorIndex) {
+        require(pool.recovering() || pool.queueHead() < pool.requestCount(), "no exit work");
+        require(nextExitPosition < fundedIndices.length, "all exits requested");
+        validatorIndex = fundedIndices[nextExitPosition++];
+        exits[validatorIndex].requested = true;
+        emit ValidatorExitRequested(validatorIndex);
+    }
+
+    function storedExit(uint64 index) external view returns (bool funded, bool requested, uint64 epoch, bytes memory signature) {
+        Exit storage value = exits[index];
+        return (value.funded, value.requested, 0, value.signature);
+    }
+    function fundingCount() external view returns (uint256) { return funding.length; }
+    function fundingRecord(uint256 index) external view returns (uint64 executionBlock, uint64 depositIndex) {
+        FundingRecord storage value = funding[index]; return (value.executionBlock, value.depositIndex);
+    }
+    function fundedValidator(uint256 index) external view returns (uint64) { return fundedIndices[index]; }
+
+    /// @notice Pool-funded deposits sent by the exact execution cutoff but not
+    ///         yet consumed by that same finalized state's beacon deposit cursor.
+    function inFlightAt(uint64 executionBlock, uint64 consumedDepositIndex) external view returns (uint256) {
+        uint256 low; uint256 high = funding.length;
+        while (low < high) { uint256 mid = (low + high) / 2;
+            if (funding[mid].executionBlock <= executionBlock) low = mid + 1; else high = mid; }
+        uint256 end = low; low = 0; high = end;
+        while (low < high) { uint256 mid = (low + high) / 2;
+            if (funding[mid].depositIndex < consumedDepositIndex) low = mid + 1; else high = mid; }
+        return (end - low) * TOP_UP_AMOUNT;
+    }
+
+    function _deposit(DepositData calldata data, uint256 amount) private returns (uint64 index) {
+        index = _depositCount();
+        beaconDeposit.deposit{value: amount}(data.publicKey, abi.encodePacked(address(pool)),
+            abi.encodePacked(data.randaoCommitment), data.signature, data.dataRoot);
+        require(index != type(uint64).max && _depositCount() == index + 1, "deposit cursor");
+    }
+    function _depositCount() private view returns (uint64 value) {
+        bytes memory count = beaconDeposit.get_deposit_count(); require(count.length == 8, "deposit cursor");
+        for (uint256 i = 0; i < 8; i++) value |= uint64(uint8(count[i])) << uint64(8 * i);
+    }
+    function _verifyDeposit(DepositData calldata data, uint64 amountShor) private view {
+        bytes32 message = sha256(abi.encodePacked(
+            sha256(abi.encodePacked(NativeSSZ.publicKeyRoot(data.publicKey), sha256(abi.encodePacked(address(pool))))),
+            sha256(abi.encodePacked(NativeSSZ.uint64Root(amountShor), data.randaoCommitment))));
+        _verifySignature(sha256(abi.encodePacked(message, depositDomain)), data.publicKey, data.signature);
+    }
+    function _verifySignature(bytes32 root, bytes calldata publicKey, bytes calldata signature) private view {
+        require(publicKey.length == 2592 && signature.length == 4627, "signature length");
+        (bool ok, bytes memory result) = address(3).staticcall(abi.encodePacked(root, publicKey, signature, hex"085a4f4e4401010000"));
+        require(ok && result.length == 64 && abi.decode(result, (uint512)) == 1, "invalid signature");
+    }
+}
