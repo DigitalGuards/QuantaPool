@@ -57,6 +57,9 @@ interface Internals {
   ): Promise<boolean>;
   verifyReadNetwork(): Promise<void>;
   getWeb3(): Promise<unknown>;
+  getContracts(): Promise<unknown>;
+  queryNativeEvents(name: string, beneficiary: string): Promise<unknown[]>;
+  fetchActivity(address: string): Promise<void>;
   waitForReceipt(hash: string): Promise<unknown>;
   refresh(): Promise<void>;
   qrlConnect: { disconnect(): Promise<void> } | null;
@@ -117,6 +120,53 @@ function fixture() {
     sendCount: () => sendCount,
   };
 }
+
+test("older pending refunds become visible after the latest 64 deposits are cancelled", async () => {
+  const f = fixture();
+  const cancelled = new Set<bigint>();
+  const reads: bigint[] = [];
+  const depositLogs = Array.from({ length: 65 }, (_, index) => ({
+    blockNumber: BigInt(index + 1),
+    returnValues: { id: BigInt(index), amount: 100n },
+  }));
+  f.internal.queryNativeEvents = async (name) =>
+    name === "DepositQueued"
+      ? depositLogs
+      : name === "PendingCancelled"
+        ? depositLogs.filter((log) => cancelled.has(log.returnValues.id))
+        : [];
+  f.internal.getContracts = async () => ({
+    pool: {
+      pendingHead: () => ({ call: async () => 0n }),
+      getPending: (id: bigint) => ({
+        call: async () => {
+          reads.push(id);
+          return {
+            beneficiary: address,
+            amount: 100n,
+            requestedBlock: id + 1n,
+            cancelled: cancelled.has(id),
+          };
+        },
+      }),
+    },
+  });
+
+  await f.internal.fetchActivity(address);
+  assert.equal(f.store.pendingDeposits.length, 64);
+  assert.equal(reads.length, 64);
+  assert.equal(f.store.pendingDeposits[0].id, 1n);
+  for (let id = 1n; id <= 64n; id++) cancelled.add(id);
+  reads.length = 0;
+
+  await f.internal.fetchActivity(address);
+  assert.equal(f.store.activityError, null);
+  assert.deepEqual(
+    f.store.pendingDeposits.map((item) => item.id),
+    [0n],
+  );
+  assert.deepEqual(reads, [0n]);
+});
 
 for (const outcome of ["hash", "error"] as const) {
   test(`old wallet ${outcome} cannot replace a newer same-account request`, async () => {

@@ -1270,6 +1270,7 @@ export class PoolStore {
       ] as const;
       const groups = await Promise.all(
         entries.map(async ([event, type]) => ({
+          event,
           type,
           logs: await this.queryNativeEvents(event, address),
         })),
@@ -1290,9 +1291,17 @@ export class PoolStore {
         )
         .sort((a, b) => (a.blockNumber > b.blockNumber ? -1 : 1));
       const head = asBig(await pool.pendingHead().call());
+      // Cancelled history must not occupy the bounded refund list forever.
+      const cancelled = new Set(
+        groups
+          .filter((group) => group.event === "PendingCancelled")
+          .flatMap((group) =>
+            group.logs.map((log) => asBig(log.returnValues?.id)),
+          ),
+      );
       const ids = groups[0].logs
         .map((raw) => asBig((raw as PastEventLog).returnValues?.id))
-        .filter((id) => id >= head)
+        .filter((id) => id >= head && !cancelled.has(id))
         .slice(-64);
       const pending = await Promise.all(
         ids.map(async (id) => ({
