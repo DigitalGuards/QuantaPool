@@ -6,6 +6,8 @@ The native contracts, accounting model, proof tools and application checks are i
 
 The [final security review](native/FINAL-SECURITY-REVIEW.md) records the resolved findings, release-candidate checks and remaining launch gates.
 
+The [deployment transparency template](native/DEPLOYMENT-TRANSPARENCY.md) defines the addresses, bytecode hashes, immutable roles and remaining operator powers that should be published for every public deployment.
+
 ## Economic rules
 
 - Native validators use the unchanged 40,000 QRL protocol amount. The immutable validator operator first risks its own 2,000 QRL preparation deposit; contracts authenticate the canonical pool recipient before atomically adopting that principal and releasing the 38,000 QRL pooled top-up.
