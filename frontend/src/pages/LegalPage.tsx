@@ -47,8 +47,8 @@ export function LegalPage() {
             affect validator performance, penalties and execution-tip routing.
             Those operational powers do not provide an administrative path to
             withdraw user principal from the pool. A future protocol version
-            requires a separate deployment rather than changing an existing
-            pool in place.
+            requires a separate deployment. Existing pool code stays fixed in
+            place.
           </p>
         </CardContent>
       </Card>

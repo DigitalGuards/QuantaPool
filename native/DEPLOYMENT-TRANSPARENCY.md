@@ -1,6 +1,6 @@
 # Deployment transparency
 
-This document defines the information QuantaPool should publish for every public native-QRL contract graph. It is a technical disclosure template, not a legal classification.
+This document defines the information QuantaPool should publish for every public native-QRL contract graph. It is a technical disclosure template and carries no legal classification.
 
 The goal is simple: a user, reviewer or regulator should be able to verify which code is deployed, which powers exist, which powers do not exist and which operator responsibilities remain.
 
