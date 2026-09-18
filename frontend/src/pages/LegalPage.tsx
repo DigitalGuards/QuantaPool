@@ -27,31 +27,6 @@ export function LegalPage() {
           </p>
         </CardContent>
       </Card>
-      <Card className="border-l-2 border-l-identity-accent">
-        <CardHeader>
-          <CardTitle className="text-lg">
-            Operator control and contract immutability
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm leading-relaxed text-muted-foreground">
-          <p>
-            The active native contract graph has no owner, upgrader, proxy
-            admin, pauser, arbitrary fund rescue, balance setter or mutable fee
-            role. Critical contract references and the fee recipient are fixed
-            at deployment. The operator cannot replace deployed pool logic,
-            change the fee percentage or redirect validator withdrawals to a
-            different recipient.
-          </p>
-          <p>
-            The validator operator still controls validator signing and can
-            affect validator performance, penalties and execution-tip routing.
-            Those operational powers do not provide an administrative path to
-            withdraw user principal from the pool. A future protocol version
-            requires a separate deployment. Existing pool code stays fixed in
-            place.
-          </p>
-        </CardContent>
-      </Card>
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Risks and limitations</CardTitle>

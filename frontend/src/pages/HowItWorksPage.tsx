@@ -26,7 +26,6 @@ const sections = [
     "Each pool admits at most 64 validators over its lifetime. An immutable operator address authorizes new validator preparations. Signed validator exits are stored publicly before pooled top-up funding. An independent relayer can submit them when the unmodified protocol permits. Anyone holding a public signature can also force an eligible early exit, reducing validation uptime. Each replacement validator uses another lifetime admission. This public-exit policy remains subject to review before launch. Eligibility, inclusion and validator withdrawal timing still apply. If finality verification or complete pool accounting exceeds its immutable deadline, anyone can trigger recovery: pending deposit refunds and reserved claims remain payable, and frozen positions receive their share of available and later returned cash without new fees.",
   ],
 ] as const;
-
 export function HowItWorksPage() {
   return (
     <div className="page-enter mx-auto max-w-3xl space-y-4 py-6">
@@ -47,28 +46,6 @@ export function HowItWorksPage() {
           </CardContent>
         </Card>
       ))}
-      <Card className="border-l-2 border-l-identity-accent">
-        <CardHeader>
-          <CardTitle className="text-lg">Immutable by construction</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm leading-relaxed text-muted-foreground">
-          <p>
-            The native contract graph has no owner, upgrader, proxy admin,
-            pauser, arbitrary fund rescue, balance setter or mutable fee role.
-            Critical contract references and the fee recipient are fixed at
-            deployment. The operator cannot replace the pool implementation,
-            change the fee percentage or redirect validator withdrawals to a
-            different recipient.
-          </p>
-          <p>
-            Validator operation is still an operator responsibility. Validator
-            signing can affect performance, losses and execution-tip routing,
-            but consensus withdrawals are bound to the pool contract. A future
-            QuantaPool version requires a separate deployment. Existing deployed
-            code does not become a new version automatically.
-          </p>
-        </CardContent>
-      </Card>
       <Card className="border-l-2 border-l-secondary">
         <CardHeader>
           <CardTitle className="text-lg">
