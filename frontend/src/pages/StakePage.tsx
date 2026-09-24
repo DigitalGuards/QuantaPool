@@ -93,7 +93,7 @@ export const StakePage = observer(() => {
           <CardContent className="space-y-4">
             <p className="text-xs text-muted-foreground">
               Wallet balance:{" "}
-              <span className="font-data">
+              <span className="font-numeric">
                 {account
                   ? `${formatAmount(account.qrlBalance)} QRL`
                   : "Connect your wallet"}
@@ -185,7 +185,7 @@ export const StakePage = observer(() => {
                     className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm"
                   >
                     <dt className="text-muted-foreground">{label}</dt>
-                    <dd className="font-data break-all font-medium">
+                    <dd className="font-numeric break-all font-medium">
                       {formatAmount(value)} QRL
                     </dd>
                   </div>

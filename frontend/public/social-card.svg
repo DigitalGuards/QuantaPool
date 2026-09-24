@@ -1,15 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
   <defs><linearGradient id="surface"><stop stop-color="#090b13"/><stop offset="1" stop-color="#1a151a"/></linearGradient></defs>
   <rect width="1200" height="630" fill="url(#surface)"/>
-  <path d="M1010 0H1140L940 630H810Z" fill="#f97316" opacity=".07"/>
+  <path d="M1010 0H1140L940 630H810Z" fill="#33ADE6" opacity=".07"/>
   <g transform="translate(80 82) scale(2.4)">
     <rect width="64" height="64" rx="14" fill="#030712"/>
-    <path d="M32 10c8 10.5 14 17.8 14 25.4C46 44.6 39.7 51 32 51s-14-6.4-14-15.6C18 27.8 24 20.5 32 10z" fill="none" stroke="#f97316" stroke-width="3.5" stroke-linejoin="round"/>
-    <path d="M26.2 43.6h2.2c.7 0-.2-1.7-.3-2.6a6.3 6.3 0 1 1 7.8 0c-.1.9-1 2.6-.3 2.6h2.2" fill="none" stroke="#4aafff" stroke-width="3" stroke-linecap="round"/>
+    <path d="M32 10c8 10.5 14 17.8 14 25.4C46 44.6 39.7 51 32 51s-14-6.4-14-15.6C18 27.8 24 20.5 32 10z" fill="none" stroke="#33ADE6" stroke-width="3.5" stroke-linejoin="round"/>
+    <path d="M26.2 43.6h2.2c.7 0-.2-1.7-.3-2.6a6.3 6.3 0 1 1 7.8 0c-.1.9-1 2.6-.3 2.6h2.2" fill="none" stroke="#A5D7E9" stroke-width="3" stroke-linecap="round"/>
   </g>
   <text x="80" y="355" fill="#f5f3ef" font-family="Arial,sans-serif" font-size="78" font-weight="700">QuantaPool</text>
   <text x="84" y="427" fill="#c6c4cc" font-family="Arial,sans-serif" font-size="34">Native QRL pooled staking.</text>
   <text x="84" y="480" fill="#c6c4cc" font-family="Arial,sans-serif" font-size="24">On-chain positions. Native QRL claims.</text>
-  <text x="84" y="561" fill="#f97316" font-family="Arial,sans-serif" font-size="25" font-weight="700">quantapool.com</text>
-  <rect y="624" width="1200" height="6" fill="#4aafff"/>
+  <text x="84" y="561" fill="#33ADE6" font-family="Arial,sans-serif" font-size="25" font-weight="700">quantapool.com</text>
+  <rect y="624" width="1200" height="6" fill="#A5D7E9"/>
 </svg>

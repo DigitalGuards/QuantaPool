@@ -48,7 +48,7 @@ export const StatsPage = observer(() => {
                 className="flex flex-wrap justify-between gap-2 text-sm"
               >
                 <dt className="text-muted-foreground">{label}</dt>
-                <dd className="font-data break-all">
+                <dd className="font-numeric break-all">
                   {value === undefined
                     ? "Unavailable"
                     : `${formatAmount(value)} QRL`}
@@ -65,7 +65,7 @@ export const StatsPage = observer(() => {
         <CardContent className="space-y-3 text-sm">
           <p>
             Last applied execution block:{" "}
-            <span className="font-data">
+            <span className="font-numeric">
               {pool?.lastCheckpointBlock.toString() ?? "Unavailable"}
             </span>
           </p>
@@ -85,7 +85,7 @@ export const StatsPage = observer(() => {
           </p>
           <p>
             Accounting recovery deadline: slot{" "}
-            <span className="font-data">
+            <span className="font-numeric">
               {pool?.poolRecoveryDeadlineSlot.toString() ?? "Unavailable"}
             </span>
             . Only a completed and applied pool checkpoint can extend this

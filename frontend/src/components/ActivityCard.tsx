@@ -114,13 +114,13 @@ export const ActivityCard = observer(() => {
                         recovery cash.
                       </p>
                     )}
-                    <p className="font-data text-xs text-muted-foreground">
+                    <p className="font-numeric text-xs text-muted-foreground">
                       Block {item.blockNumber.toString()}
                     </p>
                   </div>
                   <div className="text-right">
                     {item.qrlAmount !== null && (
-                      <p className="font-data font-medium">
+                      <p className="font-numeric font-medium">
                         {formatAmount(item.qrlAmount)} {NATIVE_UNIT}
                       </p>
                     )}

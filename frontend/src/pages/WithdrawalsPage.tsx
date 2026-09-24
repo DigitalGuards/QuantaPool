@@ -104,7 +104,7 @@ export const WithdrawalsPage = observer(() => {
               {pool?.recovering
                 ? "Frozen checkpoint reference"
                 : "Last checkpoint value"}
-              : <span className="font-data">{formatAmount(available)} QRL</span>
+              : <span className="font-numeric">{formatAmount(available)} QRL</span>
             </p>
             <AmountInput
               value={amount}
@@ -147,7 +147,7 @@ export const WithdrawalsPage = observer(() => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="font-data text-2xl font-semibold">
+            <p className="font-numeric text-2xl font-semibold">
               {formatAmount(account.claimable)} QRL
             </p>
             <Button
@@ -163,7 +163,7 @@ export const WithdrawalsPage = observer(() => {
                   Queued {request.rewardsOnly ? "reward" : "position"} request #
                   {request.id.toString()}
                 </p>
-                <p className="font-data">
+                <p className="font-numeric">
                   {request.amount === MAX_NATIVE_REQUEST
                     ? "Full amount at reservation"
                     : `${formatAmount(request.amount)} QRL requested`}
@@ -215,11 +215,11 @@ export const WithdrawalsPage = observer(() => {
                   Validator returns can still require independent exit
                   submission and protocol waiting periods.
                 </p>
-                <p className="font-data text-sm">
+                <p className="font-numeric text-sm">
                   Currently recoverable:{" "}
                   {formatAmount(account.recoveryClaimable)} QRL
                 </p>
-                <p className="font-data text-sm">
+                <p className="font-numeric text-sm">
                   Recovery paid to you: {formatAmount(account.recoveryClaimed)}{" "}
                   QRL
                 </p>
@@ -248,7 +248,7 @@ export const WithdrawalsPage = observer(() => {
         <CardContent className="space-y-3">
           <p className="text-sm">
             Pending:{" "}
-            <span className="font-data">
+            <span className="font-numeric">
               {formatAmount(account.pending)} QRL
             </span>
           </p>
@@ -257,7 +257,7 @@ export const WithdrawalsPage = observer(() => {
               key={item.id.toString()}
               className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm"
             >
-              <span className="font-data">
+              <span className="font-numeric">
                 #{item.id.toString()} · {formatAmount(item.amount)} QRL
               </span>
               <Button
