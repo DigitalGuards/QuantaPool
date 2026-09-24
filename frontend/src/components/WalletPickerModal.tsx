@@ -49,12 +49,20 @@ export const WalletPickerModal = observer(() => {
                 className="cursor-pointer flex w-full items-center gap-3 rounded-md border border-border bg-muted/30 px-3 py-3 text-left transition-colors hover:border-primary/40 hover:bg-primary/10"
               >
                 {w.icon ? (
-                  <img src={w.icon} alt="" className="h-8 w-8 rounded-md" />
+                  <img
+                    src={w.icon}
+                    alt=""
+                    className="h-8 w-8 shrink-0 rounded-md"
+                  />
                 ) : (
-                  <span className="h-8 w-8 rounded-md bg-muted" />
+                  <span className="h-8 w-8 shrink-0 rounded-md bg-muted" />
                 )}
-                <span className="flex-1 font-medium">{w.name}</span>
-                <span className="font-data text-xs text-identity-accent">{w.rdns}</span>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate font-medium">{w.name}</span>
+                  <span className="font-data truncate text-xs text-identity-accent">
+                    {w.rdns}
+                  </span>
+                </span>
               </button>
             ))
           )}
