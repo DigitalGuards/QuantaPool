@@ -36,6 +36,13 @@ import {
 const QRL_EXTENSION_RDNS = new Set(["theqrl.org", "com.qrlwallet.extension"]);
 const QRL_CONNECT_RDNS = QRL_CONNECT_PROVIDER_INFO.rdns;
 
+/**
+ * MyQRLWallet 3A mark, shown for the relay entry in the wallet picker
+ * instead of the SDK's own baked EIP-6963 icon, so the picker carries the
+ * current wallet branding without a coordinated SDK release.
+ */
+const MYQRLWALLET_ICON = "/myqrlwallet-icon.svg";
+
 /** EIP-6963 provider announcement (info + injected provider). */
 interface EIP6963Detail {
   info: { uuid: string; name: string; icon: string; rdns: string };
@@ -413,7 +420,8 @@ export class PoolStore {
         (d) => ({
           uuid: d.info.uuid,
           name: d.info.name,
-          icon: d.info.icon,
+          icon:
+            d.info.rdns === QRL_CONNECT_RDNS ? MYQRLWALLET_ICON : d.info.icon,
           rdns: d.info.rdns,
           kind: d.info.rdns === QRL_CONNECT_RDNS ? "relay" : "extension",
         }),

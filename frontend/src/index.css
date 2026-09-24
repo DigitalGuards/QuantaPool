@@ -1,17 +1,21 @@
-/* Self-hosted variable fonts (Sora display / Instrument Sans body /
-   JetBrains Mono data) are imported in main.tsx: importing them here would
-   let the Tailwind postcss pipeline inline the @font-face rules without
+/* Self-hosted variable fonts (Sora display / Instrument Sans body / Inter
+   numeric / JetBrains Mono data) are imported in main.tsx: importing them here
+   would let the Tailwind postcss pipeline inline the @font-face rules without
    rewriting the package-relative woff2 URLs. */
 @import "tailwindcss";
 
-/* Theme customization for Tailwind v4 - "Obsidian & Ember" token values
-   mirror myqrlwallet-frontend so QuantaPool reads as part of the same
-   product family. */
+/* Theme customization for Tailwind v4 - "QRL Blue" token values mirror
+   myqrlwallet-frontend so QuantaPool reads as part of the same product
+   family. */
 @theme {
   /* Typography */
   --font-sans: "Instrument Sans Variable", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Sora Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", monospace;
+  /* Numeric voice: balances, amounts, fees, counts. Inter matches the
+     extension surface and the wider wallet ecosystem. */
+  --font-numeric: "Inter Variable", "Instrument Sans Variable", ui-sans-serif,
+    system-ui, sans-serif;
 
   /* Border radius */
   --radius-lg: var(--radius);
@@ -55,50 +59,58 @@
 
 /* CSS Custom Properties for theming.
 
-   "Obsidian & Ember": one deep warm-ink surface family, one ember-orange
-   action color (the QRL brand), champagne reserved for identity and informational
+   "QRL Blue": one deep navy surface family, QRL's sky blue as the single
+   action color, a pale ice blue reserved for identity and informational
    states, and layered glow + grain atmosphere behind everything. Values
    are the canonical set from myqrlwallet-frontend. */
 @layer base {
   :root {
-    --background: 235 15% 4%;
-    --foreground: 36 20% 95%;
+    --background: 222 45% 6%;
+    --foreground: 210 30% 96%;
 
-    --card: 235 13% 7%;
-    --card-foreground: 36 20% 95%;
+    --card: 222 38% 9%;
+    --card-foreground: 210 30% 96%;
 
-    --popover: 235 14% 6%;
-    --popover-foreground: 36 20% 95%;
+    --popover: 222 40% 7%;
+    --popover-foreground: 210 30% 96%;
 
-    /* Ember: the single action color */
-    --primary: 24 96% 55%;
-    --primary-foreground: 24 90% 6%;
+    /* QRL sky blue: the single action color */
+    --primary: 199 78% 55%;
+    --primary-foreground: 205 80% 8%;
 
-    /* QRL Orange kept as the brand accent token (rails, edges, badges) */
-    --secondary: 25 95% 53%;
-    --secondary-foreground: 24 90% 6%;
+    /* Brand accent token (rails, edges, badges), a sibling of primary */
+    --secondary: 200 82% 52%;
+    --secondary-foreground: 205 80% 8%;
 
-    /* Champagne matches the wallet identity and information palette. */
-    --identity-accent: 38 45% 76%;
-    --identity-accent-foreground: 38 60% 8%;
+    /* Ice blue: the identity color (addresses, account markers) and
+       informational states. Sky blue acts, ice blue identifies. */
+    --identity-accent: 196 60% 78%;
+    --identity-accent-foreground: 205 60% 8%;
 
     --success: 152 55% 48%;
     --success-foreground: 152 80% 8%;
 
-    --muted: 235 10% 12%;
-    --muted-foreground: 234 8% 64%;
+    --muted: 222 30% 13%;
+    --muted-foreground: 215 15% 66%;
 
-    --accent: 235 11% 13%;
-    --accent-foreground: 36 20% 95%;
+    --accent: 222 30% 14%;
+    --accent-foreground: 210 30% 96%;
 
-    --destructive: 0 68% 46%;
-    --destructive-foreground: 0 0% 98%;
+    /* Lifted off the palette base (0 70% 55%) so 12px destructive text and
+       destructive text on a /15 tint both clear WCAG AA. The paired
+       foreground is a deep maroon, matching how primary pairs a dark
+       foreground with a bright accent. */
+    --destructive: 0 72% 64%;
+    --destructive-foreground: 0 60% 10%;
 
-    --border: 235 10% 15%;
-    --input: 235 10% 17%;
-    --ring: 24 96% 55%;
+    --border: 220 30% 17%;
+    --input: 220 30% 20%;
+    --ring: 199 78% 55%;
 
     --radius: 0.75rem;
+
+    /* Top edge of the hero-card gradient. */
+    --hero-top: 205 55% 16%;
   }
 
   /* Customized scrollbar */
@@ -144,9 +156,9 @@
     background-color: hsl(var(--background));
     background-image:
       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E"),
-      radial-gradient(52rem 34rem at 12% -8%, hsl(24 96% 55% / 0.09), transparent 62%),
-      radial-gradient(44rem 30rem at 108% 112%, hsl(38 45% 76% / 0.04), transparent 60%),
-      radial-gradient(60rem 44rem at 50% 120%, hsl(236 40% 12% / 0.5), transparent 70%);
+      radial-gradient(52rem 34rem at 12% -8%, hsl(199 78% 55% / 0.09), transparent 62%),
+      radial-gradient(44rem 30rem at 108% 112%, hsl(196 60% 78% / 0.04), transparent 60%),
+      radial-gradient(60rem 44rem at 50% 120%, hsl(222 45% 12% / 0.5), transparent 70%);
     background-attachment: fixed;
     font-family: var(--font-sans);
     font-feature-settings: "ss01" on;
@@ -214,11 +226,24 @@
     outline-offset: 4px;
   }
 
-  /* Data voice: addresses, hashes, balances. */
+  /* Data voice: addresses, hashes. Anything the user compares character by
+     character stays monospace. */
   .font-data {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.01em;
+  }
+
+  /* Numeric voice: every balance, amount, fee, exchange rate and count.
+     Inter with fixed-width digits so a changing balance does not jitter.
+     font-feature-settings is set explicitly because body turns on "ss01",
+     which in Inter swaps in alternate digit shapes; "tnum" here replaces
+     that list and keeps the digits plain and tabular. */
+  .font-numeric {
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    letter-spacing: normal;
   }
 
   /* Glass surface: the one card treatment used everywhere so pages stop
@@ -234,17 +259,19 @@
     border: 1px solid hsl(var(--foreground) / 0.08);
     box-shadow:
       0 1px 0 hsl(var(--foreground) / 0.05) inset,
-      0 18px 40px -24px hsl(235 30% 2% / 0.9);
+      0 18px 40px -24px hsl(222 50% 2% / 0.9);
   }
 
-  /* Ember edge treatment for "hero" cards (the stake form). */
+  /* Lifted edge treatment for "hero" cards (the stake form). Utility name
+     kept from the previous theme so in-flight branches keep applying
+     cleanly; the values are now QRL Blue. */
   .surface-ember {
     background:
-      linear-gradient(180deg, hsl(var(--primary) / 0.07), transparent 46%), hsl(var(--card) / 0.86);
+      linear-gradient(180deg, hsl(var(--hero-top) / 0.85), transparent 46%), hsl(var(--card) / 0.86);
     border: 1px solid hsl(var(--primary) / 0.22);
     box-shadow:
       0 1px 0 hsl(var(--primary) / 0.14) inset,
-      0 18px 44px -22px hsl(24 96% 40% / 0.28);
+      0 18px 44px -22px hsl(199 78% 40% / 0.28);
   }
 }
 

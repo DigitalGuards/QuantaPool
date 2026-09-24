@@ -18,7 +18,7 @@ export const StatsBar = observer(() => {
       {stats.map(([label, value]) => (
         <div key={label} className="min-w-0 bg-background p-4">
           <dt className="text-xs text-muted-foreground">{label}</dt>
-          <dd className="font-data mt-1 break-all text-sm font-semibold">
+          <dd className="font-numeric mt-1 break-all text-sm font-semibold">
             {value === undefined ? "Unavailable" : `${formatAmount(value)} QRL`}
           </dd>
         </div>
