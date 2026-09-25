@@ -21,7 +21,7 @@
     "@fontsource-variable/sora": "^5.2.8",
     "@noble/hashes": "^2.4.0",
     "@qrlwallet/connect": "4.0.0",
-    "@qrlwallet/connect-ui": "0.2.3",
+    "@qrlwallet/connect-ui": "0.3.0",
     "@radix-ui/react-slot": "^1.1.2",
     "@radix-ui/react-tabs": "^1.1.1",
     "@theqrl/web3": "^1.0.3",

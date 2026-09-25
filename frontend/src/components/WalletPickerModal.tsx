@@ -5,8 +5,12 @@ import { useStore } from "@/stores/store";
 
 /**
  * EIP-6963 wallet picker. Lists the QRL-capable wallets the store discovered
- * (the QRL browser extension and MyQRLWallet via the connect relay) and hands
- * a click back to the store to run the right connect path.
+ * and hands a click back to the store to run the right connect path.
+ *
+ * MyQRLWallet announces once per transport (browser extension and connect
+ * relay), so the store folds the pair into a single row. Clicking that row
+ * uses the extension when it is installed, and the "Use phone or desktop app"
+ * button under it always starts relay pairing.
  */
 export const WalletPickerModal = observer(() => {
   const { poolStore } = useStore();
@@ -42,29 +46,52 @@ export const WalletPickerModal = observer(() => {
               mobile or desktop.
             </p>
           ) : (
-            wallets.map((w) => (
-              <button
-                key={w.uuid}
-                onClick={() => void poolStore.connectWallet(w.uuid)}
-                className="cursor-pointer flex w-full items-center gap-3 rounded-md border border-border bg-muted/30 px-3 py-3 text-left transition-colors hover:border-primary/40 hover:bg-primary/10"
-              >
-                {w.icon ? (
-                  <img
-                    src={w.icon}
-                    alt=""
-                    className="h-8 w-8 shrink-0 rounded-md"
-                  />
-                ) : (
-                  <span className="h-8 w-8 shrink-0 rounded-md bg-muted" />
-                )}
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate font-medium">{w.name}</span>
-                  <span className="font-data truncate text-xs text-identity-accent">
-                    {w.rdns}
+            wallets.map((w) => {
+              // The merged MyQRLWallet row offers relay pairing as a second,
+              // separately focusable button when the extension holds the
+              // primary click.
+              const relayUuid = w.kind === "myqrlwallet" ? w.secondaryUuid : null;
+              const relayLabel = w.kind === "myqrlwallet" ? w.secondaryLabel : null;
+              return (
+              <div key={w.uuid} className="space-y-1">
+                <button
+                  onClick={() => void poolStore.connectWallet(w.uuid)}
+                  className="cursor-pointer flex w-full items-center gap-3 rounded-md border border-border bg-muted/30 px-3 py-3 text-left transition-colors hover:border-primary/40 hover:bg-primary/10"
+                >
+                  {w.icon ? (
+                    <img
+                      src={w.icon}
+                      alt=""
+                      className="h-8 w-8 shrink-0 rounded-md"
+                    />
+                  ) : (
+                    <span className="h-8 w-8 shrink-0 rounded-md bg-muted" />
+                  )}
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate font-medium">{w.name}</span>
+                    {w.kind === "myqrlwallet" ? (
+                      <span className="truncate text-xs text-muted-foreground">
+                        {w.primaryLabel}
+                      </span>
+                    ) : (
+                      <span className="font-data truncate text-xs text-identity-accent">
+                        {w.rdns}
+                      </span>
+                    )}
                   </span>
-                </span>
-              </button>
-            ))
+                </button>
+                {relayUuid && relayLabel ? (
+                  <button
+                    onClick={() => void poolStore.connectWallet(relayUuid)}
+                    aria-label={`${relayLabel} to connect ${w.name}`}
+                    className="cursor-pointer rounded-sm pl-11 text-left text-xs text-primary underline underline-offset-4 hover:text-primary/80"
+                  >
+                    {relayLabel}
+                  </button>
+                ) : null}
+              </div>
+              );
+            })
           )}
         </CardContent>
       </Card>

@@ -5,6 +5,9 @@ import {
   attemptWalletRedirect,
   getAppStoreUrl,
 } from "@qrlwallet/connect";
+// The dependency-free subpath: this module is loaded in plain Node by the
+// store tests, and the package index pulls in the DOM pairing modal.
+import { groupMyQrlWallet } from "@qrlwallet/connect-ui/wallets";
 import type { ContractAbi } from "@theqrl/web3";
 import { NativeQrlPoolABI } from "@/abi/NativeQrlPool";
 import { ACTIVE_NETWORK, type NetworkConfig } from "@/config/networks";
@@ -37,9 +40,9 @@ const QRL_EXTENSION_RDNS = new Set(["theqrl.org", "com.qrlwallet.extension"]);
 const QRL_CONNECT_RDNS = QRL_CONNECT_PROVIDER_INFO.rdns;
 
 /**
- * MyQRLWallet 3A mark, shown for the relay entry in the wallet picker
- * instead of the SDK's own baked EIP-6963 icon, so the picker carries the
- * current wallet branding without a coordinated SDK release.
+ * MyQRLWallet 3A mark, shown on the merged MyQRLWallet row in the wallet
+ * picker in place of the icon either transport announces, so the picker
+ * carries the current wallet branding without a coordinated SDK release.
  */
 const MYQRLWALLET_ICON = "/myqrlwallet-icon.svg";
 
@@ -49,14 +52,35 @@ interface EIP6963Detail {
   provider: ExtensionProvider;
 }
 
-/** A wallet shown in the picker. `kind` drives the connect path. */
-export interface DiscoveredWallet {
+/**
+ * The single MyQRLWallet row. MyQRLWallet announces twice over EIP-6963 (the
+ * browser extension and the connect SDK's relay entry); groupMyQrlWallet
+ * folds the pair into one row. `uuid` is the announcement a click on the row
+ * body uses, `secondaryUuid` the one the extra action uses.
+ */
+export interface MyQrlWalletRow {
+  kind: "myqrlwallet";
+  uuid: string;
+  name: string;
+  icon: string;
+  /** Plain secondary line: "Browser extension" or "Phone, web or desktop". */
+  primaryLabel: string;
+  /** Relay announcement for the extra action; null when the row has one path. */
+  secondaryUuid: string | null;
+  secondaryLabel: string | null;
+}
+
+/** Any other QRL-capable wallet, listed on its own. */
+export interface OtherWalletRow {
+  kind: "wallet";
   uuid: string;
   name: string;
   icon: string;
   rdns: string;
-  kind: "extension" | "relay";
 }
+
+/** A row shown in the picker. */
+export type DiscoveredWallet = MyQrlWalletRow | OtherWalletRow;
 
 /** Which transport the active provider uses (drives the tx param shape). */
 type ProviderKind = "extension" | "relay";
@@ -416,15 +440,29 @@ export class PoolStore {
     if (this.discoveredMap.has(info.uuid)) return;
     this.discoveredMap.set(info.uuid, detail);
     runInAction(() => {
-      this.discoveredWallets = Array.from(this.discoveredMap.values()).map(
-        (d) => ({
-          uuid: d.info.uuid,
-          name: d.info.name,
-          icon:
-            d.info.rdns === QRL_CONNECT_RDNS ? MYQRLWALLET_ICON : d.info.icon,
-          rdns: d.info.rdns,
-          kind: d.info.rdns === QRL_CONNECT_RDNS ? "relay" : "extension",
-        }),
+      this.discoveredWallets = groupMyQrlWallet(this.discoveredMap.values(), {
+        icon: MYQRLWALLET_ICON,
+      }).map((entry): DiscoveredWallet =>
+        entry.kind === "myqrlwallet"
+          ? {
+              kind: "myqrlwallet",
+              uuid: entry.uuid,
+              name: entry.name,
+              icon: entry.icon,
+              primaryLabel: entry.primaryLabel,
+              secondaryUuid:
+                entry.secondary === "relay"
+                  ? (entry.relay?.info.uuid ?? null)
+                  : null,
+              secondaryLabel: entry.secondaryLabel,
+            }
+          : {
+              kind: "wallet",
+              uuid: entry.uuid,
+              name: entry.name,
+              icon: entry.icon,
+              rdns: entry.rdns,
+            },
       );
     });
   };
