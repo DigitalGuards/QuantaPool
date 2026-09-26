@@ -22,13 +22,16 @@
   "license": "GPL-3.0",
   "dependencies": {
     "@noble/hashes": "^2.3.0",
-    "@theqrl/mldsa87": "^2.1.4",
-    "@theqrl/qrl-cryptography": "^0.3.1",
-    "@theqrl/wallet.js": "^6.2.4",
+    "@theqrl/mldsa87": "^2.2.0",
+    "@theqrl/qrl-cryptography": "^0.3.3",
+    "@theqrl/wallet.js": "^6.3.0",
     "@theqrl/web3": "^1.0.3",
     "dotenv": "^17.4.2"
   },
   "overrides": {
+    "@theqrl/mldsa87": "$@theqrl/mldsa87",
+    "@theqrl/qrl-cryptography": "$@theqrl/qrl-cryptography",
+    "@theqrl/wallet.js": "$@theqrl/wallet.js",
     "tmp": "^0.2.7",
     "follow-redirects": "^1.16.0",
     "ws": "^8.21.0"
