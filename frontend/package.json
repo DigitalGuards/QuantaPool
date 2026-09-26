@@ -56,6 +56,9 @@
     "node": ">=22.22.0"
   },
   "overrides": {
+    "@theqrl/mldsa87": "2.2.0",
+    "@theqrl/qrl-cryptography": "0.3.3",
+    "@theqrl/wallet.js": "6.3.0",
     "brace-expansion@1": "1.1.18",
     "brace-expansion@5": "5.0.9",
     "esbuild": "0.28.1",
