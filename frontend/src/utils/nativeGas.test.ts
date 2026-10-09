@@ -4,20 +4,19 @@ import {
   nativeGasLimit,
   prepareNativeWalletRequest,
   type NativeEstimateRequest,
-  type NativeWalletTransport,
 } from "./nativeGas.ts";
 
 const blockLimit = 20_000_000n;
 const from = `Q${"11".repeat(64)}`;
 const to = `Q${"22".repeat(64)}`;
 
-test("cash-flow allowance covers the observed same-block claim underestimate", () => {
+void test("cash-flow allowance covers the observed same-block claim underestimate", () => {
   assert.equal(nativeGasLimit(85_687n, blockLimit, true), 300_000n);
   assert.equal(nativeGasLimit(85_687n, blockLimit, false), 111_394n);
   assert.equal(nativeGasLimit(400_001n, blockLimit, true), 620_002n);
 });
 
-test("gas margins reject invalid or over-block results without clipping", () => {
+void test("gas margins reject invalid or over-block results without clipping", () => {
   for (const estimate of [0n, -1n])
     assert.throws(
       () => nativeGasLimit(estimate, blockLimit, true),
@@ -42,8 +41,8 @@ test("gas margins reject invalid or over-block results without clipping", () => 
   assert.equal(nativeGasLimit(85_687n, 300_000n, true), 300_000n);
 });
 
-for (const transport of ["extension", "relay"] as NativeWalletTransport[]) {
-  test(`${transport} preserves exact native call and deposit fields with explicit gas`, async () => {
+for (const transport of ["extension", "relay"] as const) {
+  void test(`${transport} preserves exact native call and deposit fields with explicit gas`, async () => {
     const estimates: NativeEstimateRequest[] = [];
     for (const value of [0n, 123456789012345678900001n]) {
       const request = {
@@ -66,7 +65,8 @@ for (const transport of ["extension", "relay"] as NativeWalletTransport[]) {
       assert.equal(tx.to, to);
       assert.equal(tx.data, request.data);
       assert.equal(tx.chainId, "0x30182c");
-      assert.equal(BigInt(tx.gas as string | number), 300_000n);
+      assert(typeof tx.gas === "string" || typeof tx.gas === "number");
+      assert.equal(BigInt(tx.gas), 300_000n);
       if (transport === "relay") {
         assert.equal(tx.gas, "0x493e0");
         assert.equal(
@@ -89,7 +89,7 @@ for (const transport of ["extension", "relay"] as NativeWalletTransport[]) {
     assert(estimates.every((x) => x.from === from && x.to === to));
   });
 
-  test(`${transport} estimator rejection reaches the caller without a fallback or retry`, async () => {
+  void test(`${transport} estimator rejection reaches the caller without a fallback or retry`, async () => {
     let attempts = 0;
     let walletRequests = 0;
     await assert.rejects(async () => {

@@ -3,15 +3,13 @@
  * pattern used by myqrlwallet-frontend.
  */
 
-import { requireQrlAccount } from "@/utils/qrlAddress";
+import { requireQrlAccount } from "../qrlAddress.ts";
+import { isRecord } from "../guards.ts";
 
 export interface ExtensionProvider {
-  request: <T = unknown>(args: {
-    method: string;
-    params?: unknown[] | object;
-  }) => Promise<T>;
-  /** EIP-1193 event subscription - optional, not all providers support it. */
-  on?: (event: string, listener: (payload: unknown) => void) => void;
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+  /** Optional EIP-1193 event subscription. */
+  on?: (event: "accountsChanged", listener: (payload: unknown) => void) => void;
 }
 
 interface EIP6963ProviderInfo {
@@ -21,13 +19,34 @@ interface EIP6963ProviderInfo {
   rdns: string;
 }
 
-interface EIP6963ProviderDetail {
+export interface EIP6963ProviderDetail {
   info: EIP6963ProviderInfo;
   provider: ExtensionProvider;
 }
 
-interface EIP6963AnnounceProviderEvent extends CustomEvent {
-  detail: EIP6963ProviderDetail;
+export function isExtensionProvider(
+  value: unknown,
+): value is ExtensionProvider {
+  return (
+    isRecord(value) &&
+    typeof value.request === "function" &&
+    (value.on === undefined || typeof value.on === "function")
+  );
+}
+
+export function isProviderDetail(
+  value: unknown,
+): value is EIP6963ProviderDetail {
+  if (!isRecord(value) || !isRecord(value.info)) return false;
+  const info = value.info;
+  return (
+    typeof info.uuid === "string" &&
+    info.uuid.length > 0 &&
+    typeof info.name === "string" &&
+    typeof info.icon === "string" &&
+    typeof info.rdns === "string" &&
+    isExtensionProvider(value.provider)
+  );
 }
 
 // Injected QRL extensions: the upstream QRL Web3 Wallet and the MyQRLWallet
@@ -47,11 +66,10 @@ export function findQrlProvider(): Promise<EIP6963ProviderDetail | null> {
     };
 
     const onAnnounce = (event: Event) => {
-      const announceEvent = event as EIP6963AnnounceProviderEvent;
       // Any page script can dispatch this event; never assume the shape.
-      const rdns = announceEvent.detail?.info?.rdns;
-      if (rdns && QRL_WALLET_RDNS.has(rdns)) {
-        cachedDetail = announceEvent.detail;
+      if (!("detail" in event) || !isProviderDetail(event.detail)) return;
+      if (QRL_WALLET_RDNS.has(event.detail.info.rdns)) {
+        cachedDetail = event.detail;
         finish(cachedDetail);
       }
     };
@@ -60,7 +78,9 @@ export function findQrlProvider(): Promise<EIP6963ProviderDetail | null> {
     window.dispatchEvent(new Event("eip6963:requestProvider"));
 
     // Providers usually announce instantly; fall back to whatever we have.
-    setTimeout(() => finish(cachedDetail), 1000);
+    setTimeout(() => {
+      finish(cachedDetail);
+    }, 1000);
   });
 }
 
@@ -84,8 +104,8 @@ export class ConnectionRejectedError extends Error {
 }
 
 function providerErrorCode(error: unknown): number | undefined {
-  if (typeof error === "object" && error !== null && "code" in error) {
-    const code = (error as { code: unknown }).code;
+  if (isRecord(error)) {
+    const code = error.code;
     if (typeof code === "number") return code;
   }
   return undefined;
@@ -96,7 +116,7 @@ export async function connectToExtension(): Promise<ConnectedWallet> {
   if (!detail) throw new WalletNotFoundError();
 
   try {
-    const accounts = await detail.provider.request<string[]>({
+    const accounts = await detail.provider.request({
       method: "qrl_requestAccounts",
     });
     const address = requireQrlAccount(accounts);

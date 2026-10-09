@@ -4,9 +4,8 @@ import { defineQrlPairingModal, QrlPairingModal } from "@qrlwallet/connect-ui";
 import { useStore } from "@/stores/store";
 
 /**
- * "Pair MyQRLWallet" modal for the relay (connect SDK) path, now the shared
- * <qrl-pairing-modal> web component from @qrlwallet/connect-ui instead of a
- * hand-copied QR card. Self-gates on poolStore.pairingUri; the element's
+ * "Pair MyQRLWallet" modal for the relay (connect SDK) path, using the shared
+ * <qrl-pairing-modal> web component from @qrlwallet/connect-ui. Self-gates on poolStore.pairingUri; the element's
  * qrl-new-connection / qrl-cancel events map onto the store actions.
  */
 export const QrPairModal = observer(() => {

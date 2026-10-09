@@ -9,10 +9,12 @@
     "dev:lan": "vite --host 0.0.0.0",
     "test": "node --test --experimental-strip-types src/utils/*.test.ts",
     "build": "tsc -b && vite build",
-    "lint": "eslint . --max-warnings 0",
+    "lint": "npm run format:check && eslint . --max-warnings 0",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
-    "abi:sync": "node scripts/sync-native-abi.js"
+    "abi:sync": "node --experimental-strip-types scripts/sync-native-abi.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@fontsource-variable/instrument-sans": "^5.2.8",
@@ -46,6 +48,7 @@
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.19",
     "globals": "^15.15.0",
+    "prettier": "3.9.9",
     "rollup-plugin-node-polyfills": "^0.2.1",
     "tailwindcss": "^4.1.18",
     "typescript": "~5.8.3",

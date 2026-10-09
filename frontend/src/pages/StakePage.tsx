@@ -144,8 +144,11 @@ export const StakePage = observer(() => {
                 className="w-full"
                 size="lg"
                 disabled={!ready}
-                onClick={async () => {
-                  if (ready && (await poolStore.stake(amount))) setAmount("");
+                onClick={() => {
+                  if (ready)
+                    void poolStore.stake(amount).then((ok) => {
+                      if (ok) setAmount("");
+                    });
                 }}
               >
                 <ArrowDownToLine className="h-4 w-4" />
@@ -158,7 +161,9 @@ export const StakePage = observer(() => {
                 disabled={
                   !poolStore.network.configured || poolStore.isConnecting
                 }
-                onClick={() => poolStore.connect()}
+                onClick={() => {
+                  poolStore.connect();
+                }}
               >
                 Connect wallet to deposit
               </Button>

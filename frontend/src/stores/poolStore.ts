@@ -8,12 +8,13 @@ import {
 // The dependency-free subpath: this module is loaded in plain Node by the
 // store tests, and the package index pulls in the DOM pairing modal.
 import { groupMyQrlWallet } from "@qrlwallet/connect-ui/wallets";
-import type { ContractAbi } from "@theqrl/web3";
 import { NativeQrlPoolABI } from "@/abi/NativeQrlPool";
 import { ACTIVE_NETWORK, type NetworkConfig } from "@/config/networks";
 import { getQrlWeb3, type Web3Instance } from "@/utils/web3/web3Lazy";
 import {
   ConnectionRejectedError,
+  isProviderDetail,
+  type EIP6963ProviderDetail,
   type ExtensionProvider,
 } from "@/utils/web3/extension";
 
@@ -26,7 +27,24 @@ import {
   readChainId,
   MAX_NATIVE_REQUEST,
 } from "@/utils/nativePosition";
-import { requireQrlAccount } from "@/utils/qrlAddress";
+import { isQrlAddress, requireQrlAccount } from "@/utils/qrlAddress";
+import {
+  InvalidInputError,
+  isArray,
+  isRecord,
+  isHexData,
+  isTransactionHash,
+  requireRecord,
+  readUnsignedInteger,
+  readBoolean,
+  readTransactionHash,
+  readReceiptStatus,
+} from "@/utils/guards";
+import {
+  nativePoolMethods,
+  type NativePoolMethods,
+  type ContractCall,
+} from "@/utils/web3/nativePool";
 import {
   activateExtensionAfterRelayRetirement,
   ChannelTaskGuard,
@@ -45,12 +63,6 @@ const QRL_CONNECT_RDNS = QRL_CONNECT_PROVIDER_INFO.rdns;
  * carries the current wallet branding without a coordinated SDK release.
  */
 const MYQRLWALLET_ICON = "/myqrlwallet-icon.svg";
-
-/** EIP-6963 provider announcement (info + injected provider). */
-interface EIP6963Detail {
-  info: { uuid: string; name: string; icon: string; rdns: string };
-  provider: ExtensionProvider;
-}
 
 /**
  * The single MyQRLWallet row. MyQRLWallet announces twice over EIP-6963 (the
@@ -165,54 +177,10 @@ const IDLE_TX: TxStatus = {
   error: null,
 };
 
-/**
- * Typed views over `contract.methods`. The ABI JSON literals don't satisfy
- * @theqrl/web3's method-signature inference (same limitation myqrlwallet
- * works around), so we assert to these hand-written shapes instead.
- */
-interface ContractCall<R> {
-  call(): Promise<R>;
-  encodeABI(): string;
-}
-
-interface NativePoolMethods {
-  deposit(): ContractCall<unknown>;
-  requestWithdrawal(amount: bigint): ContractCall<unknown>;
-  requestRewards(amount: bigint): ContractCall<unknown>;
-  claim(): ContractCall<unknown>;
-  claimRecovery(): ContractCall<unknown>;
-  beginRecovery(): ContractCall<unknown>;
-  cancelPending(id: bigint): ContractCall<unknown>;
-  cancelRequest(): ContractCall<unknown>;
-  riskAssets(): ContractCall<unknown>;
-  freeCash(): ContractCall<unknown>;
-  claimReserve(): ContractCall<unknown>;
-  pendingTotal(): ContractCall<unknown>;
-  feeReserve(): ContractCall<unknown>;
-  FEE_BPS(): ContractCall<unknown>;
-  minDeposit(): ContractCall<unknown>;
-  lastCheckpointBlock(): ContractCall<unknown>;
-  recovering(): ContractCall<unknown>;
-  poolStatus(): ContractCall<unknown>;
-  poolRecoveryDeadlineSlot(): ContractCall<unknown>;
-  stage(): ContractCall<unknown>;
-  pendingHead(): ContractCall<unknown>;
-  queueHead(): ContractCall<unknown>;
-  totalShares(): ContractCall<unknown>;
-  recoveryPaid(): ContractCall<unknown>;
-  frozenShares(): ContractCall<unknown>;
-  getPosition(address: string): ContractCall<Record<string, unknown>>;
-  positionValue(address: string): ContractCall<unknown>;
-  rewardValue(address: string): ContractCall<unknown>;
-  claimable(address: string): ContractCall<unknown>;
-  getPending(id: bigint): ContractCall<Record<string, unknown>>;
-  getRequest(id: bigint): ContractCall<Record<string, unknown>>;
-}
-
 interface PastEventLog {
-  blockNumber?: unknown;
-  transactionHash?: string;
-  returnValues?: Record<string, unknown>;
+  blockNumber: bigint;
+  transactionHash: string;
+  returnValues: Record<string, unknown>;
 }
 
 interface Contracts {
@@ -222,14 +190,11 @@ interface Contracts {
 /** Native QRL kept aside for gas when computing the max stakeable balance. */
 export const GAS_RESERVE = 5n * 10n ** 15n; // 0.005 QRL
 
-const asBig = (value: unknown): bigint =>
-  typeof value === "bigint" ? value : BigInt(String(value ?? 0));
-
 function errorMessage(error: unknown): string {
   if (error instanceof ConnectionRejectedError)
     return "Request rejected in wallet";
-  if (typeof error === "object" && error !== null) {
-    const { code, message } = error as { code?: unknown; message?: unknown };
+  if (isRecord(error)) {
+    const { code, message } = error;
     if (code === 4001) return "Request rejected in wallet";
     if (typeof message === "string" && message) return message;
   }
@@ -277,7 +242,7 @@ export class PoolStore {
   /** Relay SDK singleton; announces itself via EIP-6963 on construction. */
   private qrlConnect: QRLConnect | null = null;
   /** uuid -> EIP-6963 detail, so the picker can resolve a click to a provider. */
-  private discoveredMap = new Map<string, EIP6963Detail>();
+  private discoveredMap = new Map<string, EIP6963ProviderDetail>();
   private providerKind: ProviderKind | null = null;
   /** Distinguishes a user-initiated relay disconnect from a wallet-side drop. */
   private relayUserDisconnected = false;
@@ -294,7 +259,7 @@ export class PoolStore {
   /** Extension providers already wired for EIP-1193 events (avoid duplicates). */
   private wiredExtensionProviders = new WeakSet<ExtensionProvider>();
   constructor() {
-    makeAutoObservable(this, {
+    const overrides = {
       provider: false,
       web3Instance: false,
       contracts: false,
@@ -311,7 +276,8 @@ export class PoolStore {
       wiredExtensionProviders: false,
       transactionGeneration: false,
       onEip6963Announce: false,
-    } as Parameters<typeof makeAutoObservable>[1]);
+    } as const;
+    makeAutoObservable<this, keyof typeof overrides>(this, overrides);
   }
 
   get canTransact(): boolean {
@@ -421,18 +387,18 @@ export class PoolStore {
     // let the connect/accountsChanged handlers promote it to a full session.
     if (qrl.hasStoredSession()) {
       this.providerKind = "relay";
-      this.provider = qrl as unknown as ExtensionProvider;
+      this.provider = qrl;
       runInAction(() => {
         this.activeWalletName = QRL_CONNECT_PROVIDER_INFO.name;
-        this.pairingStatus = String(qrl.getStatus());
+        this.pairingStatus = qrl.getStatus();
       });
     }
   }
 
   private onEip6963Announce = (event: Event): void => {
-    const detail = (event as CustomEvent<EIP6963Detail>).detail;
-    const info = detail?.info;
-    if (!info?.uuid) return;
+    if (!("detail" in event) || !isProviderDetail(event.detail)) return;
+    const detail = event.detail;
+    const info = detail.info;
     // Only surface QRL-capable wallets: the QRL extension and MyQRLWallet.
     // A MetaMask-style provider cannot sign QRL transactions.
     const isRelay = info.rdns === QRL_CONNECT_RDNS;
@@ -505,7 +471,7 @@ export class PoolStore {
       ) {
         return;
       }
-      this.provider = qrl as unknown as ExtensionProvider;
+      this.provider = qrl;
       this.providerKind = "relay";
       this.relayEstablished = false;
       runInAction(() => {
@@ -541,12 +507,11 @@ export class PoolStore {
     if (!this.connectionAttemptGuard.isCurrent(attemptGeneration)) return;
     runInAction(() => {
       this.pairingUri = uri;
-      this.pairingStatus = String(qrl.getStatus());
+      this.pairingStatus = qrl.getStatus();
     });
     if (qrl.isMobile()) {
       // Deep-link into the app; if nothing handles the protocol (app not
-      // installed, or chooser dismissed) fall back to the pairing modal
-      // instead of dead-ending on an unknown-protocol navigation.
+      // installed, or chooser dismissed) show the pairing modal.
       const opened = await attemptWalletRedirect(uri).catch(() => false);
       if (opened) return;
       runInAction(() => {
@@ -558,7 +523,7 @@ export class PoolStore {
 
   /** Extension: request accounts directly from the injected provider. */
   private async connectViaExtension(
-    detail: EIP6963Detail,
+    detail: EIP6963ProviderDetail,
     attemptGeneration: number,
   ): Promise<void> {
     runInAction(() => {
@@ -591,7 +556,7 @@ export class PoolStore {
           if (!this.connectionAttemptGuard.isCurrent(attemptGeneration)) {
             throw new Error("Wallet connection attempt changed");
           }
-          return detail.provider.request<string[]>({
+          return detail.provider.request({
             method: "qrl_requestAccounts",
           });
         },
@@ -648,7 +613,7 @@ export class PoolStore {
     try {
       uri = await qrl.newConnection();
       if (!this.relayResetGuard.isCurrent(resetGeneration)) return;
-      this.provider = qrl as unknown as ExtensionProvider;
+      this.provider = qrl;
       this.providerKind = "relay";
       this.relayEstablished = false;
       runInAction(() => {
@@ -677,7 +642,7 @@ export class PoolStore {
 
     runInAction(() => {
       this.pairingUri = uri;
-      this.pairingStatus = String(qrl.getStatus());
+      this.pairingStatus = qrl.getStatus();
     });
     if (qrl.isMobile()) {
       // Same fallback as connectViaRelay: an unhandled deep link (app not
@@ -899,7 +864,7 @@ export class PoolStore {
   }
   private async nativeCall(
     label: string,
-    select: (pool: NativePoolMethods) => ContractCall<unknown>,
+    select: (pool: NativePoolMethods) => ContractCall,
     cashFlow = false,
   ): Promise<boolean> {
     return this.runTx(label, async () => {
@@ -926,11 +891,11 @@ export class PoolStore {
       void this.authorizeRelayAccount(qrl);
     });
 
-    qrl.on("accountsChanged", (accounts: string[]) => {
+    qrl.on("accountsChanged", (accounts: unknown) => {
       if (this.providerKind !== "relay" || this.relayUserDisconnected) return;
       if (this.connectionAttemptGuard.isPending("extension")) return;
       if (shouldIgnoreRelayResetEvent(this.relayResetGuard, "accounts")) return;
-      if (Array.isArray(accounts) && accounts.length === 0) {
+      if (isArray(accounts) && accounts.length === 0) {
         void this.disconnect();
         return;
       }
@@ -949,18 +914,19 @@ export class PoolStore {
       }
       this.onWalletConnected(
         next,
-        qrl as unknown as ExtensionProvider,
+        qrl,
         "relay",
         QRL_CONNECT_PROVIDER_INFO.name,
       );
     });
 
-    qrl.on("statusChanged", (status) => {
+    qrl.on("statusChanged", (status: unknown) => {
+      if (typeof status !== "string") return;
       if (this.providerKind !== "relay") return;
       if (this.connectionAttemptGuard.isPending("extension")) return;
       if (shouldIgnoreRelayResetEvent(this.relayResetGuard, "status")) return;
       runInAction(() => {
-        this.pairingStatus = String(status);
+        this.pairingStatus = status;
       });
     });
 
@@ -985,15 +951,14 @@ export class PoolStore {
       }
       // A stale stored session whose startup auto-reconnect fails also emits
       // disconnect. Only re-pair when a live session actually dropped; otherwise
-      // fall back to the Connect button rather than popping an unsolicited QR.
+      // show the Connect button for a failed startup reconnect.
       if (!this.relayEstablished) {
         this.resetWalletState();
         return;
       }
       // Wallet-initiated terminate of a live session (stored session gone):
       // auto-regenerate a QR so the user can re-pair. Clear the flag so a
-      // follow-up drop before the re-pair completes takes the reset path
-      // instead of looping fresh QRs.
+      // follow-up drop before the re-pair completes takes the reset path.
       this.relayEstablished = false;
       void this.regenerateRelayQr();
     });
@@ -1012,8 +977,8 @@ export class PoolStore {
     channelId: string,
   ): Promise<void> {
     try {
-      const cached = qrl.getAccounts();
-      if (!Array.isArray(cached))
+      const cached: unknown = qrl.getAccounts();
+      if (!isArray(cached))
         throw new Error("Wallet returned an invalid QRL account cache");
       const accounts = cached.length
         ? cached
@@ -1029,7 +994,7 @@ export class PoolStore {
       }
       this.onWalletConnected(
         address,
-        qrl as unknown as ExtensionProvider,
+        qrl,
         "relay",
         QRL_CONNECT_PROVIDER_INFO.name,
       );
@@ -1089,8 +1054,7 @@ export class PoolStore {
       if (!this.relayResetGuard.isCurrent(resetGeneration)) return;
     } catch (error) {
       if (!this.relayResetGuard.isCurrent(resetGeneration)) return;
-      // The old channel is gone and a fresh one failed: fall back to fully
-      // disconnected rather than leaving a dead QR on screen.
+      // The old channel is gone and a fresh one failed: clear the pairing.
       this.resetWalletState();
       runInAction(() => {
         this.connectError = `Could not create replacement pairing: ${errorMessage(error)}`;
@@ -1102,7 +1066,7 @@ export class PoolStore {
 
     runInAction(() => {
       this.pairingUri = uri;
-      this.pairingStatus = String(qrl.getStatus());
+      this.pairingStatus = qrl.getStatus();
     });
   }
 
@@ -1111,7 +1075,7 @@ export class PoolStore {
    * objects are long-lived singletons, so a WeakSet stops duplicate handlers
    * stacking across reconnects.
    */
-  private wireExtensionEvents(detail: EIP6963Detail): void {
+  private wireExtensionEvents(detail: EIP6963ProviderDetail): void {
     const provider = detail.provider;
     if (typeof provider.on !== "function") return;
     if (this.wiredExtensionProviders.has(provider)) return;
@@ -1119,7 +1083,7 @@ export class PoolStore {
 
     provider.on("accountsChanged", (accounts) => {
       if (this.provider !== provider) return;
-      if (Array.isArray(accounts) && accounts.length === 0) {
+      if (isArray(accounts) && accounts.length === 0) {
         void this.disconnect();
         return;
       }
@@ -1151,7 +1115,9 @@ export class PoolStore {
 
   private async verifyReadNetwork(): Promise<void> {
     const web3 = await this.getWeb3();
-    if (asBig(await web3.qrl.getChainId()) !== this.network.chainId)
+    if (
+      readUnsignedInteger(await web3.qrl.getChainId()) !== this.network.chainId
+    )
       throw new Error(
         "The RPC chain does not match this native pool deployment.",
       );
@@ -1161,15 +1127,13 @@ export class PoolStore {
     if (!this.contracts) {
       await this.verifyReadNetwork();
       const web3 = await this.getWeb3();
-      const code = await web3.qrl.getCode(this.network.contracts.nativePool);
-      if (!code || code === "0x")
-        throw new Error("The configured native pool has no contract code.");
-      const instance = new web3.qrl.Contract(
-        NativeQrlPoolABI as unknown as ContractAbi,
+      const code: unknown = await web3.qrl.getCode(
         this.network.contracts.nativePool,
       );
+      if (!isHexData(code) || code === "0x")
+        throw new Error("The configured native pool has no contract code.");
       this.contracts = {
-        pool: instance.methods as unknown as NativePoolMethods,
+        pool: nativePoolMethods(web3, this.network.contracts.nativePool),
       };
     }
     return this.contracts;
@@ -1201,27 +1165,29 @@ export class PoolStore {
     const data = Object.fromEntries(
       names.map((name, index) => [name, values[index]]),
     );
-    if (asBig(data.FEE_BPS) !== 1000n)
+    if (readUnsignedInteger(data.FEE_BPS) !== 1000n)
       throw new Error("The configured pool has an unexpected fee policy.");
     runInAction(() => {
       this.pool = {
-        riskAssets: asBig(data.riskAssets),
-        freeCash: asBig(data.freeCash),
-        claimReserve: asBig(data.claimReserve),
-        pendingTotal: asBig(data.pendingTotal),
-        feeReserve: asBig(data.feeReserve),
-        minDeposit: asBig(data.minDeposit),
-        feeBps: asBig(data.FEE_BPS),
-        lastCheckpointBlock: asBig(data.lastCheckpointBlock),
-        recovering: Boolean(data.recovering),
-        poolStatus: asBig(data.poolStatus),
-        poolRecoveryDeadlineSlot: asBig(data.poolRecoveryDeadlineSlot),
-        stage: asBig(data.stage),
-        pendingHead: asBig(data.pendingHead),
-        queueHead: asBig(data.queueHead),
-        totalShares: asBig(data.totalShares),
-        recoveryPaid: asBig(data.recoveryPaid),
-        frozenShares: asBig(data.frozenShares),
+        riskAssets: readUnsignedInteger(data.riskAssets),
+        freeCash: readUnsignedInteger(data.freeCash),
+        claimReserve: readUnsignedInteger(data.claimReserve),
+        pendingTotal: readUnsignedInteger(data.pendingTotal),
+        feeReserve: readUnsignedInteger(data.feeReserve),
+        minDeposit: readUnsignedInteger(data.minDeposit),
+        feeBps: readUnsignedInteger(data.FEE_BPS),
+        lastCheckpointBlock: readUnsignedInteger(data.lastCheckpointBlock),
+        recovering: readBoolean(data.recovering),
+        poolStatus: readUnsignedInteger(data.poolStatus),
+        poolRecoveryDeadlineSlot: readUnsignedInteger(
+          data.poolRecoveryDeadlineSlot,
+        ),
+        stage: readUnsignedInteger(data.stage),
+        pendingHead: readUnsignedInteger(data.pendingHead),
+        queueHead: readUnsignedInteger(data.queueHead),
+        totalShares: readUnsignedInteger(data.totalShares),
+        recoveryPaid: readUnsignedInteger(data.recoveryPaid),
+        frozenShares: readUnsignedInteger(data.frozenShares),
       };
     });
   }
@@ -1260,43 +1226,40 @@ export class PoolStore {
       }),
     });
     if (!response.ok) throw new Error("Native event RPC is unavailable");
-    const payload = (await response.json()) as {
-      result?: unknown;
-      error?: { message?: string };
-    };
-    if (payload.error)
-      throw new Error(
-        payload.error.message || "Native event RPC rejected the query",
+    const rawPayload: unknown = await response.json();
+    const payload = requireRecord(rawPayload);
+    if (payload.error !== undefined)
+      throw new InvalidInputError(
+        isRecord(payload.error) &&
+          typeof payload.error.message === "string" &&
+          payload.error.message
+          ? payload.error.message
+          : "Native event RPC rejected the query",
       );
-    if (!Array.isArray(payload.result))
-      throw new Error("Invalid native event response");
+    if (!isArray(payload.result))
+      throw new InvalidInputError("Invalid native event response");
     return payload.result.map((value: unknown) => {
-      const log = value as {
-        address?: string;
-        topics?: unknown;
-        data?: string;
-        blockNumber?: unknown;
-        transactionHash?: string;
-      };
+      const log = requireRecord(value);
       if (
         typeof log.address !== "string" ||
         log.address.toLowerCase() !==
           this.network.contracts.nativePool.toLowerCase() ||
         !matchesNativeTopics(log.topics, topics) ||
-        typeof log.data !== "string" ||
-        !/^0x(?:[0-9a-fA-F]{2})*$/.test(log.data)
+        !isHexData(log.data) ||
+        !isTransactionHash(log.transactionHash)
       )
         throw new Error(
           "Native event response does not match the pool and beneficiary",
         );
+      const decoded: unknown = web3.qrl.abi.decodeLog(
+        [...event.inputs],
+        log.data,
+        log.topics.slice(1),
+      );
       return {
-        blockNumber: log.blockNumber,
+        blockNumber: readUnsignedInteger(log.blockNumber),
         transactionHash: log.transactionHash,
-        returnValues: web3.qrl.abi.decodeLog(
-          [...event.inputs],
-          log.data,
-          log.topics.slice(1),
-        ),
+        returnValues: requireRecord(decoded),
       };
     });
   }
@@ -1323,52 +1286,58 @@ export class PoolStore {
       );
       const activity = groups
         .flatMap((group) =>
-          group.logs.map((raw) => {
-            const log = raw as PastEventLog,
-              values = log.returnValues ?? {};
-            const amount = "amount" in values ? asBig(values.amount) : null;
+          group.logs.map((log) => {
+            const values = log.returnValues;
+            const amount =
+              "amount" in values ? readUnsignedInteger(values.amount) : null;
             return {
               type: group.type,
               qrlAmount: amount === MAX_NATIVE_REQUEST ? null : amount,
-              blockNumber: asBig(log.blockNumber),
-              txHash: log.transactionHash ?? "",
+              blockNumber: readUnsignedInteger(log.blockNumber),
+              txHash: log.transactionHash,
             };
           }),
         )
         .sort((a, b) => (a.blockNumber > b.blockNumber ? -1 : 1));
-      const head = asBig(await pool.pendingHead().call());
+      const head = readUnsignedInteger(await pool.pendingHead().call());
       // Cancelled history must not occupy the bounded refund list forever.
       const cancelled = new Set(
         groups
           .filter((group) => group.event === "PendingCancelled")
           .flatMap((group) =>
-            group.logs.map((log) => asBig(log.returnValues?.id)),
+            group.logs.map((log) => readUnsignedInteger(log.returnValues.id)),
           ),
       );
-      const ids = groups[0].logs
-        .map((raw) => asBig((raw as PastEventLog).returnValues?.id))
+      const deposits = groups.find((group) => group.event === "DepositQueued");
+      if (!deposits) throw new InvalidInputError("Deposit events are missing");
+      const ids = deposits.logs
+        .map((log) => readUnsignedInteger(log.returnValues.id))
         .filter((id) => id >= head && !cancelled.has(id))
         .slice(-64);
       const pending = await Promise.all(
         ids.map(async (id) => ({
           id,
-          record: await pool.getPending(id).call(),
+          record: requireRecord(await pool.getPending(id).call()),
         })),
       );
       runInAction(() => {
         if (this.account?.address !== address) return;
         this.activity = activity;
         this.pendingDeposits = pending
-          .filter(
-            ({ record }) =>
-              !record.cancelled &&
-              String(record.beneficiary).toLowerCase() ===
-                address.toLowerCase(),
-          )
+          .filter(({ record }) => {
+            if (!isQrlAddress(record.beneficiary))
+              throw new InvalidInputError(
+                "Invalid pending deposit beneficiary",
+              );
+            return (
+              !readBoolean(record.cancelled) &&
+              record.beneficiary.toLowerCase() === address.toLowerCase()
+            );
+          })
           .map(({ id, record }) => ({
             id,
-            amount: asBig(record.amount),
-            requestBlock: asBig(record.requestedBlock),
+            amount: readUnsignedInteger(record.amount),
+            requestBlock: readUnsignedInteger(record.requestedBlock),
           }));
         this.activityError = null;
       });
@@ -1385,7 +1354,7 @@ export class PoolStore {
   private async refreshAccount(address: string): Promise<void> {
     const web3 = await this.getWeb3();
     const { pool } = await this.getContracts();
-    const [qrlBalance, position, value, rewards, claimable, block] =
+    const [qrlBalance, rawPosition, value, rewards, claimable, block] =
       await Promise.all([
         web3.qrl.getBalance(address),
         pool.getPosition(address).call(),
@@ -1394,39 +1363,46 @@ export class PoolStore {
         pool.claimable(address).call(),
         web3.qrl.getBlockNumber(),
       ]);
-    const active = asBig(position.activeRequestPlusOne);
+    const position = requireRecord(rawPosition);
+    const active = readUnsignedInteger(position.activeRequestPlusOne);
     const request =
-      active > 0n ? await pool.getRequest(active - 1n).call() : null;
+      active > 0n
+        ? requireRecord(await pool.getRequest(active - 1n).call())
+        : null;
     runInAction(() => {
       if (this.account?.address !== address) return;
       const state = this.pool;
       const recovered =
         state?.recovering && state.frozenShares > 0n
-          ? ((state.freeCash + state.recoveryPaid) * asBig(position.shares)) /
+          ? ((state.freeCash + state.recoveryPaid) *
+              readUnsignedInteger(position.shares)) /
               state.frozenShares -
-            asBig(position.recoveryClaimed)
+            readUnsignedInteger(position.recoveryClaimed)
           : 0n;
       this.account = {
         address,
-        qrlBalance: asBig(qrlBalance),
-        qrlValue: asBig(value),
-        principalBasis: asBig(position.principalBasis),
-        rewards: asBig(rewards),
-        loss: positionLoss(asBig(value), asBig(position.principalBasis)),
-        claimable: asBig(claimable),
-        pending: asBig(position.pending),
-        hasPosition: asBig(position.shares) > 0n,
+        qrlBalance: readUnsignedInteger(qrlBalance),
+        qrlValue: readUnsignedInteger(value),
+        principalBasis: readUnsignedInteger(position.principalBasis),
+        rewards: readUnsignedInteger(rewards),
+        loss: positionLoss(
+          readUnsignedInteger(value),
+          readUnsignedInteger(position.principalBasis),
+        ),
+        claimable: readUnsignedInteger(claimable),
+        pending: readUnsignedInteger(position.pending),
+        hasPosition: readUnsignedInteger(position.shares) > 0n,
         recoveryClaimable: recovered > 0n ? recovered : 0n,
-        recoveryClaimed: asBig(position.recoveryClaimed),
+        recoveryClaimed: readUnsignedInteger(position.recoveryClaimed),
       };
-      this.currentBlock = asBig(block);
+      this.currentBlock = readUnsignedInteger(block);
       this.withdrawals = request
         ? [
             {
               id: active - 1n,
-              amount: asBig(request.amount),
-              requestBlock: asBig(request.requestedBlock),
-              rewardsOnly: Boolean(request.rewardsOnly),
+              amount: readUnsignedInteger(request.amount),
+              requestBlock: readUnsignedInteger(request.requestedBlock),
+              rewardsOnly: readBoolean(request.rewardsOnly),
             },
           ]
         : [];
@@ -1496,15 +1472,17 @@ export class PoolStore {
           to: params.to,
           data: params.data,
           value,
-          chainId: this.network.chainId!,
+          chainId: readChainId(this.network.chainId),
           transport,
           cashFlow: params.cashFlow ?? false,
         },
         {
           estimateGas: async (transaction) =>
-            asBig(await web3.qrl.estimateGas(transaction)),
-          blockGasLimit: async () =>
-            asBig((await web3.qrl.getBlock("latest")).gasLimit),
+            readUnsignedInteger(await web3.qrl.estimateGas(transaction)),
+          blockGasLimit: async () => {
+            const block: unknown = await web3.qrl.getBlock("latest");
+            return readUnsignedInteger(requireRecord(block).gasLimit);
+          },
         },
       );
       if (!isCurrent()) return false;
@@ -1517,12 +1495,12 @@ export class PoolStore {
           "Switch your wallet to the chain configured for this native pool.",
         );
 
-      txHash = await provider.request<string>({
+      const hash = await provider.request({
         method: "qrl_sendTransaction",
         params: [txParams],
       });
       if (!isCurrent()) return false;
-      if (!txHash) throw new Error("Wallet returned no transaction hash");
+      txHash = readTransactionHash(hash);
       runInAction(() => {
         this.tx = { ...this.tx, txHash };
       });
@@ -1530,7 +1508,7 @@ export class PoolStore {
       const receipt = await this.waitForReceipt(txHash, isCurrent);
       if (!isCurrent()) return false;
       if (!receipt) throw new Error("Timed out waiting for confirmation");
-      const ok = asBig((receipt as { status?: unknown }).status) === 1n;
+      const ok = readReceiptStatus(receipt);
       runInAction(() => {
         this.tx = {
           state: ok ? "confirmed" : "failed",
@@ -1558,7 +1536,7 @@ export class PoolStore {
   private async waitForReceipt(
     txHash: string,
     isCurrent: () => boolean,
-  ): Promise<unknown | null> {
+  ): Promise<unknown> {
     const web3 = await this.getWeb3();
     // QRL blocks are ~60 s; poll every 10 s for up to 10 minutes.
     for (let attempt = 0; attempt < 60; attempt++) {
@@ -1566,10 +1544,10 @@ export class PoolStore {
       await new Promise((resolve) => setTimeout(resolve, 10_000));
       if (!isCurrent()) return null;
       try {
-        const receipt = await web3.qrl.getTransactionReceipt(txHash);
+        const receipt: unknown = await web3.qrl.getTransactionReceipt(txHash);
         if (receipt) return receipt;
       } catch {
-        // Not mined yet (some nodes throw instead of returning null).
+        // Some nodes throw while a transaction is waiting to be mined.
       }
     }
     return null;

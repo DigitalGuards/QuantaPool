@@ -3,12 +3,13 @@ import { useLocation } from "react-router";
 
 const CANONICAL_ORIGIN = "https://quantapool.com";
 
+const DEFAULT_META = {
+  title: "QuantaPool | Native QRL Pooled Staking",
+  description:
+    "Native QRL pooled staking with internal positions, deterministic rewards and user-triggered QRL claims.",
+};
 const ROUTE_META: Record<string, { title: string; description: string }> = {
-  "/": {
-    title: "QuantaPool | Native QRL Pooled Staking",
-    description:
-      "Native QRL pooled staking with internal positions, deterministic rewards and user-triggered QRL claims.",
-  },
+  "/": DEFAULT_META,
   "/withdrawals": {
     title: "Withdrawals and Rewards | QuantaPool",
     description:
@@ -41,7 +42,7 @@ export function RouteSeo() {
 
   useEffect(() => {
     window.scrollTo(0, 0);
-    const meta = ROUTE_META[pathname] ?? ROUTE_META["/"];
+    const meta = ROUTE_META[pathname] ?? DEFAULT_META;
     const canonicalPath = pathname in ROUTE_META ? pathname : "/";
     const canonicalUrl =
       canonicalPath === "/"

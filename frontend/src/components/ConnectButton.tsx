@@ -41,7 +41,9 @@ export const ConnectButton = observer(() => {
     <Button
       size="sm"
       disabled={!poolStore.network.configured || poolStore.isConnecting}
-      onClick={() => void poolStore.connect()}
+      onClick={() => {
+        poolStore.connect();
+      }}
     >
       <Wallet className="h-4 w-4" />
       <span className="sm:hidden">

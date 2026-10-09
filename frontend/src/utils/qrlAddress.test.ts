@@ -26,7 +26,7 @@ function checksummedBody(lower: string): string {
   return out;
 }
 
-test("only native QIP-55 accounts are accepted", () => {
+void test("only native QIP-55 accounts are accepted", () => {
   assert.equal(isQrlAddress(QIP55_ACCOUNT), true);
   assert.equal(isQrlAddress(`Q${LOWER_BODY}`), true);
   assert.equal(isQrlAddress(`Q${LOWER_BODY.toUpperCase()}`), true);
@@ -37,7 +37,7 @@ test("only native QIP-55 accounts are accepted", () => {
   assert.equal(isQrlAddress("Qshort"), false);
 });
 
-test("mixed-case bodies must match the SHAKE-256 checksum", () => {
+void test("mixed-case bodies must match the SHAKE-256 checksum", () => {
   const canonical = `Q${checksummedBody(LOWER_BODY)}`;
   assert.equal(isQrlAddress(canonical), true);
   const body = canonical.slice(1);
@@ -52,7 +52,7 @@ test("mixed-case bodies must match the SHAKE-256 checksum", () => {
   assert.equal(isQrlAddress(flipped), false);
 });
 
-test("wallet responses require exactly one valid QIP-55 account", () => {
+void test("wallet responses require exactly one valid QIP-55 account", () => {
   assert.equal(requireQrlAccount([QIP55_ACCOUNT]), QIP55_ACCOUNT);
   assert.throws(
     () => requireQrlAccount([LEGACY_ACCOUNT]),

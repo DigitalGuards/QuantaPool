@@ -14,7 +14,7 @@ export function formatUnits(value: bigint, decimals = 18): string {
     .toString()
     .padStart(decimals, "0")
     .replace(/0+$/, "");
-  return `${negative ? "-" : ""}${whole}${fraction ? `.${fraction}` : ""}`;
+  return `${negative ? "-" : ""}${whole.toString()}${fraction ? `.${fraction}` : ""}`;
 }
 
 /** Convert a user-typed decimal string to base units. Throws on invalid input. */
@@ -28,7 +28,7 @@ export function parseUnits(value: string, decimals = 18): bigint {
   const fraction = match[2] || "";
   if (fraction.length > decimals) {
     throw new Error(
-      `Amount "${value}" has more than ${decimals} decimal places`,
+      `Amount "${value}" has more than ${decimals.toString()} decimal places`,
     );
   }
   return (
@@ -62,7 +62,7 @@ export function formatBasisPoints(basisPoints: bigint): string {
     .toString()
     .padStart(2, "0")
     .replace(/0+$/, "");
-  return `${negative ? "-" : ""}${whole}${fraction ? `.${fraction}` : ""}%`;
+  return `${negative ? "-" : ""}${whole.toString()}${fraction ? `.${fraction}` : ""}%`;
 }
 
 /** USD display: "$1,234.56". */

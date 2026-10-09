@@ -6,12 +6,17 @@ React, TypeScript, MobX and Vite interface for the native QRL pool. Deposits, in
 
 ```sh
 npm ci
+npm run format:check
 npm run test
 npm run lint
 npm run typecheck
 npm run build
-npm run dev -- --host 127.0.0.1
+npm run dev
 ```
+
+The frontend CI lint step runs the format check and ESLint with TypeScript type information. Both compiler projects enable strict checking, checked indexed access, exact optional properties, explicit overrides, complete returns, switch fallthrough checks and unused-code checks. Production TypeScript forbids type assertions, explicit `any`, non-null assertions, TypeScript suppression directives and inline ESLint overrides. `as const` is allowed. The generated ABI and build scripts are included in these checks. There are no production rule exceptions or ratchet entries.
+
+Wallet, RPC and untyped library responses enter as `unknown`. Runtime predicates in `src/utils/guards.ts` validate them before use; `isArray` keeps array elements unknown. Malformed responses reject the operation or are dropped during discovery. Tests have a narrow exception for synchronous async mocks, plus private-hook access and the bundled evaluator in the store transaction suite. Valid native transaction calldata and wallet request fields are covered by exact-value regression tests for both transports.
 
 Create an ignored `.env.local` with `VITE_RPC_URL`, `VITE_CHAIN_ID` and `VITE_NATIVE_POOL_ADDRESS` for the intended fresh deployment. The pool address must be a native 64-byte QIP-55 address. Optional settings are `VITE_EXPLORER_URL`, `VITE_DEPLOYMENT_BLOCK`, `VITE_NETWORK_NAME`, `VITE_NETWORK_LABEL`, and `VITE_NETWORK=TEST_NET` or `MAIN_NET`. The network selector is descriptive; the explicit chain ID is authoritative. No RPC, explorer or contract address is supplied by default. An unconfigured build displays the development interface and disables transaction entry.
 
