@@ -1,4 +1,5 @@
 import { isQrlAddress } from "./qrlAddress.ts";
+import { isArray } from "./guards.ts";
 
 /** Native VM64 topics: bytes32 signatures occupy the high bytes; addresses use all 64 bytes. */
 export function nativeEventTopics(
@@ -18,14 +19,14 @@ export function matchesNativeTopics(
   expected: readonly string[],
 ): topics is string[] {
   return (
-    Array.isArray(topics) &&
+    isArray(topics) &&
     topics.length >= expected.length &&
     topics.every(
-      (topic) =>
+      (topic): topic is string =>
         typeof topic === "string" && /^0x[0-9a-fA-F]{128}$/.test(topic),
     ) &&
     expected.every(
-      (topic, index) => topics[index].toLowerCase() === topic.toLowerCase(),
+      (topic, index) => topics[index]?.toLowerCase() === topic.toLowerCase(),
     )
   );
 }

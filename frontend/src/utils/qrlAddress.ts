@@ -1,4 +1,5 @@
 import { shake256 } from "@noble/hashes/sha3.js";
+import { isArray, InvalidInputError } from "./guards.ts";
 
 const QRL_ADDRESS_RE = /^Q[0-9a-fA-F]{128}$/;
 
@@ -42,11 +43,11 @@ export function isQrlAddress(value: unknown): value is string {
 
 export function requireQrlAccount(accounts: unknown): string {
   if (
-    !Array.isArray(accounts) ||
+    !isArray(accounts) ||
     accounts.length !== 1 ||
-    !accounts.every(isQrlAddress)
+    !isQrlAddress(accounts[0])
   ) {
-    throw new Error("Wallet returned an invalid QRL account");
+    throw new InvalidInputError("Wallet returned an invalid QRL account");
   }
   return accounts[0];
 }

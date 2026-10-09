@@ -11,7 +11,9 @@ import "@fontsource-variable/jetbrains-mono/index.css";
 import "./index.css";
 import App from "./App";
 
-createRoot(document.getElementById("root")!).render(
+const root = document.getElementById("root");
+if (!root) throw new Error("Application root element is missing");
+createRoot(root).render(
   <StrictMode>
     <App />
   </StrictMode>,

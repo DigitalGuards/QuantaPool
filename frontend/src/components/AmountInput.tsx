@@ -54,7 +54,9 @@ export function AmountInput({
             variant="outline"
             size="sm"
             disabled={disabled || balance === null}
-            onClick={() => setFraction(percent)}
+            onClick={() => {
+              setFraction(percent);
+            }}
           >
             {percent}%
           </Button>
@@ -64,7 +66,9 @@ export function AmountInput({
           variant="outline"
           size="sm"
           disabled={disabled || balance === null}
-          onClick={() => setFraction(100)}
+          onClick={() => {
+            setFraction(100);
+          }}
         >
           Max
         </Button>

@@ -60,7 +60,9 @@ export const TxBanner = observer(() => {
 
       {tx.state !== "pending" && (
         <button
-          onClick={() => poolStore.clearTx()}
+          onClick={() => {
+            poolStore.clearTx();
+          }}
           className="cursor-pointer shrink-0 text-muted-foreground hover:text-foreground"
           aria-label="Dismiss"
         >

@@ -60,7 +60,9 @@ export const WithdrawalsPage = observer(() => {
         <Button
           className="mt-6"
           disabled={!poolStore.network.configured || poolStore.isConnecting}
-          onClick={() => poolStore.connect()}
+          onClick={() => {
+            poolStore.connect();
+          }}
         >
           Connect wallet
         </Button>
@@ -104,7 +106,10 @@ export const WithdrawalsPage = observer(() => {
               {pool?.recovering
                 ? "Frozen checkpoint reference"
                 : "Last checkpoint value"}
-              : <span className="font-numeric">{formatAmount(available)} QRL</span>
+              :{" "}
+              <span className="font-numeric">
+                {formatAmount(available)} QRL
+              </span>
             </p>
             <AmountInput
               value={amount}
@@ -285,9 +290,9 @@ export const WithdrawalsPage = observer(() => {
                   className="min-w-0"
                   inputMode="numeric"
                   value={depositId}
-                  onChange={(event) =>
-                    setDepositId(event.target.value.replace(/[^0-9]/g, ""))
-                  }
+                  onChange={(event) => {
+                    setDepositId(event.target.value.replace(/[^0-9]/g, ""));
+                  }}
                   placeholder="Deposit ID"
                 />
                 <Button

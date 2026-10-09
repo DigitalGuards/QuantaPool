@@ -102,7 +102,7 @@ export const ActivityCard = observer(() => {
               const Icon = meta.icon;
               return (
                 <li
-                  key={`${item.txHash}-${item.type}-${item.blockNumber}`}
+                  key={`${item.txHash}-${item.type}-${item.blockNumber.toString()}`}
                   className="flex items-center gap-3 py-2.5 text-sm"
                 >
                   <Icon className={`h-4 w-4 shrink-0 ${meta.color}`} />

@@ -3,8 +3,15 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { buildSync } from "esbuild";
+import { Web3 } from "@theqrl/web3";
+import { nativePoolMethods } from "./web3/nativePool.ts";
+import { nativeEventTopics } from "./nativeLogs.ts";
+import { requireRecord } from "./guards.ts";
 import type { PoolStore, TxStatus } from "../stores/poolStore";
-import type { ExtensionProvider } from "./web3/extension";
+import type {
+  ExtensionProvider,
+  EIP6963ProviderDetail,
+} from "./web3/extension";
 
 // Compile the real store with the same TS alias and an unconfigured build env.
 // Only its wallet and RPC boundaries are replaced below; no network is opened.
@@ -20,8 +27,10 @@ const compiled = buildSync({
   alias: { "@": fileURLToPath(new URL("..", import.meta.url)) },
   define: { "import.meta.env": "{}" },
 });
+const output = compiled.outputFiles[0];
+assert(output);
 const module = { exports: {} as { PoolStore: new () => PoolStore } };
-new Function("require", "module", "exports", compiled.outputFiles[0].text)(
+new Function("require", "module", "exports", output.text)(
   createRequire(import.meta.url),
   module,
   module.exports,
@@ -58,6 +67,10 @@ interface Internals {
   verifyReadNetwork(): Promise<void>;
   getWeb3(): Promise<unknown>;
   getContracts(): Promise<unknown>;
+  refreshPool(): Promise<void>;
+  refreshAccount(address: string): Promise<void>;
+  onEip6963Announce(event: Event): void;
+  wireExtensionEvents(detail: EIP6963ProviderDetail): void;
   queryNativeEvents(name: string, beneficiary: string): Promise<unknown[]>;
   fetchActivity(address: string): Promise<void>;
   waitForReceipt(hash: string): Promise<unknown>;
@@ -68,17 +81,23 @@ interface Internals {
 function fixture() {
   const store = new Store();
   const internal = store as unknown as Internals;
-  const sendStarted = [deferred<void>(), deferred<void>()];
-  const sends = [deferred<string>(), deferred<string>()];
+  const sendStarted = [deferred<void>(), deferred<void>()] as const;
+  const sends = [deferred<unknown>(), deferred<unknown>()] as const;
   let sendCount = 0;
+  const requests: Parameters<ExtensionProvider["request"]>[0][] = [];
   const provider: ExtensionProvider = {
-    request: async <T>({ method }: { method: string }): Promise<T> => {
-      if (method === "qrl_chainId") return "0x539" as T;
+    request: async (request): Promise<unknown> => {
+      requests.push(request);
+      const { method } = request;
+      if (method === "qrl_chainId") return "0x539";
       assert.equal(method, "qrl_sendTransaction");
       const index = sendCount++;
       assert(index < sends.length, "unexpected duplicate send");
-      sendStarted[index].resolve();
-      return (await sends[index].promise) as T;
+      const started = sendStarted[index];
+      const send = sends[index];
+      assert(started && send);
+      started.resolve();
+      return send.promise;
     },
   };
   store.network = {
@@ -100,7 +119,9 @@ function fixture() {
     next = address,
     kind: "extension" | "relay" = "extension",
     wallet = provider,
-  ) => internal.onWalletConnected(next, wallet, kind, "Test wallet");
+  ) => {
+    internal.onWalletConnected(next, wallet, kind, "Test wallet");
+  };
   connect();
   const send = (label: string) =>
     internal.runTx(label, async () => ({
@@ -117,16 +138,18 @@ function fixture() {
     snapshot,
     sends,
     sendStarted,
+    requests,
     sendCount: () => sendCount,
   };
 }
 
-test("older pending refunds become visible after the latest 64 deposits are cancelled", async () => {
+void test("older pending refunds become visible after the latest 64 deposits are cancelled", async () => {
   const f = fixture();
   const cancelled = new Set<bigint>();
   const reads: bigint[] = [];
   const depositLogs = Array.from({ length: 65 }, (_, index) => ({
     blockNumber: BigInt(index + 1),
+    transactionHash: oldHash,
     returnValues: { id: BigInt(index), amount: 100n },
   }));
   f.internal.queryNativeEvents = async (name) =>
@@ -155,7 +178,7 @@ test("older pending refunds become visible after the latest 64 deposits are canc
   await f.internal.fetchActivity(address);
   assert.equal(f.store.pendingDeposits.length, 64);
   assert.equal(reads.length, 64);
-  assert.equal(f.store.pendingDeposits[0].id, 1n);
+  assert.equal(f.store.pendingDeposits[0]?.id, 1n);
   for (let id = 1n; id <= 64n; id++) cancelled.add(id);
   reads.length = 0;
 
@@ -169,7 +192,7 @@ test("older pending refunds become visible after the latest 64 deposits are canc
 });
 
 for (const outcome of ["hash", "error"] as const) {
-  test(`old wallet ${outcome} cannot replace a newer same-account request`, async () => {
+  void test(`old wallet ${outcome} cannot replace a newer same-account request`, async () => {
     const f = fixture();
     const old = f.send("Old deposit");
     await f.sendStarted[0].promise;
@@ -196,7 +219,7 @@ for (const outcome of ["hash", "error"] as const) {
 }
 
 for (const outcome of ["success", "revert", "error"] as const) {
-  test(`old receipt ${outcome} cannot complete or fail a newer transaction`, async () => {
+  void test(`old receipt ${outcome} cannot complete or fail a newer transaction`, async () => {
     const f = fixture();
     const receiptStarted = deferred<void>();
     const receipt = deferred<{ status: bigint }>();
@@ -232,7 +255,7 @@ for (const boundary of [
   "provider",
   "transport",
 ] as const) {
-  test(`${boundary} change retires a transaction still preparing gas`, async () => {
+  void test(`${boundary} change retires a transaction still preparing gas`, async () => {
     const f = fixture();
     const started = deferred<void>();
     const estimate = deferred<bigint>();
@@ -261,7 +284,7 @@ for (const boundary of [
   });
 }
 
-test("disconnect retires the transaction before relay retirement completes", async () => {
+void test("disconnect retires the transaction before relay retirement completes", async () => {
   const f = fixture();
   const retired = deferred<void>();
   f.connect(address, "relay");
@@ -279,7 +302,7 @@ test("disconnect retires the transaction before relay retirement completes", asy
   assert.equal(await disconnect, true);
 });
 
-test("a current receipt failure retains only its own transaction hash", async () => {
+void test("a current receipt failure retains only its own transaction hash", async () => {
   const f = fixture();
   f.internal.waitForReceipt = async () => {
     throw new Error("Receipt unavailable");
@@ -296,7 +319,7 @@ test("a current receipt failure retains only its own transaction hash", async ()
   });
 });
 
-test("dismiss cannot release the pending transaction guard", async () => {
+void test("dismiss cannot release the pending transaction guard", async () => {
   const f = fixture();
   const result = f.send("Current deposit");
   await f.sendStarted[0].promise;
@@ -308,4 +331,455 @@ test("dismiss cannot release the pending transaction guard", async () => {
   assert.equal(await result, true);
   f.store.clearTx();
   assert.equal(f.store.tx.state, "idle");
+});
+
+const offlineWeb3 = new Web3();
+const offlinePool = nativePoolMethods(offlineWeb3, poolAddress);
+const amountWord = "11".padStart(128, "0");
+const fullWord = "f".repeat(64).padStart(128, "0");
+const actions: {
+  name: string;
+  send: (store: PoolStore) => Promise<boolean>;
+  data: string;
+  cashFlow: boolean;
+  value: bigint;
+}[] = [
+  {
+    name: "deposit",
+    send: (s) => s.stake("0.000000000000000017"),
+    data: "0xd0e30db0",
+    cashFlow: true,
+    value: 17n,
+  },
+  {
+    name: "withdrawal",
+    send: (s) => s.requestUnstake("0.000000000000000017"),
+    data: `0x9ee679e8${amountWord}`,
+    cashFlow: false,
+    value: 0n,
+  },
+  {
+    name: "rewards",
+    send: (s) => s.requestRewards("0.000000000000000017"),
+    data: `0xee0b4bee${amountWord}`,
+    cashFlow: false,
+    value: 0n,
+  },
+  {
+    name: "full withdrawal",
+    send: (s) => s.requestUnstake("", true),
+    data: `0x9ee679e8${fullWord}`,
+    cashFlow: false,
+    value: 0n,
+  },
+  {
+    name: "full rewards",
+    send: (s) => s.requestRewards("", true),
+    data: `0xee0b4bee${fullWord}`,
+    cashFlow: false,
+    value: 0n,
+  },
+  {
+    name: "claim",
+    send: (s) => s.claim(),
+    data: "0x4e71d92d",
+    cashFlow: true,
+    value: 0n,
+  },
+  {
+    name: "recovery claim",
+    send: (s) => s.claimRecovery(),
+    data: "0xfaefde97",
+    cashFlow: true,
+    value: 0n,
+  },
+  {
+    name: "begin recovery",
+    send: (s) => s.beginRecovery(),
+    data: "0xba744fe6",
+    cashFlow: false,
+    value: 0n,
+  },
+  {
+    name: "pending refund",
+    send: (s) => s.cancelPending(17n),
+    data: `0x5588fdf1${amountWord}`,
+    cashFlow: true,
+    value: 0n,
+  },
+  {
+    name: "cancel request",
+    send: (s) => s.cancelRequest(),
+    data: "0x851b16f5",
+    cashFlow: false,
+    value: 0n,
+  },
+];
+
+for (const transport of ["extension", "relay"] as const) {
+  for (const action of actions) {
+    void test(`${transport} ${action.name} retains the exact native wallet payload`, async () => {
+      const f = fixture();
+      f.connect(address, transport);
+      f.internal.getContracts = async () => ({ pool: offlinePool });
+      f.sends[0].resolve(newHash);
+      assert.equal(await action.send(f.store), true);
+      const gas = action.cashFlow ? 300_000 : 130_000;
+      const common = {
+        from: address,
+        to: poolAddress,
+        data: action.data,
+        chainId: "0x539",
+      };
+      const expected =
+        transport === "extension"
+          ? {
+              ...common,
+              value: action.value.toString(),
+              gas,
+              gasLimit: gas,
+              type: "0x2",
+            }
+          : {
+              ...common,
+              gas: `0x${gas.toString(16)}`,
+              ...(action.value > 0n
+                ? { value: `0x${action.value.toString(16)}` }
+                : {}),
+            };
+      assert.deepEqual(f.requests, [
+        { method: "qrl_chainId" },
+        { method: "qrl_chainId" },
+        { method: "qrl_sendTransaction", params: [expected] },
+      ]);
+      assert.equal(
+        JSON.stringify(f.requests[2]),
+        JSON.stringify({ method: "qrl_sendTransaction", params: [expected] }),
+      );
+    });
+  }
+}
+
+void test("malformed wallet hashes fail before receipt polling", async () => {
+  for (const hash of [null, {}, [], 7, "", "0x", "unexpected"]) {
+    const f = fixture();
+    let receiptReads = 0;
+    f.internal.waitForReceipt = async () => {
+      receiptReads++;
+      return { status: 1n };
+    };
+    f.sends[0].resolve(hash);
+    assert.equal(await f.send("Malformed hash"), false);
+    assert.equal(f.store.tx.state, "failed");
+    assert.equal(f.store.tx.txHash, null);
+    assert.match(f.store.tx.error ?? "", /invalid transaction hash/);
+    assert.equal(receiptReads, 0);
+  }
+});
+
+void test("malformed receipts never confirm a wallet transaction", async () => {
+  for (const receipt of [
+    {},
+    [],
+    { status: true },
+    { status: "" },
+    { status: 2n },
+  ]) {
+    const f = fixture();
+    f.internal.waitForReceipt = async () => receipt;
+    f.sends[0].resolve(newHash);
+    assert.equal(await f.send("Malformed receipt"), false);
+    assert.equal(f.store.tx.state, "failed");
+    assert.equal(f.store.tx.txHash, newHash);
+  }
+});
+
+void test("malformed gas and block responses prevent wallet sends", async () => {
+  for (const input of [
+    null,
+    undefined,
+    {},
+    [],
+    true,
+    "",
+    -1n,
+    Number.MAX_SAFE_INTEGER + 1,
+  ]) {
+    for (const boundary of ["estimate", "block", "limit"]) {
+      const f = fixture();
+      f.internal.getWeb3 = async () => ({
+        qrl: {
+          estimateGas: async () => (boundary === "estimate" ? input : 100_000n),
+          getBlock: async () =>
+            boundary === "block"
+              ? input
+              : { gasLimit: boundary === "limit" ? input : 30_000_000n },
+        },
+      });
+      assert.equal(await f.send("Invalid RPC value"), false);
+      assert.equal(f.store.tx.state, "failed");
+      assert.equal(f.sendCount(), 0);
+    }
+  }
+});
+
+void test("malformed and changed wallet chains reject before signing", async () => {
+  for (const chain of [null, {}, [], "", true, 1.5, 1338n]) {
+    for (const changedAt of [1, 2]) {
+      const f = fixture();
+      let calls = 0;
+      f.provider.request = async ({ method }) => {
+        assert.equal(method, "qrl_chainId");
+        return ++calls === changedAt ? chain : "0x539";
+      };
+      assert.equal(await f.send("Invalid wallet chain"), false);
+      assert.equal(f.store.tx.state, "failed");
+      assert.equal(calls, changedAt);
+    }
+  }
+});
+
+void test("discovery drops malformed announcements and retains valid provider identity", () => {
+  const f = fixture();
+  const info = {
+    uuid: "extension",
+    name: "QRL wallet",
+    icon: "",
+    rdns: "theqrl.org",
+  };
+  for (const detail of [
+    null,
+    {},
+    { info },
+    { info, provider: {} },
+    { info: { ...info, name: 42 }, provider: f.provider },
+  ]) {
+    f.internal.onEip6963Announce(
+      new CustomEvent("eip6963:announceProvider", { detail }),
+    );
+    assert.deepEqual(f.store.discoveredWallets, []);
+  }
+  const detail = { info, provider: f.provider };
+  f.internal.onEip6963Announce(
+    new CustomEvent("eip6963:announceProvider", { detail }),
+  );
+  f.internal.onEip6963Announce(
+    new CustomEvent("eip6963:announceProvider", { detail }),
+  );
+  assert.equal(f.store.discoveredWallets.length, 1);
+  assert.equal(f.store.discoveredWallets[0]?.uuid, info.uuid);
+});
+
+void test("extension account events authorize valid accounts and retire malformed ones", () => {
+  const f = fixture();
+  let onAccounts: ((value: unknown) => void) | undefined;
+  const provider: ExtensionProvider = {
+    ...f.provider,
+    on: (_event, listener) => {
+      onAccounts = listener;
+    },
+  };
+  f.connect(address, "extension", provider);
+  f.internal.wireExtensionEvents({
+    provider,
+    info: {
+      uuid: "extension",
+      name: "QRL wallet",
+      icon: "",
+      rdns: "theqrl.org",
+    },
+  });
+  assert(onAccounts);
+  onAccounts([secondAddress]);
+  assert.equal(f.store.account?.address, secondAddress);
+  onAccounts([{}]);
+  assert.equal(f.store.account, null);
+  assert.equal(f.store.provider, null);
+  assert.match(f.store.connectError ?? "", /invalid QRL account/);
+});
+
+const poolReads = [
+  "riskAssets",
+  "freeCash",
+  "claimReserve",
+  "pendingTotal",
+  "feeReserve",
+  "minDeposit",
+  "FEE_BPS",
+  "lastCheckpointBlock",
+  "recovering",
+  "poolStatus",
+  "poolRecoveryDeadlineSlot",
+  "stage",
+  "pendingHead",
+  "queueHead",
+  "totalShares",
+  "recoveryPaid",
+  "frozenShares",
+];
+
+void test("pool response guards reject missing numbers and boolean coercions", async () => {
+  const f = fixture();
+  const values: Record<string, unknown> = { FEE_BPS: 1000n, recovering: false };
+  f.internal.getContracts = async () => ({
+    pool: Object.fromEntries(
+      poolReads.map((name) => [
+        name,
+        () => ({ call: async () => (name in values ? values[name] : 0n) }),
+      ]),
+    ),
+  });
+  await f.internal.refreshPool();
+  assert(f.store.pool);
+  assert.equal(f.store.pool.recovering, false);
+  assert.equal(f.store.pool.feeBps, 1000n);
+  for (const value of [undefined, null, true, "", {}, -1n]) {
+    values.riskAssets = value;
+    await assert.rejects(f.internal.refreshPool(), {
+      name: "InvalidInputError",
+    });
+  }
+  values.riskAssets = 0n;
+  values.recovering = "false";
+  await assert.rejects(f.internal.refreshPool(), { name: "InvalidInputError" });
+});
+
+void test("position and request response guards reject malformed fields", async () => {
+  const f = fixture();
+  const position: Record<string, unknown> = {
+    shares: 100n,
+    principalBasis: 90n,
+    pending: 0n,
+    recoveryClaimed: 0n,
+    activeRequestPlusOne: 1n,
+  };
+  let response: unknown = position;
+  let rewardsOnly: unknown = false;
+  f.internal.fetchActivity = async () => {};
+  f.internal.getWeb3 = async () => ({
+    qrl: { getBalance: async () => 1000n, getBlockNumber: async () => 17n },
+  });
+  f.internal.getContracts = async () => ({
+    pool: {
+      getPosition: () => ({ call: async () => response }),
+      positionValue: () => ({ call: async () => 100n }),
+      rewardValue: () => ({ call: async () => 10n }),
+      claimable: () => ({ call: async () => 0n }),
+      getRequest: () => ({
+        call: async () => ({ amount: 50n, requestedBlock: 16n, rewardsOnly }),
+      }),
+    },
+  });
+  await f.internal.refreshAccount(address);
+  assert.equal(f.store.account?.qrlValue, 100n);
+  assert.equal(f.store.withdrawals[0]?.rewardsOnly, false);
+  for (const value of [
+    undefined,
+    null,
+    [],
+    {},
+    { ...position, shares: "" },
+    { ...position, principalBasis: true },
+  ]) {
+    response = value;
+    await assert.rejects(f.internal.refreshAccount(address), {
+      name: "InvalidInputError",
+    });
+  }
+  response = position;
+  rewardsOnly = "false";
+  await assert.rejects(f.internal.refreshAccount(address), {
+    name: "InvalidInputError",
+  });
+});
+
+const eventSignature =
+  "0xff465791f48805b0254fc0e26cc605e27ef7706d8ee0cf018f8696f58db83679";
+const nativeLog = {
+  address: poolAddress,
+  topics: [
+    ...nativeEventTopics(eventSignature, address),
+    `0x${"7".padStart(128, "0")}`,
+  ],
+  data: `0x${"11".padStart(128, "0")}`,
+  blockNumber: "0x11",
+  transactionHash: newHash,
+};
+
+void test("native event RPC preserves complete topics and exact decoded values", async (t) => {
+  const f = fixture();
+  f.internal.getWeb3 = async () => offlineWeb3;
+  let body: unknown;
+  t.mock.method(globalThis, "fetch", async (_url: unknown, init: unknown) => {
+    body = requireRecord(init).body;
+    return new Response(
+      JSON.stringify({ jsonrpc: "2.0", id: 1, result: [nativeLog] }),
+    );
+  });
+  const logs = await f.internal.queryNativeEvents("DepositQueued", address);
+  assert.equal(logs.length, 1);
+  const log = requireRecord(logs[0]);
+  assert.equal(log.blockNumber, 17n);
+  assert.equal(log.transactionHash, newHash);
+  assert.equal(requireRecord(log.returnValues).amount, 17n);
+  assert.equal(requireRecord(log.returnValues).id, 7n);
+  assert.equal(
+    body,
+    JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "qrl_getLogs",
+      params: [
+        {
+          address: poolAddress,
+          fromBlock: "0x0",
+          toBlock: "latest",
+          topics: nativeLog.topics.slice(0, 2),
+        },
+      ],
+    }),
+  );
+});
+
+void test("native event RPC drops malformed envelopes, logs and decoded records", async (t) => {
+  const f = fixture();
+  f.internal.getWeb3 = async () => offlineWeb3;
+  let payload: unknown;
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async () => new Response(JSON.stringify(payload)),
+  );
+  for (const value of [
+    null,
+    [],
+    {},
+    { result: {} },
+    { result: [null] },
+    { error: { message: "query rejected" } },
+    ...[
+      { ...nativeLog, topics: null },
+      { ...nativeLog, address },
+      { ...nativeLog, data: "0x1" },
+      { ...nativeLog, transactionHash: {} },
+      { ...nativeLog, blockNumber: null },
+    ].map((log) => ({ result: [log] })),
+  ]) {
+    payload = value;
+    await assert.rejects(
+      f.internal.queryNativeEvents("DepositQueued", address),
+    );
+  }
+  payload = { result: [nativeLog] };
+  f.internal.getWeb3 = async () => ({
+    qrl: {
+      abi: {
+        encodeEventSignature: () => eventSignature,
+        decodeLog: () => null,
+      },
+    },
+  });
+  await assert.rejects(f.internal.queryNativeEvents("DepositQueued", address), {
+    name: "InvalidInputError",
+  });
 });
