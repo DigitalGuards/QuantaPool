@@ -223,9 +223,11 @@ export const StakePage = observer(() => {
           </CardHeader>
           <CardContent className="space-y-3 text-sm leading-relaxed text-muted-foreground">
             <p>
-              Withdrawals wait in a queue and can depend on validator exits. The
-              operator runs the validators, so their performance and
-              execution-tip routing affect returns.{" "}
+              Your position stays with the wallet you deposit from and cannot be
+              moved to another wallet. Payouts go to that wallet. Withdrawals
+              wait in a queue and can depend on validator exits. The operator
+              runs the validators, so their performance and execution-tip
+              routing affect returns.{" "}
               <Link
                 to="/how-it-works"
                 className="text-identity-accent hover:underline"
