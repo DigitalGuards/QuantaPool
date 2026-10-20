@@ -61,7 +61,7 @@ Relevant review categories include OWASP A01:2021 Broken Access Control and A04:
 ## Remaining verification gaps
 
 - The original frozen graph has now completed consumed top-up, real validator rewards, independent exit, authenticated terminal withdrawal, fee reservation and final user payouts with zero residue. [The implementation report](IMPLEMENTATION.md#real-network-milestones) records exact reconciliation and a resolved payout gas-estimation failure. A full funded validator lifecycle on the final hardened bytecode remains a separate pre-launch qualification; its native-VM regressions and actual liquid-principal recovery run do not imply that additional result.
-- The integrated staging-race regression now executes completion of a newer portfolio while the old ledger stage remains open, rejects early overwrite, completes the old stage and consumes the new snapshot once. Final-user terminal checks still require the priced and latest portfolio to agree, so completion scheduling can defer the last exit.
+- The integrated staging-race regression completes a newer portfolio while an older stage remains open, applies the new economics once, and preserves the original eligibility cutoff and phase. The pricing-window regressions below additionally change economic value and exercise automatic refresh before admission and reservation.
 - Cover multiple admissions, multiple registered validators, an external top-up and a native withdrawal across the same interval, including skipped slots and aborted portfolio generations. The current adapter plan primarily exercises one admitted validator.
 - Preserve bytecode-executed malformed-proof, wrong-recipient, wrong-index/domain, replay, stale-cutoff, reentrancy, zero-loss-cohort, fee-carry and cash-conservation checks as required release gates.
 - Measure complete occupied-header history proof cost and keeper completion latency at realistic pool/network scale. Per-call batch limits alone do not establish that the entire interval can finish within the freshness window.
@@ -101,3 +101,48 @@ The lifetime cap bounds validator work; it does not establish an adequate produc
 The new timeout repairs the distinction between pool accounting health and global finality health. The fresh source deliberately winds down irreversibly when that accounting deadline passes. No operator can extend it through finality-only or portfolio-only work. Users must review the selected freshness/recovery windows, initial anchor, sampled-committee assumptions and supported fork before depositing.
 
 README and architecture correctly identify operator tip routing, initial configuration trust, sampled and potentially repeated committee keys, fixed-fork limitations, public early exits, preparation risk and indefinite native return timing. Keep the enforced lifetime cap, independent pool timeout and immutable enrollment role explicit in those documents. Available-cash-first exit scheduling is a keeper policy: public exit signatures permit independent early exits, and gate exit-work events require queued demand without proving a liquidity deficit. The implementation supplies no legal classification or regulatory clearance.
+
+## Superseded pricing window, 2026-10-20
+
+**High, resolved in source:** A still-fresh stage previously admitted pending deposits and reserved withdrawals after a newer completed portfolio had proved changed economics. The stage used its older price with current free cash. The earlier staging-race regression permitted this coexistence and checked sequencing without changing economic value.
+
+`NativeLedger` now checks the latest completed portfolio ID before every bounded admission and reservation batch. It applies an advancing snapshot atomically before processing any entry. Permissionless `settleCheckpoint()` can also refresh an unfinished stage. `NativeQrlPool` supplies the authenticated latest ID through an internal hook. Snapshot IDs must increase, and execution cutoffs must remain nondecreasing; a newer beacon snapshot sharing the applied execution cutoff can therefore refresh successfully. There are no new public methods or storage fields.
+
+Refresh preserves the current phase, original eligibility cutoff, queue ends and heads. Already admitted units, fixed user claims, earned fees and pending principal remain intact through the economic update. The ordinary batch then performs only its authorized admissions or reservations. Entries at or after the original cutoff remain deferred until a later stage opened by another completed snapshot. The executor checks the current phase before calling either batch, including an existing withdrawal phase.
+
+The updated staging-race test explicitly refreshes the open stage and rejects duplicate application. The production-bytecode pricing plans reuse the review's synthetic economic histories and regenerate their native SSZ and account proofs:
+
+| Scenario | Allocation after the fix |
+| --- | --- |
+| 52,000 QRL cohort, 12,000 cash, 40,000 validator balance; a queued 20,000 QRL position; later return of 39,480 after a 520 loss | The remaining queue batch first applies the cutoff-128 loss. The withdrawer receives 19,800 QRL and bears 200 of the loss. The other 30,000 QRL holder retains 29,700 and the 2,000 QRL operator position retains 1,980, totaling 31,680. Fees remain zero. |
+| 52,000 QRL cohort; pending newcomer supplies 52,000; cutoff 128 proves 5,200 income before admission | Existing positions become 55,000 and 2,200 QRL. The newcomer receives units worth 52,000 QRL less one base unit (`10^-18 QRL`) of admission rounding and captures zero proved income. Its subsequent full claim has the same amount and zero fee. |
+
+**Liveness:** Portfolio churn adds one refresh to the next batch, with no loop over intermediate snapshots. Cumulative portfolio counters reconcile skipped snapshots. A fresh-stage abort remains unavailable solely because a newer portfolio exists, preventing an added reset mechanism. Churn tests complete 65 admissions in batches of 32, 32 and 1, then two FIFO reward requests in single-entry batches while newer portfolios keep completing. Both explicit refresh and automatic refresh preserve the withdrawal phase. A blocked FIFO head ends staging under the existing rule; a complete loss or unrepresentable admission also releases staging while preserving refunds and late-return rights. Permissionless transaction inclusion, usable proofs and actual validator liquidity remain operating assumptions.
+
+The latest completed snapshot must still be within its freshness window. Tests accept age 64 and reject age 65 while global finality stays healthy; failed refresh leaves accounting and the pool deadline unchanged, and stale-stage abort permits the pending refund. Portfolio completion alone cannot extend the independent pool deadline. An atomic refresh at slot 4224 renews it to 8320; at slot 4225, the same unapplied portfolio cannot revive the pool, and recovery starts directly from the unfinished stage. Separate ledger-bytecode cases preserve and pay existing 90-unit user claims, 10-unit earned fees and 17-unit pending refunds through supersession, including a complete loss.
+
+**Measured gas:** The comparison uses the unchanged starting revision `49814cc03f7a757304f1e5cb3ffc7df2819b63af`, the pinned compiler, identical native runner settings and regenerated public fixtures. Values include intrinsic gas and precede refunds. The ordinary admission benchmark queues 65 deposits for one beneficiary; it demonstrates the per-batch change for that fixture, with the bound still fixed at 32.
+
+| Operation | Before | After | Change |
+| --- | ---: | ---: | ---: |
+| First 32-entry admission batch, no refresh | 579,616 | 585,187 | +5,571 |
+| Second 32-entry admission batch, no refresh | 545,416 | 550,987 | +5,571 |
+| Two-entry FIFO batch, no refresh | 139,671 | 145,242 | +5,571 |
+| Loss-scenario reservation batch | 157,731 | 232,559 | +74,828, including automatic loss settlement |
+| Income-scenario single admission | 141,822 | 235,554 | +93,732, including automatic income settlement |
+
+A 32-entry admission batch that also applies the superseding income snapshot uses 673,348 gas in the churn fixture. Refresh performs one existing economic settlement, including logarithmic historical-flow and funding lookups, then visits at most the requested 32 entries. The pool runtime grows from 21,628 to 21,906 bytes and remains below the 24,576-byte limit. The portfolio runtime and its existing headroom are unchanged.
+
+The ten focused pricing-window plans pass 950 native QRVM steps with 67 expected reverts. The original review scenarios also reproduce their old allocations against the unchanged starting bytecode. This is local native-bytecode qualification with synthetic finality authority and economic states. The earlier funded local-network graphs retain their separately documented bytecode and evidence.
+
+The complete gate passes 43 model tests, 32 tooling tests and 66,455 native QRVM steps, including 458 expected reverts. The VM total comprises 2,357 deterministic ledger steps, 62,164 randomized ledger steps, 1,779 portfolio/gate/adapter/recovery/capacity/executor steps and 155 finality steps. Go runner and proof-package tests also pass. Commands used `nice -n 10`, `GOMAXPROCS=2`, `GOFLAGS=-buildvcs=false` and Go package parallelism of two; the full gate additionally used a two-CPU affinity limit.
+
+| Gate | Exit code |
+| --- | ---: |
+| `npm ci` | 0 |
+| `npm test` | 0 |
+| `npm run test:model` | 0 |
+| `npm run test:tooling` | 0 |
+| Ten focused native pricing-window plans | 0 |
+| Original review replay and paired gas comparison | 0 |
+| `git diff --check` and added-text scan | 0 |

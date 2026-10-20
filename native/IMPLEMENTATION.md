@@ -50,7 +50,7 @@ The compiler places pool position, pending-deposit, request and historical-flow 
 3. Pool funding is counted once: native cash before transfer, explicit in-flight principal while unconsumed, then canonical validator balance after consumption.
 4. Historical gross assets are normalized by recorded later external deposits and actual cash payouts. Returned principal and newly adopted preparation capital never enter the consensus fee base.
 5. Aggregate unreserved position entitlements are bounded by risk assets. Cash reservations remove the corresponding units/value before payment; repeated claims cannot reuse an entitlement.
-6. Deposits and withdrawal/reward requests require a strictly later cutoff. Queued users bear gains and losses until reservation; newcomers cannot buy earlier settled rewards.
+6. Deposits and withdrawal/reward requests require a strictly later eligibility cutoff. Every admission and reservation batch atomically applies the newest completed portfolio while preserving its stage's cutoff, bounds and phase. Queued users bear the proved gains and losses until reservation; newcomers receive no income already proved before admission.
 7. Earned operator fees are bounded by realized taxable gain and eligible net consensus income, after prior-loss recovery. No key can edit the fee or its recipient.
 8. A normal final exit requires the priced snapshot to prove terminal zero validators and no pool funding in flight. Zero-value users retain late-return rights while validators remain outstanding.
 9. Recovery freezes existing units, preserves already segregated reserves and pays cumulative available cash minus prior claims. Late cash remains claimable and earns no new fee.
