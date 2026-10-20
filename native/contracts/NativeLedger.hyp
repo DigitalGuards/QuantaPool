@@ -112,6 +112,7 @@ abstract contract NativeLedger {
     }
 
     function _authorityStatus() internal view virtual returns (uint8);
+    function _latestCheckpointId() internal view virtual returns (uint64);
     function _consumeCheckpoint() internal virtual returns (Checkpoint memory);
     function _allValidatorsTerminal() internal view virtual returns (bool);
     function _stagingCheckpointFresh(uint64 id) internal view virtual returns (bool);
@@ -259,9 +260,13 @@ abstract contract NativeLedger {
     }
 
     function settleCheckpoint() external guarded {
-        _normalOpen();
+        _settleCheckpoint();
+    }
+
+    function _settleCheckpoint() private {
+        require(!recovering && _authorityStatus() == 0, "normal actions unavailable");
         Checkpoint memory point = _consumeCheckpoint();
-        require(point.id > lastCheckpointId && point.executionBlock > lastCheckpointBlock &&
+        require(point.id > lastCheckpointId && point.executionBlock >= lastCheckpointBlock &&
             point.executionBlock < block.number, "checkpoint must advance");
         FlowPoint memory flow = _flowAt(point.executionBlock);
         uint256 normalizedGross = point.grossAssetsAtCutoff + (cumulativeExternalDeposits - flow.externalDeposits) -
@@ -302,16 +307,25 @@ abstract contract NativeLedger {
         _assertCashReserves();
         lastCheckpointId = point.id;
         lastCheckpointBlock = point.executionBlock;
-        stageCutoff = point.executionBlock;
-        _pendingEnd = _pending.length;
-        _queueEnd = _requests.length;
-        stage = 1;
+        // A newer price preserves the current work set and phase. Repeated
+        // portfolio completion cannot restart admissions ahead of withdrawals.
+        if (stage == 0) {
+            stageCutoff = point.executionBlock;
+            _pendingEnd = _pending.length;
+            _queueEnd = _requests.length;
+            stage = 1;
+        }
         emit CheckpointSettled(point.id, point.executionBlock, riskAssets, exemptGain);
+    }
+
+    function _refreshStagingCheckpoint() private {
+        if (_latestCheckpointId() > lastCheckpointId) _settleCheckpoint();
+        require(_authorityStatus() == 0 && _stagingCheckpointFresh(lastCheckpointId), "staged checkpoint stale");
     }
 
     function activateDeposits(uint256 limit) external guarded returns (uint256 processed) {
         require(stage == 1 && limit != 0 && limit <= MAX_BATCH, "invalid admission batch");
-        require(_authorityStatus() == 0 && _stagingCheckpointFresh(lastCheckpointId), "staged checkpoint stale");
+        _refreshStagingCheckpoint();
         while (processed < limit && pendingHead < _pendingEnd) {
             PendingDeposit storage item = _pending[pendingHead];
             if (item.requestedBlock >= stageCutoff) break;
@@ -341,7 +355,7 @@ abstract contract NativeLedger {
 
     function processQueue(uint256 limit) external guarded returns (uint256 processed) {
         require(stage == 2 && limit != 0 && limit <= MAX_BATCH, "invalid withdrawal batch");
-        require(_authorityStatus() == 0 && _stagingCheckpointFresh(lastCheckpointId), "staged checkpoint stale");
+        _refreshStagingCheckpoint();
         while (processed < limit && queueHead < _queueEnd) {
             WithdrawalRequest storage request = _requests[queueHead];
             if (request.requestedBlock >= stageCutoff) break;

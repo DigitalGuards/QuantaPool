@@ -33,7 +33,7 @@ contract NativeCheckpointExecutor {
         if (finish) {
             portfolio.finalizeCheckpoint();
             pool.settleCheckpoint();
-            pool.activateDeposits(32);
+            if (pool.stage() == 1) pool.activateDeposits(32);
             if (pool.stage() == 2) pool.processQueue(32);
         }
     }

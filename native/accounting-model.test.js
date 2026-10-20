@@ -532,6 +532,138 @@ test('stale staged batches abort permissionlessly while preserving already admit
   model.audit();
 });
 
+test('superseded withdrawal pricing allocates proven loss before reserving returned cash', () => {
+  const model = pool({ alice: 20_000n, bob: 30_000n, operator: 2_000n });
+  model.fixtureFund(40_000n);
+  model.fixtureConsumeFunding(40_000n);
+  model.fixtureAllValidatorsTerminal = false;
+  model.requestWithdrawal('alice');
+  model.advance();
+  const older = model.fixtureCheckpoint();
+  model.advance();
+  model.settleCheckpoint(older);
+  model.activateDeposits();
+  assert.equal(model.freeCash(), 12_000n);
+  model.fixtureConsensus(-520n);
+  model.fixtureReturnPrincipal(39_480n);
+  model.fixtureCheckpoint();
+  model.advance();
+  assert.equal(model.processQueue(1), 1);
+  assert.equal(model.claim('alice'), 19_800n);
+  assert.equal(model.riskAssets, 31_680n);
+  assert.equal(model.position('bob').value, 29_700n);
+  assert.equal(model.position('operator').value, 1_980n);
+  assert.equal(model.consensusLossCarry, 520n);
+  assert.equal(model.feeReserve, 0n);
+  model.audit();
+});
+
+test('superseded admission pricing leaves all already-proven income with existing holders', () => {
+  const U = 10n ** 18n;
+  const model = pool({ alice: 50_000n * U, operator: 2_000n * U });
+  model.deposit('bob', 52_000n * U);
+  model.advance();
+  const older = model.fixtureCheckpoint();
+  model.advance();
+  model.settleCheckpoint(older);
+  model.fixtureConsensus(5_200n * U, { liquid: true });
+  model.fixtureCheckpoint();
+  model.advance();
+  finish(model);
+  assert.equal(model.position('alice').value, 55_000n * U);
+  assert.equal(model.position('operator').value, 2_200n * U);
+  assert.equal(model.position('bob').value, 52_000n * U - 1n);
+  assert.equal(model.position('bob').rewards, 0n);
+  model.requestWithdrawal('bob');
+  settle(model);
+  assert.equal(model.claim('bob'), 52_000n * U - 1n);
+  assert.equal(model.feeReserve, 0n);
+  model.audit();
+});
+
+test('repeated repricing preserves bounded work, cutoff and FIFO phase', () => {
+  const model = pool({ alice: 1000n, bob: 1000n });
+  for (let i = 0; i < 65; i++) model.deposit(`pending-${i}`, 10n);
+  model.requestWithdrawal('alice', 10n);
+  model.requestWithdrawal('bob', 10n);
+  model.advance();
+  // This entry shares the original cutoff and waits for a later stage.
+  const deferred = model.deposit('deferred', 7n);
+  const older = model.fixtureCheckpoint();
+  model.advance();
+  model.settleCheckpoint(older);
+  const cutoff = model.stage.cutoff;
+  const pendingEnd = model.stage.pendingEnd;
+  for (const processed of [32, 32, 1]) {
+    model.fixtureCheckpoint();
+    model.advance();
+    assert.throws(() => model.activateDeposits(33), /batch bound/);
+    assert.equal(model.activateDeposits(32), processed);
+    assert.equal(model.stage.cutoff, cutoff);
+    assert.equal(model.stage.pendingEnd, pendingEnd);
+    assert.throws(() => model.abortStaging(), /remains fresh/);
+  }
+  assert.equal(model.stage.phase, 'queue');
+  for (const id of ['alice', 'bob']) {
+    const newer = model.fixtureCheckpoint();
+    model.advance();
+    model.settleCheckpoint(newer);
+    assert.equal(model.stage.phase, 'queue');
+    assert.equal(model.stage.cutoff, cutoff);
+    assert.equal(model.processQueue(1), 1);
+    assert.equal(model.claim(id), 10n);
+  }
+  assert.equal(model.stage, null);
+  assert.equal(model.user('deferred').pending, 7n);
+  model.cancelPending('deferred', deferred);
+  model.audit();
+});
+
+test('repricing a complete loss finishes the stage and preserves pending refunds and late rights', () => {
+  const model = pool({ alice: 100n });
+  model.fixtureFund(100n);
+  model.fixtureConsumeFunding(100n);
+  model.fixtureAllValidatorsTerminal = false;
+  model.deposit('bob', 10n);
+  model.requestWithdrawal('alice');
+  model.advance();
+  const older = model.fixtureCheckpoint();
+  model.advance();
+  model.settleCheckpoint(older);
+  model.fixtureConsensus(-100n);
+  model.fixtureCheckpoint();
+  model.advance();
+  assert.equal(model.activateDeposits(1), 0);
+  assert.equal(model.processQueue(1), 1);
+  assert.equal(model.stage, null);
+  assert.equal(model.user('alice').shares, 100n * SHARE_SCALE);
+  assert.equal(model.claimReserve, 0n);
+  model.cancelPending('bob', 1);
+  assert.equal(model.user('bob').paid, 10n);
+  model.audit();
+});
+
+test('a newer completed snapshot at the same execution cutoff advances economic pricing', () => {
+  const model = pool({ alice: 1000n });
+  model.fixtureFund(500n);
+  model.fixtureConsumeFunding(500n);
+  model.deposit('bob', 1000n);
+  model.advance();
+  const older = model.fixtureCheckpoint();
+  model.advance();
+  model.settleCheckpoint(older);
+  model.fixtureConsensus(200n);
+  const newer = model.fixtureCheckpoint({ executionBlock: older.block });
+  model.advance();
+  finish(model);
+  assert.equal(model.lastCheckpoint, older.block);
+  assert.equal(model.lastCheckpointId, newer.id);
+  assert.equal(model.position('alice').value, 1200n);
+  assert.equal(model.position('bob').rewards, 0n);
+  assert.throws(() => model.settleCheckpoint(newer), /increasing/);
+  model.audit();
+});
+
 test('operator preparation adoption adds principal once and cannot subsidize losses or fees', () => {
   const model = pool({ alice: 38_000n });
   model.fixtureAdmitCapital('operator', 2_000n);

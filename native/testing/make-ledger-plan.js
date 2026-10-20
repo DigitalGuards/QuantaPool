@@ -411,6 +411,61 @@ function makePlan(kind) {
     drain();
     call('claimFees', [], { from: F, revert: '*' });
     call('claim', [], { from: B, revert: '*' });
+  } else if (kind === 'superseded-reserves' || kind === 'superseded-full-loss') {
+    deposit(A, 1000n);
+    deposit(B, 1000n);
+    settle();
+    gain(200n);
+    request(A, 'requestRewards');
+    settle();
+    assert.equal(model.claimReserve, 90n);
+    assert.equal(model.feeReserve, 10n);
+    const pending = deposit(C, 17n);
+    if (kind === 'superseded-full-loss') {
+      request(B, 'requestWithdrawal');
+      time();
+      terminal(false);
+    }
+    // In the reserves case the pending deposit shares the original cutoff.
+    // In the full-loss case it is eligible but must retain its refund rights.
+    const older = model.fixtureCheckpoint();
+    time();
+    model.settleCheckpoint(older);
+    call('setCheckpoint', [
+      String(++checkpointId), String(older.block), String(older.cash),
+      String(older.consensusDelta - priorConsensus),
+    ]);
+    priorConsensus = older.consensusDelta;
+    call('settleCheckpoint');
+    loss(kind === 'superseded-full-loss' ? model.riskAssets : 100n);
+    const newer = model.fixtureCheckpoint();
+    time();
+    call('setCheckpoint', [
+      String(++checkpointId), String(newer.block), String(newer.cash),
+      String(newer.consensusDelta - priorConsensus),
+    ]);
+    priorConsensus = newer.consensusDelta;
+    call('abortStaging', [], { revert: 'staging remains fresh' });
+    const admitted = model.activateDeposits(1);
+    call('activateDeposits', ['1'], { want: [String(admitted)] });
+    assert.equal(admitted, 0);
+    assert.equal(model.claimReserve, 90n);
+    assert.equal(model.feeReserve, 10n);
+    assert.equal(model.pendingTotal, 17n);
+    check();
+    claim(A);
+    fees();
+    call('claim', [], { from: A, revert: '*' });
+    call('claimFees', [], { revert: '*' });
+    finish();
+    model.cancelPending(C, pending);
+    call('cancelPending', [String(pending)], { from: C });
+    if (kind === 'superseded-full-loss') {
+      assert(model.user(B).shares > 0n);
+      assert.equal(model.user(B).activeRequest, false);
+      assert.equal(model.riskAssets, 0n);
+    }
+    check();
   } else if (kind === 'flow-cutoff') {
     deposit(A, 100n);
     settle();
@@ -455,6 +510,8 @@ const scenarios = [
   'zero-rounded-head',
   'multi-user-drain',
   'flow-cutoff',
+  'superseded-reserves',
+  'superseded-full-loss',
 ].map(makePlan);
 const callbackSteps = [
   { op: 'deploy', id: 'ledger', artifact: 'LedgerFixture', args: [F] },

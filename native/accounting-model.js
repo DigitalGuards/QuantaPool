@@ -65,6 +65,9 @@ class NativeAccountingModel {
     this.eligibleConsensusRewardBudget = 0n;
     this.consensusLossCarry = 0n;
     this.lastCheckpoint = 0n;
+    this.lastCheckpointId = 0;
+    this.fixtureSequence = 0;
+    this.latestCheckpointFixture = null;
     this.stage = null;
     this.fixtureAuthorityStatus = 0;
     this.fixtureStagingFresh = true;
@@ -275,16 +278,18 @@ class NativeAccountingModel {
     this.exemptReceived += amount;
   }
 
-  fixtureCheckpoint() {
-    return Object.freeze({
+  fixtureCheckpoint({ executionBlock = this.block } = {}) {
+    this.latestCheckpointFixture = Object.freeze({
       [FIXTURE]: true,
-      block: this.block,
+      id: ++this.fixtureSequence,
+      block: uint(executionBlock),
       cash: this.cash,
       validatorAssets: this.validatorAssets,
       inFlight: this.inFlight,
       consensusDelta: this.consensusDelta,
       exemptReceived: this.exemptReceived,
     });
+    return this.latestCheckpointFixture;
   }
 
   freeCash() {
@@ -292,12 +297,15 @@ class NativeAccountingModel {
   }
 
   settleCheckpoint(fixture) {
-    this._open();
+    assert(!this.recovering && this.fixtureAuthorityStatus === 0, 'normal actions unavailable');
     assert(fixture[FIXTURE] === true, 'verified fixture input required');
     assert(
-      fixture.block > this.lastCheckpoint && fixture.block < this.block,
+      fixture.id > this.lastCheckpointId &&
+        fixture.block >= this.lastCheckpoint && fixture.block < this.block,
       'cutoff must be finalized, increasing and earlier than execution'
     );
+    assert.equal(fixture, this.latestCheckpointFixture, 'latest completed fixture required');
+    assert(this.fixtureStagingFresh, 'staged checkpoint stale');
     const flow = this._flowAt(fixture.block);
     const gross =
       fixture.cash +
@@ -348,7 +356,8 @@ class NativeAccountingModel {
     this.settledConsensus = fixture.consensusDelta;
     this.settledExempt = fixture.exemptReceived;
     this.lastCheckpoint = fixture.block;
-    this.stage = {
+    this.lastCheckpointId = fixture.id;
+    this.stage ??= {
       phase: 'deposits',
       cutoff: fixture.block,
       pendingEnd: this.pending.length,
@@ -356,13 +365,19 @@ class NativeAccountingModel {
     };
   }
 
-  activateDeposits(limit = 16) {
-    assert(this.stage?.phase === 'deposits', 'not admitting deposits');
+  _refreshStagingCheckpoint() {
+    if (this.latestCheckpointFixture?.id > this.lastCheckpointId)
+      this.settleCheckpoint(this.latestCheckpointFixture);
     assert(
       this.fixtureAuthorityStatus === 0 && this.fixtureStagingFresh,
       'staged checkpoint stale'
     );
-    assert(Number.isSafeInteger(limit) && limit > 0, 'invalid batch bound');
+  }
+
+  activateDeposits(limit = 16) {
+    assert(this.stage?.phase === 'deposits', 'not admitting deposits');
+    assert(Number.isSafeInteger(limit) && limit > 0 && limit <= 32, 'invalid batch bound');
+    this._refreshStagingCheckpoint();
     let processed = 0;
     while (processed < limit && this.pendingHead < this.stage.pendingEnd) {
       const item = this.pending[this.pendingHead];
@@ -419,11 +434,8 @@ class NativeAccountingModel {
 
   processQueue(limit = 16) {
     assert(this.stage?.phase === 'queue', 'not processing withdrawal queue');
-    assert(
-      this.fixtureAuthorityStatus === 0 && this.fixtureStagingFresh,
-      'staged checkpoint stale'
-    );
-    assert(Number.isSafeInteger(limit) && limit > 0, 'invalid batch bound');
+    assert(Number.isSafeInteger(limit) && limit > 0 && limit <= 32, 'invalid batch bound');
+    this._refreshStagingCheckpoint();
     let processed = 0;
     while (processed < limit && this.queueHead < this.stage.queueEnd) {
       const request = this.requests[this.queueHead];
