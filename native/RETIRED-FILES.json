@@ -32,6 +32,7 @@
     "frontend/src/abi/DepositPoolV2.ts",
     "frontend/src/abi/StQRLV2.ts",
     "frontend/src/abi/ValidatorManager.ts",
+    "lib/forge-std",
     "scripts/check-deposit-contract.js",
     "scripts/compile.js",
     "scripts/deploy-hyperion-safety.test.js",
