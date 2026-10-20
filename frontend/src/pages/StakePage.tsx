@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { observer } from "mobx-react-lite";
 import { Link } from "react-router";
-import { ArrowDownToLine, ShieldCheck } from "lucide-react";
+import { ArrowDownToLine } from "lucide-react";
 import { Button } from "@/components/UI/Button";
 import {
   Card,
@@ -75,10 +75,6 @@ export const StakePage = observer(() => {
           Deposit native QRL directly into the pool. Your position, rewards and
           withdrawals are accounted for on chain, with native QRL returned to
           your wallet.
-        </p>
-        <p className="mt-3 inline-flex items-center gap-2 text-xs text-identity-accent">
-          <ShieldCheck className="h-4 w-4" /> Non-transferable positions · No
-          upgrade authority
         </p>
       </section>
       <section className="mx-auto grid max-w-3xl gap-4 md:grid-cols-2">
@@ -205,7 +201,7 @@ export const StakePage = observer(() => {
             <p className="text-xs leading-relaxed text-muted-foreground">
               {pool?.recovering
                 ? "Frozen checkpoint value and principal basis are historical references that remain unchanged after recovery payments. Your frozen position determines your portion of later returned cash."
-                : "Unreserved earnings and principal remain exposed to validator losses. A withdrawal request stays exposed until native cash is reserved. Principal basis is an accounting reference, not a guaranteed payout."}
+                : "Unreserved earnings and principal remain exposed to validator losses. A withdrawal request stays exposed until native cash is reserved. Principal basis is an accounting reference, and your payout can be lower than it."}
             </p>
             <Link
               to="/withdrawals"
@@ -219,30 +215,22 @@ export const StakePage = observer(() => {
       <section className="mx-auto max-w-3xl">
         <Card className="border-l-2 border-l-identity-accent">
           <CardHeader>
-            <CardTitle className="text-lg">
-              What the operator cannot change
-            </CardTitle>
+            <CardTitle className="text-lg">Before you stake</CardTitle>
             <CardDescription>
-              The native pool is designed so deployment fixes the rules that
-              control user funds.
+              Returns are variable and can be negative after validator penalties
+              or losses.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm leading-relaxed text-muted-foreground">
             <p>
-              There is no owner, upgrader, proxy admin, pauser, arbitrary fund
-              rescue, balance setter or mutable fee role. The operator cannot
-              replace the deployed pool logic, change the 10% fee or redirect
-              validator withdrawals away from the pool.
-            </p>
-            <p>
-              The operator still runs validator signing infrastructure, so
-              validator performance, penalties and execution-tip routing remain
-              operational trust assumptions.{" "}
+              Withdrawals wait in a queue and can depend on validator exits. The
+              operator runs the validators, so their performance and
+              execution-tip routing affect returns.{" "}
               <Link
                 to="/how-it-works"
                 className="text-identity-accent hover:underline"
               >
-                See the full control and recovery model.
+                How the pool works
               </Link>
             </p>
           </CardContent>
