@@ -8,6 +8,7 @@ const { build: gatePlan } = require('./make-gate-plan');
 const { build: adapterPlan } = require('./make-adapter-plan');
 const { build: recoveryPlan } = require('./make-recovery-plan');
 const { build: capacityPlan } = require('./make-capacity-plan');
+const { build: stageWindowPlan } = require('./make-stage-window-plan');
 
 const repo = path.resolve(__dirname, '../..');
 const output = path.join(repo, 'findings/native-proof-tests');
@@ -21,6 +22,10 @@ execFileSync(compiler, ['--abi', '--bin', '--bin-runtime', '--optimize', '--opti
     '--base-path', __dirname, '--output-dir', artifacts, '--overwrite',
     path.join(__dirname, 'FixtureFinality.hyp'), path.join(__dirname, 'GatePoolFixture.hyp'),
     path.join(__dirname, 'GateCapacityFixture.hyp')], { stdio: 'inherit' });
+execFileSync(compiler, ['--abi', '--bin', '--optimize', '--optimize-runs=1', '--via-ir',
+    '--base-path', path.join(repo, 'native/contracts'), '--allow-paths', repo,
+    '--output-dir', path.join(repo, 'build/native-stage-window'), '--overwrite',
+    path.join(repo, 'native/contracts/NativeCheckpointExecutor.hyp')], { stdio: 'inherit' });
 const environment = { ...process.env, GOWORK: 'off', GOMAXPROCS: '2' };
 execFileSync('go', ['build', '-mod=readonly', '-p=2', '-o', path.join(artifacts, 'execution'), '.'], {
     cwd: path.join(repo, 'native/testing/execution'), env: environment, stdio: 'inherit' });
@@ -28,6 +33,7 @@ execFileSync('go', ['test', '-mod=readonly', '-p=2', '-count=1', './...'], {
     cwd: __dirname,
     env: { ...environment, QUANTAPOOL_PORTFOLIO_FIXTURE: path.join(output, 'portfolio-fixtures.json'),
         QUANTAPOOL_GATE_FIXTURE: path.join(output, 'gate-fixture.json'),
+        QUANTAPOOL_STAGE_WINDOW_FIXTURES: output,
         QUANTAPOOL_CAPACITY_FIXTURE: path.join(output, 'capacity-fixture.json'), QUANTAPOOL_NATIVE_DEPOSIT_ARTIFACT: artifacts },
     stdio: 'inherit'
 });
@@ -36,6 +42,10 @@ for (const [name, fixtureName, build] of [['portfolio', 'portfolio-fixtures', po
     ['gate', 'gate-fixture', gatePlan], ['adapter', 'gate-fixture', adapterPlan],
     ['capacity-registry', 'capacity-fixture', capacityPlan],
     ['capacity-gate', 'gate-fixture', (fixture, destination) => capacityPlan(fixture, destination, 'gate')],
+    ...['loss', 'loss-executor', 'reward', 'churn', 'reward-cutoff', 'reward-same-cutoff', 'reward-fresh-boundary', 'reward-stale',
+        'reward-recovery-boundary', 'reward-recovery-expired'].map(mode =>
+        [`stage-${mode}`, `stage-${mode === 'reward-same-cutoff' ? 'same-cutoff' : mode.split('-')[0]}-fixture`,
+            (fixture, destination) => stageWindowPlan(fixture, destination, mode)]),
     ...['initial', 'boundary', 'portfolio-only', 'staged', 'claims'].map(mode =>
         [`recovery-${mode}`, 'gate-fixture', (fixture, destination) => recoveryPlan(fixture, destination, mode)])]) {
     const planPath = path.join(output, `${name}-plan.json`);

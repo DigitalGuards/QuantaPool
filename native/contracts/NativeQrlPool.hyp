@@ -130,6 +130,9 @@ contract NativeQrlPool is NativeLedger {
         return finality.status();
     }
     function _authorityStatus() internal view override returns (uint8) { return poolStatus(); }
+    function _latestCheckpointId() internal view override returns (uint64) { return portfolio.snapshotId(); }
+    // Timing eligibility also governs aborts. Batches atomically consume any
+    // newer completed portfolio before checking this applied checkpoint's age.
     function _stagingCheckpointFresh(uint64 id) internal view override returns (bool) {
         return id != 0 && id == lastCheckpointId && _slotFresh(appliedSlot) && poolStatus() == 0;
     }

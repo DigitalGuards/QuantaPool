@@ -26,6 +26,25 @@ import (
 )
 
 func TestGatePublicFixture(t *testing.T) {
+	testGateFixture(t, "", os.Getenv("QUANTAPOOL_GATE_FIXTURE"))
+}
+
+// The pricing-window histories reuse the adapter's native proof construction.
+// All economic states and finality authority remain explicit synthetic inputs.
+func TestStageWindowFixtures(t *testing.T) {
+	for _, mode := range []string{"loss", "reward", "churn", "same-cutoff"} {
+		t.Run(mode, func(t *testing.T) {
+			output := ""
+			if directory := os.Getenv("QUANTAPOOL_STAGE_WINDOW_FIXTURES"); directory != "" {
+				output = filepath.Join(directory, "stage-"+mode+"-fixture.json")
+			}
+			testGateFixture(t, mode, output)
+		})
+	}
+}
+
+func testGateFixture(t *testing.T, mode, output string) {
+	t.Helper()
 	origin := common.BytesToAddress(bytes.Repeat([]byte{0x11}, 64))
 	pool := crypto.CreateAddress(origin, 4)
 	gate := crypto.CreateAddress(origin, 3)
@@ -90,14 +109,35 @@ func TestGatePublicFixture(t *testing.T) {
 	// deliberately matched to actual QRVM cash transfers in that plan.
 	parent := initialRoot
 	points := []any{}
-	for _, point := range []struct {
+	type economicPoint struct {
 		slot, cash, balance, cursor uint64
 		included                    *pb.Deposit_Data
-	}{
+	}
+	history := []economicPoint{
 		{80, 50000, 2000, 1, bootstrap}, {96, 12000, 2000, 1, nil},
 		{112, 12000, 40000, 2, topup}, {128, 13000, 42000, 3, bootstrap},
 		{144, 14000, 42000, 3, nil}, {4224, 14000, 42000, 3, nil},
-	} {
+	}
+	withdrawalSlot, withdrawalAmount := uint64(144), uint64(1000)
+	if mode != "" {
+		entryCash, windowCash, windowBalance := uint64(12000), uint64(51480), uint64(0)
+		withdrawalSlot, withdrawalAmount = 128, 39480
+		if mode != "loss" {
+			entryCash, windowCash, windowBalance = 64000, 64000, 45200
+			withdrawalSlot = 0
+		}
+		history[2] = economicPoint{112, entryCash, 40000, 2, topup}
+		history[3] = economicPoint{128, windowCash, windowBalance, 2, nil}
+		history[4] = economicPoint{144, windowCash, windowBalance, 2, nil}
+		history[5] = economicPoint{4224, windowCash, windowBalance, 2, nil}
+		if mode == "churn" {
+			history = history[:5]
+			for _, slot := range []uint64{160, 176, 192} {
+				history = append(history, economicPoint{slot, windowCash, windowBalance, 2, nil})
+			}
+		}
+	}
+	for _, point := range history {
 		amount := new(big.Int).Mul(new(big.Int).SetUint64(point.cash), big.NewInt(1000000000000000000))
 		a, err := rlp.EncodeToBytes(&types.StateAccount{Nonce: 1, Balance: amount, Root: types.EmptyRootHash, CodeHash: types.EmptyCodeHash.Bytes()})
 		Must(err)
@@ -105,6 +145,9 @@ func TestGatePublicFixture(t *testing.T) {
 		Must(err)
 		h.StateRoot = crypto.Keccak256(n)
 		h.BlockNumber = point.slot
+		if mode == "same-cutoff" && point.slot == 144 {
+			h.BlockNumber = 128
+		}
 		wrapped, err := consensus.WrappedExecutionPayloadHeaderZond(h, 0)
 		Must(err)
 		Must(s.SetLatestExecutionPayloadHeader(wrapped))
@@ -120,8 +163,8 @@ func TestGatePublicFixture(t *testing.T) {
 		block.Slot = primitives.Slot(point.slot)
 		block.ParentRoot = parent
 		block.StateRoot = common.FromHex(state.StateRoot)
-		if point.slot == 144 {
-			block.Body.ExecutionPayload.Withdrawals = []*engine.Withdrawal{{Index: 0, ValidatorIndex: 0, Address: pool.Bytes(), Amount: 1000 * 1000000000}}
+		if point.slot == withdrawalSlot {
+			block.Body.ExecutionPayload.Withdrawals = []*engine.Withdrawal{{Index: 0, ValidatorIndex: 0, Address: pool.Bytes(), Amount: withdrawalAmount * 1000000000}}
 		}
 		if point.included != nil {
 			proof := make([][]byte, 33)
@@ -135,11 +178,13 @@ func TestGatePublicFixture(t *testing.T) {
 	}
 	// A fresh checkpoint at the pool's initial applied deadline spans both
 	// explicit occupied blocks since slot 128; the intervening slots are empty.
-	late := points[len(points)-1].(map[string]any)
-	prior := points[len(points)-2].(map[string]any)
-	late["blocks"] = append(late["blocks"].([]BlockWitness), prior["blocks"].([]BlockWitness)...)
+	if mode != "churn" {
+		late := points[len(points)-1].(map[string]any)
+		prior := points[len(points)-2].(map[string]any)
+		late["blocks"] = append(late["blocks"].([]BlockWitness), prior["blocks"].([]BlockWitness)...)
+	}
 	out["productionPoints"] = points
-	if output := os.Getenv("QUANTAPOOL_GATE_FIXTURE"); output != "" {
+	if output != "" {
 		raw, err := json.MarshalIndent(out, "", "  ")
 		Must(err)
 		Must(os.WriteFile(output, append(raw, '\n'), 0644))

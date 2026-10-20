@@ -40,6 +40,7 @@ function build(fixture, output, { stageRace = true } = {}) {
         call(`prove complete interval ${slot}`, '@portfolio', 'appendBlocks', [point.blocks]);
         call(`commit complete portfolio ${slot}`, '@portfolio', 'finalizeCheckpoint');
         }
+        if (alreadyCommitted) return;
         call(`real pool settles matched portfolio ${slot}`, '@pool', 'settleCheckpoint');
         if (stageRace && point === inFlight) {
             steps.push({ name: 'new finality arrives during older ledger staging', op: 'time', time: 1000 + Number(consumed.state.slot) * 3 });
@@ -52,7 +53,11 @@ function build(fixture, output, { stageRace = true } = {}) {
             call('portfolio advanced to third checkpoint', '@portfolio', 'snapshotId', [], { want: ['3'] });
             call('old ledger remains explicitly bound to second checkpoint', '@pool', 'lastCheckpointId', [], { want: ['2'] });
             call('old ledger keeps its original applied slot', '@pool', 'appliedSlot', [], { want: ['96'] });
-            reject('new snapshot cannot overwrite unfinished ledger staging', '@pool', 'settleCheckpoint');
+            call('new snapshot reprices unfinished ledger staging', '@pool', 'settleCheckpoint');
+            call('repricing preserves admission phase', '@pool', 'stage', [], { want: ['1'] });
+            call('repricing preserves original eligibility cutoff', '@pool', 'stageCutoff', [], { want: ['96'] });
+            call('newer economics applied before remaining work', '@pool', 'appliedSlot', [], { want: ['112'] });
+            reject('same snapshot cannot reprice twice during staging', '@pool', 'settleCheckpoint');
             precommitted = true;
         }
         call(`real pool activates eligible deposits ${slot}`, '@pool', 'activateDeposits', ['4']);
@@ -74,7 +79,7 @@ function build(fixture, output, { stageRace = true } = {}) {
     call('operator bootstrap admission produces no fee entitlement', '@pool', 'eligibleConsensusRewardBudget', [], { want: ['0'] });
     settle(consumed, true);
     if (stageRace) {
-        call('newer snapshot consumed exactly once after old stage closes', '@pool', 'lastCheckpointId', [], { want: ['3'] });
+        call('newer snapshot consumed exactly once while preserving staged work', '@pool', 'lastCheckpointId', [], { want: ['3'] });
         reject('same newer snapshot cannot settle twice', '@pool', 'settleCheckpoint');
     }
     call('consumed funding leaves aggregate principal unchanged', '@pool', 'riskAssets', [], { want: [base(52000)] });

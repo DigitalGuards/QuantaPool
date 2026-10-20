@@ -24,11 +24,14 @@ The plans cover:
 - A zero-rounded FIFO head in a pool with positive assets and available cash, followed by a paid user withdrawal and later recovery of the preserved residual position.
 - A 40,000-unit multi-user pool with validator funding, rewards, losses, partial validator returns, and a complete terminal drain.
 - A historical execution cutoff normalized for a later deposit and an already paid claim.
+- Superseded pricing that preserves reserved user claims, earned fees and pending refunds, including a complete loss that finishes staging while retaining late-return rights.
 - A recipient which rejects payment, proving claim state and cash rollback, followed by a successful payment whose reentrant claim is rejected.
 
 Each differential scenario independently computes expected user positions, fee basis including fractional carry, claims, global reserves, reward budget, loss carry, and physical cash through the BigInt specification. Assertions are encoded as expected native ABI values and checked against actual return bytes. Expected failures must return the QRVM execution-reverted error; out-of-gas errors and other faults fail the test. The runner accounts for intrinsic gas and the 20-million gas ceiling, finalizes state after each action, and does not deduct fictitious transaction fees from the component cash ledger.
 
 The independent model also runs 100 seeded histories with 20,000 economic actions and conservation checks after every action. It covers 200 zero-consensus rounding cycles, exact 512-bit multiplication, same-block cutoff rules, proportional losses, fee carry, full validator loss, terminal gating, and ownerless dust. User enumeration occurs only in this reference model's assertions. Contract operations use constant-cost position accounting, binary-searched flow history, and bounded admission and withdrawal batches.
+
+The pricing-window model regressions reproduce the 52,000 QRL cohort with a 520 QRL loss and the separate 5,200 QRL income case. Additional cases cover repeated portfolio supersession, frozen eligibility, the 32-entry bound, preserved withdrawal phase, complete loss and a newer snapshot sharing an execution cutoff. Production pool/proof bytecode versions of these histories run through `native/proofs/make-stage-window-plan.js`.
 
 A zero-valued position retains its shares while any owned validator remains nonterminal. Its zero-payout request completes so later FIFO entries can use available cash; its position, fee basis and fee carry remain intact. The beneficiary can request again after its value changes. Once every validator is authenticated terminal, normal exits can retire the position. Expiry recovery freezes the existing shares and allocates later cash proportionally. Rounding in recovery can leave less than one smallest native unit per participant; unowned cash remains quarantined and has no operator withdrawal path.
 

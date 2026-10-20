@@ -17,6 +17,7 @@ contract LedgerFixture is NativeLedger {
     function setFresh(bool value) external { fixtureFresh = value; }
     function setTerminal(bool value) external { fixtureTerminal = value; }
     function _authorityStatus() internal view override returns (uint8) { return fixtureStatus; }
+    function _latestCheckpointId() internal view override returns (uint64) { return selected.id; }
     function _consumeCheckpoint() internal view override returns (Checkpoint memory) { return selected; }
     function _allValidatorsTerminal() internal view override returns (bool) { return fixtureTerminal; }
     function _stagingCheckpointFresh(uint64) internal view override returns (bool) { return fixtureFresh; }
