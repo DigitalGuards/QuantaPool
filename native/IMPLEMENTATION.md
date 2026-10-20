@@ -28,7 +28,7 @@ The fee is fixed at 10% of eligible realized net consensus gain when cash is res
 | Documentation | README, architecture, source baseline, testnet retirement and historical-phase labels |
 | Ecosystem landing cell | QuantaPool page and ecosystem card copy; local edits only |
 
-Removed contracts include Hyperion `stQRL-v2.hyp`, `DepositPool-v2.hyp`, `ValidatorManager.hyp`, their Solidity mirrors, and deprecated v1 `stQRL`, `DepositPool`, `OperatorRegistry`, `RewardsOracle` and test token. Token-specific tests, address configuration and executable old deployment/integration commands were removed together. See [all 57 retired executable paths](RETIRED-FILES.json). No legacy funds or storage are recovered or imported.
+Removed contracts include Hyperion `stQRL-v2.hyp`, `DepositPool-v2.hyp`, `ValidatorManager.hyp`, their Solidity mirrors, and deprecated v1 `stQRL`, `DepositPool`, `OperatorRegistry`, `RewardsOracle` and test token. Token-specific tests, address configuration and executable old deployment/integration commands were removed together. See [the retired-path record](RETIRED-FILES.json). No legacy funds or storage are recovered or imported.
 
 ## Storage layout
 

@@ -4,7 +4,7 @@ The repository-wide scan includes `stQRL`, `share price`, `exchange rate`, `shar
 
 ## Removed executable dependencies
 
-The [complete removed-path record](RETIRED-FILES.json) covers the token contract, old pool and manager, Solidity mirrors, token-specific tests, legacy deploy/fund/recovery commands, token ABIs and old address configuration. No native import, runtime call or user flow needs those files. Internal nontransferable accounting units remain because they allocate rewards and losses efficiently.
+The [complete removed-path record](RETIRED-FILES.json) covers the token contract, old pool and manager, Solidity mirrors, token-specific tests, legacy deploy/fund/recovery commands, token ABIs and old address configuration. No native import, runtime call or user flow needs those files. The unused Foundry `lib/forge-std` submodule and a stale `vendor/rocketpool` submodule entry were removed later, and the Solidity-era Slither report moved to `docs/legacy/`, so the repository holds no Solidity tooling. Internal nontransferable accounting units remain because they allocate rewards and losses efficiently.
 
 ## Refactored consumers
 
@@ -44,17 +44,9 @@ These are file locations, not evidence of a runtime token dependency. Counts inc
 | `docs/v1-deprecated/quantapool-research.md` | Archived token design | 1, 3, 5, 60, 62, 65, 68, 128, 140, 143, 167, 193, 222, 243, 245 |
 | `docs/v1-deprecated/rocketpool-reading-guide.md` | Archived token design | 9, 13, 14, 66, 77, 100, 101, 111, 113 |
 | `infrastructure/docs/validator-integration.md` | Reviewed source or documentation terminology | 41, 45, 92, 285, 357, 378, 445 |
-| `lib/forge-std/src/StdCheats.sol` | Unused vendored test interface or dependency documentation | 783, 784, 785 |
-| `lib/forge-std/src/Vm.sol` | Unused vendored test interface or dependency documentation | 1965, 1968 |
-| `lib/forge-std/src/interfaces/IERC1155.sol` | Unused vendored test interface or dependency documentation | 11, 17, 18, 24, 30, 31 |
-| `lib/forge-std/src/interfaces/IERC4626.sol` | Unused vendored test interface or dependency documentation | 65, 74, 77, 88, 90, 91, 93, 95, 98, 99, 101, 106, 107, 108, 110, 113, 114, 115, 119, 131 and more |
-| `lib/forge-std/src/interfaces/IERC7540.sol` | Unused vendored test interface or dependency documentation | 63, 70, 82, 90, 95 |
-| `lib/forge-std/src/interfaces/IERC7575.sol` | Unused vendored test interface or dependency documentation | 83, 92, 97, 110, 111, 112, 115, 118, 121, 122, 124, 129, 130, 132, 135, 138, 139, 140, 145, 160 and more |
-| `lib/forge-std/test/StdAssertions.t.sol` | Unused vendored test interface or dependency documentation | 7, 21 |
-| `lib/forge-std/test/Vm.t.sol` | Unused vendored test interface or dependency documentation | 11 |
 | `native/RETIRED-FILES.json` | Explicit removal statement, inventory or internal accounting terminology | 11, 14, 19, 29, 30, 33 |
 | `native/proofs/go.mod` | Explicit removal statement, inventory or internal accounting terminology | 12 |
 | `prototype/README.md` | Earlier isolated proof or design evidence | 3 |
 | `prototype/native/wind-down-model.js` | Earlier isolated proof or design evidence | 30 |
 | `prototype/protocol/go.mod` | Earlier isolated proof or design evidence | 12 |
-| `slither-report.txt` | Explicitly historical record | 6, 46, 47, 56 |
+| `docs/legacy/slither-report.txt` | Explicitly historical record | 6, 46, 47, 56 |

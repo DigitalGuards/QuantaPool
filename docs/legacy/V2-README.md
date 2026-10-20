@@ -290,7 +290,7 @@ The full local gate is `npm test`. Hosted CI runs `npm run test:tooling` because
 
 - Historical Solidity-era Slither analysis completed with 0 critical/high findings before the `.sol` sources were removed
 - Virtual shares (1e3) to prevent first-depositor/inflation attacks
-- See `slither-report.txt` for that historical analysis
+- See [slither-report.txt](slither-report.txt) for that historical analysis
 
 ## Acknowledgments
 

@@ -31,6 +31,8 @@ npm --prefix frontend test
 npm --prefix frontend run build
 ```
 
+Contracts are written in Hyperion only (`.hyp`, compiled with `hypc`). The Solidity sources and their Foundry tests are retired and unmaintained; documents under `docs/legacy/` and `docs/v1-deprecated/` record that earlier design.
+
 Compilation requires the reviewed compiler identified in `config/hyperion-toolchain.json`. Set `HYPERION_COMPILER` to its executable when it is outside the local qualified source tree. All active package commands target the native implementation. The executable tests use the pinned, unmodified go-qrl QRVM with 64-byte addresses and 64-byte ABI words. [Ledger tests](native/testing/README.md) identify their synthetic economic inputs; proof and real-network results are recorded separately.
 
 [Source pins and local network setup](native/network/README.md) describe the current cyyber revisions, loopback isolation, canonical deposit runtime and supported local timing configuration. The network harness does not patch qrysm, go-qrl or their consensus rules. [Implementation and validation](native/IMPLEMENTATION.md) records scope, invariants, privileges and current evidence.
