@@ -1,0 +1,131 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma hyperion >=0.0;
+
+import "./CheckpointProofHarness.hyp";
+
+interface ICurrentQRLDeposit {
+    function deposit(
+        bytes calldata publicKey,
+        bytes calldata withdrawalRecipient,
+        bytes calldata randaoCommitment,
+        bytes calldata signature,
+        bytes32 depositDataRoot
+    ) external payable;
+}
+
+/**
+ * @notice Test-only admission gate for a previously bootstrapped validator.
+ * @dev The proof harness and signing domains are constructor-pinned fixtures.
+ *      They do not establish live finality or authenticate a live fork schedule.
+ *      This contract demonstrates atomic proof/signature checks and storage of
+ *      a public exit before forwarding exactly 38,000 QRL to the deposit contract.
+ *      It contains no staking balances, user withdrawal accounting or fee logic.
+ *      The 2,000 QRL bootstrap is a separate operator-funded protocol deposit.
+ */
+contract FundingGatePrototype {
+    CheckpointProofHarness public immutable proof;
+    ICurrentQRLDeposit public immutable beaconDeposit;
+    bytes32 public immutable fixtureExitDomain;
+    bytes32 public immutable fixtureDepositDomain;
+
+    struct Funding {
+        bytes publicKey;
+        bytes32 randaoCommitment;
+        bytes depositSignature;
+        bytes32 depositDataRoot;
+        uint64 exitEpoch;
+        bytes exitSignature;
+    }
+
+    struct StoredExit {
+        bool funded;
+        uint64 epoch;
+        bytes signature;
+    }
+
+    mapping(uint64 => StoredExit) private _exits;
+
+    error InvalidConfiguration();
+    error InvalidFunding();
+    error AlreadyFunded();
+    error InvalidSignature();
+
+    event PublicExitStored(uint64 indexed validatorIndex, uint64 epoch, bytes signature);
+    event ValidatorToppedUp(uint64 indexed validatorIndex, uint256 amount);
+
+    constructor(address proofAddress, address depositAddress, bytes32 exitDomain, bytes32 depositDomain) {
+        if (
+            proofAddress.code.length == 0 || depositAddress.code.length == 0 ||
+            exitDomain == bytes32(0) || depositDomain == bytes32(0)
+        ) revert InvalidConfiguration();
+        proof = CheckpointProofHarness(proofAddress);
+        if (proof.poolRecipient() != address(this)) revert InvalidConfiguration();
+        beaconDeposit = ICurrentQRLDeposit(depositAddress);
+        fixtureExitDomain = exitDomain;
+        fixtureDepositDomain = depositDomain;
+    }
+
+    function fund(
+        uint256 fixtureIndex,
+        bytes32[] calldata slotBranch,
+        CheckpointProofHarness.Witness calldata witness,
+        Funding calldata funding
+    ) external payable {
+        // Epoch zero gives the earliest protocol-permitted exit. A validly
+        // signed future epoch could otherwise lock funds until that epoch.
+        if (msg.value != 38_000 quanta || funding.exitEpoch != 0) revert InvalidFunding();
+        if (_exits[witness.index].funded) revert AlreadyFunded();
+        uint64 balance = proof.verifyFundingCandidate(fixtureIndex, slotBranch, witness, funding.publicKey);
+        if (
+            balance != 2_000_000_000_000 ||
+            funding.randaoCommitment != witness.randaoCommitment
+        ) revert InvalidFunding();
+
+        bytes32 exitRoot = sha256(abi.encodePacked(_uint64Root(funding.exitEpoch), _uint64Root(witness.index)));
+        _verifySignature(sha256(abi.encodePacked(exitRoot, fixtureExitDomain)), funding.publicKey, funding.exitSignature);
+
+        bytes32 depositMessageRoot = sha256(abi.encodePacked(
+            sha256(abi.encodePacked(witness.publicKeyRoot, sha256(witness.withdrawalRecipient))),
+            sha256(abi.encodePacked(_uint64Root(38_000_000_000_000), funding.randaoCommitment))
+        ));
+        _verifySignature(
+            sha256(abi.encodePacked(depositMessageRoot, fixtureDepositDomain)),
+            funding.publicKey,
+            funding.depositSignature
+        );
+
+        // Publicly retrievable even when the original operator disappears.
+        // An external deposit failure reverts this write and the QRL transfer.
+        _exits[witness.index] = StoredExit(true, funding.exitEpoch, funding.exitSignature);
+        emit PublicExitStored(witness.index, funding.exitEpoch, funding.exitSignature);
+        beaconDeposit.deposit{value: msg.value}(
+            funding.publicKey,
+            witness.withdrawalRecipient,
+            abi.encodePacked(funding.randaoCommitment),
+            funding.depositSignature,
+            funding.depositDataRoot
+        );
+        emit ValidatorToppedUp(witness.index, msg.value);
+    }
+
+    function storedExit(uint64 validatorIndex) external view returns (bool funded, uint64 epoch, bytes memory signature) {
+        StoredExit storage value = _exits[validatorIndex];
+        return (value.funded, value.epoch, value.signature);
+    }
+
+    function _verifySignature(bytes32 root, bytes calldata publicKey, bytes calldata signature) private view {
+        if (publicKey.length != 2592 || signature.length != 4627) revert InvalidSignature();
+        // Current QRL framing: 32-byte root, full ML-DSA key/signature, then
+        // one-byte context length and the Qrysm context. Result is a QRVM word.
+        (bool ok, bytes memory result) = address(3).staticcall(
+            abi.encodePacked(root, publicKey, signature, hex"08", hex"5a4f4e4401010000")
+        );
+        if (!ok || result.length != 64 || abi.decode(result, (uint512)) != 1) revert InvalidSignature();
+    }
+
+    function _uint64Root(uint64 value) private pure returns (bytes32) {
+        bytes memory encoded = new bytes(32);
+        for (uint256 i = 0; i < 8; i++) encoded[i] = bytes1(uint8(value >> (i * 8)));
+        return bytes32(encoded);
+    }
+}

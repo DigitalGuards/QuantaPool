@@ -1,0 +1,220 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma hyperion >=0.0;
+
+interface IEconomicCheckpoint {
+    function economicCheckpoint() external view returns (uint64, bytes32);
+}
+
+/// @dev Bounded inclusion verifier for pinned go-qrl's secure account trie.
+///      Keys hash all 64 address bytes. Canonical account RLP has four fields.
+///      An absent account is rejected; absence must never stand in for zero cash.
+library NativeAccountProof {
+    struct Item {
+        uint256 start;
+        uint256 data;
+        uint256 length;
+        uint256 end;
+        bool list;
+    }
+
+    function balance(bytes32 root, address account, bytes[] memory proof) internal pure returns (uint256) {
+        require(root != bytes32(0) && proof.length > 0 && proof.length <= 65, "proof bound");
+        bytes32 key = keccak256(abi.encodePacked(account));
+        bytes32 expected = root;
+        bytes memory embedded;
+        uint256 used;
+        uint256 offset;
+        for (uint256 visit = 0; visit < 65; visit++) {
+            bytes memory raw;
+            if (embedded.length != 0) {
+                raw = embedded;
+                embedded = new bytes(0);
+            } else {
+                require(used < proof.length, "missing trie node");
+                raw = proof[used++];
+                require(raw.length <= 1024 && (used == 1 || raw.length >= 32) &&
+                    keccak256(raw) == expected, "wrong trie node");
+            }
+            (Item[] memory items, uint256 count) = _list(raw);
+            Item memory child;
+            if (count == 17) {
+                if (offset == 64) {
+                    require(used == proof.length && !items[16].list, "trailing proof");
+                    return _account(_slice(raw, items[16].data, items[16].length));
+                }
+                child = items[_nibble(key, offset++)];
+            } else {
+                require(count == 2 && !items[0].list && items[0].length != 0, "invalid trie shape");
+                uint256 flag = uint8(raw[items[0].data]) >> 4;
+                require(flag <= 3, "invalid compact flag");
+                bool odd = flag % 2 == 1;
+                require(odd || uint8(raw[items[0].data]) % 16 == 0, "invalid compact padding");
+                uint256 pathLength = items[0].length * 2 - (odd ? 1 : 2);
+                require(pathLength <= 64 - offset, "path exceeds key");
+                for (uint256 j = 0; j < pathLength; j++) {
+                    uint256 position = j + (odd ? 1 : 2);
+                    uint8 octet = uint8(raw[items[0].data + position / 2]);
+                    uint256 nibble = position % 2 == 0 ? octet >> 4 : octet % 16;
+                    require(nibble == _nibble(key, offset + j), "wrong account path");
+                }
+                offset += pathLength;
+                if (flag >= 2) {
+                    require(offset == 64 && used == proof.length && !items[1].list, "incomplete leaf");
+                    return _account(_slice(raw, items[1].data, items[1].length));
+                }
+                require(pathLength != 0, "empty extension");
+                child = items[1];
+            }
+            if (child.list) {
+                require(child.end - child.start < 32, "oversized embedded node");
+                embedded = _slice(raw, child.start, child.end - child.start);
+            } else {
+                require(child.length == 32, "missing or invalid child");
+                expected = bytes32(_slice(raw, child.data, 32));
+            }
+        }
+        revert("trie traversal bound");
+    }
+
+    function _account(bytes memory raw) private pure returns (uint256) {
+        (Item[] memory items, uint256 count) = _list(raw);
+        require(count == 4 && !items[2].list && items[2].length == 32 &&
+            !items[3].list && items[3].length == 32, "invalid account");
+        _integer(raw, items[0], 8);
+        return _integer(raw, items[1], 32);
+    }
+
+    function _integer(bytes memory raw, Item memory item, uint256 limit) private pure returns (uint256 value) {
+        require(!item.list && item.length <= limit &&
+            (item.length == 0 || uint8(raw[item.data]) != 0), "noncanonical integer");
+        for (uint256 i = 0; i < item.length; i++) value = (value << 8) | uint8(raw[item.data + i]);
+    }
+
+    function _list(bytes memory raw) private pure returns (Item[] memory items, uint256 count) {
+        Item memory parent = _item(raw, 0, raw.length);
+        require(parent.list && parent.end == raw.length, "invalid RLP list");
+        items = new Item[](17);
+        uint256 cursor = parent.data;
+        while (cursor < parent.end) {
+            require(count < 17, "RLP item bound");
+            items[count] = _item(raw, cursor, parent.end);
+            cursor = items[count++].end;
+        }
+    }
+
+    function _item(bytes memory raw, uint256 start, uint256 limit) private pure returns (Item memory item) {
+        require(start < limit && limit <= raw.length, "truncated RLP");
+        uint256 prefix = uint8(raw[start]);
+        item.start = start;
+        if (prefix < 128) {
+            item.data = start;
+            item.length = 1;
+        } else if (prefix <= 183) {
+            item.data = start + 1;
+            item.length = prefix - 128;
+        } else if (prefix <= 191) {
+            item = _long(raw, start, limit, prefix - 183, false);
+        } else if (prefix <= 247) {
+            item.list = true;
+            item.data = start + 1;
+            item.length = prefix - 192;
+        } else {
+            item = _long(raw, start, limit, prefix - 247, true);
+        }
+        item.end = item.data + item.length;
+        require(item.end <= limit, "truncated RLP payload");
+        if (prefix >= 128 && prefix <= 183 && item.length == 1) {
+            require(uint8(raw[item.data]) >= 128, "noncanonical short string");
+        }
+    }
+
+    function _long(bytes memory raw, uint256 start, uint256 limit, uint256 width, bool list)
+        private pure returns (Item memory item)
+    {
+        require(width <= 4 && start + 1 + width <= limit && raw[start + 1] != bytes1(0), "invalid RLP length");
+        uint256 length;
+        for (uint256 i = 0; i < width; i++) length = (length << 8) | uint8(raw[start + 1 + i]);
+        require(length >= 56, "noncanonical long form");
+        item = Item(start, start + 1 + width, length, 0, list);
+    }
+
+    function _nibble(bytes32 key, uint256 offset) private pure returns (uint256) {
+        uint8 octet = uint8(key[offset / 2]);
+        return offset % 2 == 0 ? octet >> 4 : octet % 16;
+    }
+
+    function _slice(bytes memory raw, uint256 start, uint256 length) private pure returns (bytes memory result) {
+        require(start + length <= raw.length, "slice bound");
+        result = new bytes(length);
+        for (uint256 i = 0; i < length; i++) result[i] = raw[start + i];
+    }
+}
+
+/// @notice Observe actual native account cash under an economically fresh checkpoint.
+/// @dev No funds or balance allocations. Multi-validator and historical cash-flow
+///      accounting must be integrated before this can price a pooled position.
+contract FinalizedPoolCashProbe {
+    struct Checkpoint {
+        bytes32 executionStateRoot;
+        uint64 executionBlock;
+        uint64 executionDepositIndex;
+        bytes32[] executionStateRootBranch;
+        bytes32[] executionBlockBranch;
+        bytes32[] executionDepositIndexBranch;
+        bytes[] accountProof;
+    }
+
+    IEconomicCheckpoint public immutable verifier;
+    address public immutable account;
+    bool public hasObservation;
+    uint64 public observedSlot;
+    uint64 public observedExecutionBlock;
+    uint64 public observedDepositIndex;
+    uint256 public cashBalance;
+
+    constructor(address finalityVerifier, address poolAccount) {
+        require(finalityVerifier.code.length != 0 && poolAccount != address(0), "invalid configuration");
+        verifier = IEconomicCheckpoint(finalityVerifier);
+        account = poolAccount;
+    }
+
+    function observe(Checkpoint calldata checkpoint) external {
+        (uint64 slot, bytes32 root) = verifier.economicCheckpoint();
+        require(root != bytes32(0) && (!hasObservation || slot > observedSlot), "checkpoint did not advance");
+        require(checkpoint.executionStateRootBranch.length == 9 && checkpoint.executionBlockBranch.length == 9 &&
+            checkpoint.executionDepositIndexBranch.length == 5, "invalid SSZ branch length");
+        _branch(root, checkpoint.executionStateRoot, 898, checkpoint.executionStateRootBranch);
+        _branch(root, _uint64Root(checkpoint.executionBlock), 902, checkpoint.executionBlockBranch);
+        _branch(root, _uint64Root(checkpoint.executionDepositIndex), 42, checkpoint.executionDepositIndexBranch);
+        require(checkpoint.executionBlock >= observedExecutionBlock &&
+            checkpoint.executionDepositIndex >= observedDepositIndex, "cutoff went backwards");
+        uint256 amount = NativeAccountProof.balance(checkpoint.executionStateRoot, account, checkpoint.accountProof);
+        hasObservation = true;
+        observedSlot = slot;
+        observedExecutionBlock = checkpoint.executionBlock;
+        observedDepositIndex = checkpoint.executionDepositIndex;
+        cashBalance = amount;
+    }
+
+    function _uint64Root(uint64 value) private pure returns (bytes32) {
+        bytes memory encoded = new bytes(32);
+        for (uint256 i = 0; i < 8; i++) encoded[i] = bytes1(uint8(value >> (i * 8)));
+        return bytes32(encoded);
+    }
+
+    function _branch(bytes32 root, bytes32 leaf, uint256 index, bytes32[] calldata branch) private pure {
+        bytes32 node = leaf;
+        for (uint256 i = 0; i < branch.length; i++) {
+            node = index % 2 == 0 ? sha256(abi.encodePacked(node, branch[i])) : sha256(abi.encodePacked(branch[i], node));
+            index /= 2;
+        }
+        require(index == 1 && node == root, "invalid SSZ proof");
+    }
+}
+
+/// @dev Pure parser test surface. No root authentication or economic authority.
+contract NativeAccountProofHarness {
+    function prove(bytes32 root, address account, bytes[] calldata proof) external pure returns (uint256) {
+        return NativeAccountProof.balance(root, account, proof);
+    }
+}

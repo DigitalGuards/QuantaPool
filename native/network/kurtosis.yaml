@@ -1,0 +1,41 @@
+participants:
+  - el_type: gqrl
+    el_image: quantapool-native/execution:20260915-3b81631
+    cl_type: qrysm
+    cl_image: quantapool-native/beacon:20260915-3b81631
+    use_separate_vc: true
+    vc_type: qrysm
+    vc_image: quantapool-native/validator:20260915-3b81631
+    validator_count: 64
+    count: 1
+network_params:
+  network: kurtosis
+  network_id: "3151916"
+  withdrawal_address: "Q00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+  seconds_per_slot: 3
+  slots_per_epoch: 8
+  genesis_delay: 45
+  light_kdf_enabled: true
+  min_validator_withdrawability_delay: 16
+  shard_committee_period: 16
+wait_for_finalization: false
+additional_services: []
+qrl_genesis_generator_params:
+  image: quantapool-native/generator:20260915-3b81631
+port_publisher:
+  nat_exit_ip: "127.0.0.1"
+  el:
+    enabled: false
+    public_port_start: 32160
+  cl:
+    enabled: false
+    public_port_start: 33160
+  vc:
+    enabled: false
+    public_port_start: 34160
+  remote_signer:
+    enabled: false
+    public_port_start: 35160
+  additional_services:
+    enabled: false
+    public_port_start: 36160

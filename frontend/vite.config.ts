@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import tailwindcss from "@tailwindcss/vite";
-import nodePolyfills from "rollup-plugin-node-polyfills";
+import { nodePolyfills } from "./scripts/nodePolyfills.ts";
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => ({
@@ -27,8 +27,7 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     rollupOptions: {
-      // The polyfill plugin ships pre-rollup-3 types; the runtime shape is fine.
-      plugins: [nodePolyfills() as unknown as import("rollup").Plugin],
+      plugins: [nodePolyfills()],
       output: {
         manualChunks(id: string) {
           if (id.includes("@radix-ui")) return "vendor-radix";
@@ -36,6 +35,7 @@ export default defineConfig(({ mode }) => ({
           if (id.includes("@theqrl/web3")) return "vendor-qrl-web3";
           if (id.includes("mobx")) return "vendor-mobx";
           if (id.includes("react-dom/")) return "vendor-react-dom";
+          return undefined;
         },
       },
     },

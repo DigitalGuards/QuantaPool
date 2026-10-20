@@ -1,0 +1,509 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma hyperion >=0.0;
+
+/**
+ * @notice Native multi-user accounting with immutable payment beneficiaries.
+ * @dev The subclass must authenticate every checkpoint and its complete economic
+ *      classification. No public caller supplies a balance or reward report.
+ *      Unreserved earnings and principal share losses. Fees are earned only on
+ *      verified net gains reserved for native payout. Gifts add fee basis.
+ */
+abstract contract NativeLedger {
+    uint256 public constant SHARE_SCALE = 1e27;
+    uint256 public constant BASIS_SCALE = 1e54;
+    uint256 public constant FEE_BPS = 1000;
+    uint256 public constant MAX_BATCH = 32;
+
+    struct Checkpoint {
+        uint64 id;
+        uint64 executionBlock;
+        uint256 grossAssetsAtCutoff;
+        int256 consensusDelta;
+    }
+
+    struct Position {
+        uint256 shares;
+        uint256 principalBasis;
+        uint256 feeBasis;
+        uint256 feeBasisDebt;
+        uint256 feeBasisFraction;
+        uint256 pending;
+        uint256 principalClaim;
+        uint256 rewardClaim;
+        uint256 feeRemainder;
+        uint256 activeRequestPlusOne;
+        uint256 recoveryClaimed;
+    }
+
+    struct PendingDeposit {
+        address beneficiary;
+        uint256 amount;
+        uint64 requestedBlock;
+        bool cancelled;
+    }
+
+    struct WithdrawalRequest {
+        address beneficiary;
+        uint256 amount;
+        uint64 requestedBlock;
+        bool rewardsOnly;
+        bool cancelled;
+    }
+
+    struct FlowPoint {
+        uint64 executionBlock;
+        uint256 externalDeposits;
+        uint256 cashPayments;
+    }
+
+    address public immutable feeRecipient;
+    uint256 public immutable minDeposit;
+    uint256 public riskAssets;
+    uint256 public totalShares;
+    uint256 public pendingTotal;
+    uint256 public claimReserve;
+    uint256 public feeReserve;
+    uint256 public orphanCash;
+    uint256 public accFeeBasisPerShare;
+    uint256 public eligibleConsensusRewardBudget;
+    uint256 public consensusLossCarry;
+    uint256 public cumulativeExternalDeposits;
+    uint256 public cumulativeCashPayments;
+    uint256 public totalFeesPaid;
+    uint64 public lastCheckpointId;
+    uint64 public lastCheckpointBlock;
+    uint8 public stage;
+    uint64 public stageCutoff;
+    uint256 public pendingHead;
+    uint256 public queueHead;
+    uint256 private _pendingEnd;
+    uint256 private _queueEnd;
+    bool public recovering;
+    uint256 public frozenShares;
+    uint256 public recoveryCash;
+    uint256 public recoveryPaid;
+    bool private _entered;
+
+    mapping(address => Position) internal _positions;
+    PendingDeposit[] internal _pending;
+    WithdrawalRequest[] internal _requests;
+    FlowPoint[] private _flows;
+
+    event DepositQueued(address indexed beneficiary, uint256 indexed id, uint256 amount);
+    event DepositAdmitted(address indexed beneficiary, uint256 indexed id, uint256 amount, uint256 units);
+    event CapitalAdopted(address indexed beneficiary, uint256 amount, uint256 units);
+    event PendingCancelled(address indexed beneficiary, uint256 indexed id, uint256 amount);
+    event WithdrawalQueued(address indexed beneficiary, uint256 indexed id, uint256 amount, bool rewardsOnly);
+    event WithdrawalReserved(address indexed beneficiary, uint256 indexed id, uint256 gross, uint256 fee);
+    event ZeroValueRequestCompleted(address indexed beneficiary, uint256 indexed id);
+    event RequestCancelled(address indexed beneficiary, uint256 indexed id);
+    event CheckpointSettled(uint64 indexed id, uint64 indexed executionBlock, uint256 assets, uint256 exemptGain);
+    event StagingAborted(uint64 indexed id);
+    event Claimed(address indexed beneficiary, uint256 amount);
+    event FeesClaimed(address indexed beneficiary, uint256 amount);
+    event RecoveryStarted(uint256 shares, uint256 cash);
+    event RecoveryClaimed(address indexed beneficiary, uint256 amount);
+
+    constructor(address immutableFeeRecipient, uint256 minimumDeposit) {
+        require(immutableFeeRecipient != address(0) && minimumDeposit != 0, "invalid ledger configuration");
+        feeRecipient = immutableFeeRecipient;
+        minDeposit = minimumDeposit;
+        _flows.push(FlowPoint(0, 0, 0));
+    }
+
+    function _authorityStatus() internal view virtual returns (uint8);
+    function _consumeCheckpoint() internal virtual returns (Checkpoint memory);
+    function _allValidatorsTerminal() internal view virtual returns (bool);
+    function _stagingCheckpointFresh(uint64 id) internal view virtual returns (bool);
+
+    modifier guarded() {
+        require(!_entered, "reentrant call");
+        _entered = true;
+        _;
+        _entered = false;
+    }
+
+    function _normalOpen() internal view {
+        require(!recovering && stage == 0 && _authorityStatus() == 0, "normal actions unavailable");
+    }
+
+    function _block() private view returns (uint64) {
+        require(block.number <= type(uint64).max, "execution block overflow");
+        return uint64(block.number);
+    }
+
+    function _min(uint256 a, uint256 b) internal pure returns (uint256) { return a < b ? a : b; }
+
+    function _mulDiv(uint256 x, uint256 y, uint256 denominator, bool roundUp) internal pure returns (uint256) {
+        require(denominator != 0, "zero denominator");
+        uint512 product = uint512(x) * uint512(y);
+        uint512 result = product / uint512(denominator);
+        if (roundUp && product % uint512(denominator) != 0) result++;
+        require(result <= uint512(type(uint256).max), "mulDiv overflow");
+        return uint256(result);
+    }
+
+    function _writeFlow() private {
+        FlowPoint memory point = FlowPoint(_block(), cumulativeExternalDeposits, cumulativeCashPayments);
+        if (_flows[_flows.length - 1].executionBlock == point.executionBlock) _flows[_flows.length - 1] = point;
+        else _flows.push(point);
+    }
+
+    function _recordExternalDeposit(uint256 amount) internal {
+        cumulativeExternalDeposits += amount;
+        _writeFlow();
+    }
+
+    function _flowAt(uint64 executionBlock) internal view returns (FlowPoint memory) {
+        uint256 low;
+        uint256 high = _flows.length;
+        while (low + 1 < high) {
+            uint256 middle = (low + high) / 2;
+            if (_flows[middle].executionBlock <= executionBlock) low = middle;
+            else high = middle;
+        }
+        return _flows[low];
+    }
+
+    function _basisView(Position storage user) private view returns (uint256 basis, uint256 fraction) {
+        uint512 scaled = uint512(user.shares) * uint512(accFeeBasisPerShare - user.feeBasisDebt) +
+            uint512(user.feeBasisFraction);
+        uint512 whole = scaled / uint512(BASIS_SCALE);
+        require(whole <= uint512(type(uint256).max), "fee basis overflow");
+        fraction = uint256(scaled % uint512(BASIS_SCALE));
+        basis = user.feeBasis + uint256(whole) + (fraction == 0 ? 0 : 1);
+        if (user.feeBasisFraction != 0) basis--;
+    }
+
+    function _touch(Position storage user) private {
+        (user.feeBasis, user.feeBasisFraction) = _basisView(user);
+        user.feeBasisDebt = accFeeBasisPerShare;
+    }
+
+    function _addPendingDeposit(address beneficiary, uint256 amount) internal returns (uint256 id) {
+        require(beneficiary != address(0) && amount != 0, "invalid pending deposit");
+        id = _pending.length;
+        _pending.push(PendingDeposit(beneficiary, amount, _block(), false));
+        _positions[beneficiary].pending += amount;
+        pendingTotal += amount;
+        emit DepositQueued(beneficiary, id, amount);
+    }
+
+    /// @dev The subclass proves previously excluded operator preparation capital
+    ///      at this settled price and atomically adopts/funds its validator. It
+    ///      must not have included this capital in earlier ledger checkpoints.
+    function _admitCapital(address beneficiary, uint256 amount) internal {
+        _normalOpen();
+        require(beneficiary != address(0) && amount != 0 && lastCheckpointId != 0, "invalid adopted capital");
+        require(_stagingCheckpointFresh(lastCheckpointId), "capital checkpoint stale");
+        require(totalShares == 0 || riskAssets != 0, "lost cohort cannot admit capital");
+        uint256 units = totalShares == 0 ? amount * SHARE_SCALE : _mulDiv(amount, totalShares, riskAssets, false);
+        require(units != 0, "capital precision");
+        Position storage user = _positions[beneficiary];
+        _touch(user);
+        user.shares += units;
+        user.principalBasis += amount;
+        user.feeBasis += amount;
+        user.feeBasisFraction = 0;
+        totalShares += units;
+        riskAssets += amount;
+        _recordExternalDeposit(amount);
+        emit CapitalAdopted(beneficiary, amount, units);
+    }
+
+    function deposit() external payable guarded returns (uint256) {
+        _normalOpen();
+        require(msg.value >= minDeposit, "minimum deposit");
+        _recordExternalDeposit(msg.value);
+        return _addPendingDeposit(msg.sender, msg.value);
+    }
+
+    function cancelPending(uint256 id) external guarded {
+        require(stage == 0 || recovering, "checkpoint staging");
+        require(id >= pendingHead && id < _pending.length, "pending deposit unavailable");
+        PendingDeposit storage item = _pending[id];
+        require(item.beneficiary == msg.sender && !item.cancelled, "pending refund unavailable");
+        item.cancelled = true;
+        _positions[msg.sender].pending -= item.amount;
+        pendingTotal -= item.amount;
+        emit PendingCancelled(msg.sender, id, item.amount);
+        _send(msg.sender, item.amount);
+    }
+
+    function requestWithdrawal(uint256 amount) external guarded returns (uint256) {
+        return _request(amount, false);
+    }
+
+    function requestRewards(uint256 amount) external guarded returns (uint256) {
+        return _request(amount, true);
+    }
+
+    function _request(uint256 amount, bool rewardsOnly) private returns (uint256 id) {
+        _normalOpen();
+        Position storage user = _positions[msg.sender];
+        require(amount != 0 && user.shares != 0 && user.activeRequestPlusOne == 0, "position unavailable");
+        id = _requests.length;
+        _requests.push(WithdrawalRequest(msg.sender, amount, _block(), rewardsOnly, false));
+        user.activeRequestPlusOne = id + 1;
+        emit WithdrawalQueued(msg.sender, id, amount, rewardsOnly);
+    }
+
+    function cancelRequest() external guarded {
+        require(stage == 0 && !recovering, "checkpoint staging or recovery");
+        Position storage user = _positions[msg.sender];
+        require(user.activeRequestPlusOne != 0, "no active request");
+        uint256 id = user.activeRequestPlusOne - 1;
+        _requests[id].cancelled = true;
+        user.activeRequestPlusOne = 0;
+        emit RequestCancelled(msg.sender, id);
+    }
+
+    function settleCheckpoint() external guarded {
+        _normalOpen();
+        Checkpoint memory point = _consumeCheckpoint();
+        require(point.id > lastCheckpointId && point.executionBlock > lastCheckpointBlock &&
+            point.executionBlock < block.number, "checkpoint must advance");
+        FlowPoint memory flow = _flowAt(point.executionBlock);
+        uint256 normalizedGross = point.grossAssetsAtCutoff + (cumulativeExternalDeposits - flow.externalDeposits) -
+            (cumulativeCashPayments - flow.cashPayments);
+        uint256 expected = riskAssets + pendingTotal + claimReserve + feeReserve + orphanCash;
+        uint256 exemptGain;
+        if (point.consensusDelta >= 0) {
+            uint256 reward = uint256(point.consensusDelta);
+            require(normalizedGross >= expected + reward, "unexplained asset deficit");
+            exemptGain = normalizedGross - expected - reward;
+            riskAssets += reward + exemptGain;
+            uint256 recovered = _min(reward, consensusLossCarry);
+            consensusLossCarry -= recovered;
+            eligibleConsensusRewardBudget += reward - recovered;
+        } else {
+            uint256 loss = uint256(-(point.consensusDelta + 1)) + 1;
+            uint256 liabilities = pendingTotal + claimReserve + feeReserve + orphanCash;
+            require(normalizedGross >= liabilities, "loss consumes cash reserves");
+            uint256 remaining = normalizedGross - liabilities;
+            uint512 classification = uint512(remaining) + uint512(loss);
+            require(classification >= uint512(riskAssets) && classification - uint512(riskAssets) <= uint512(type(uint256).max),
+                "unexplained asset deficit");
+            exemptGain = uint256(classification - uint512(riskAssets));
+            riskAssets = remaining;
+            uint256 consumed = _min(loss, eligibleConsensusRewardBudget);
+            eligibleConsensusRewardBudget -= consumed;
+            consensusLossCarry += loss - consumed;
+        }
+        if (totalShares == 0) {
+            require(_allValidatorsTerminal(), "ownerless outstanding validator");
+            orphanCash += riskAssets;
+            riskAssets = 0;
+            eligibleConsensusRewardBudget = 0;
+            consensusLossCarry = 0;
+        } else if (exemptGain != 0) {
+            accFeeBasisPerShare += _mulDiv(exemptGain, BASIS_SCALE, totalShares, true);
+        }
+        _assertCashReserves();
+        lastCheckpointId = point.id;
+        lastCheckpointBlock = point.executionBlock;
+        stageCutoff = point.executionBlock;
+        _pendingEnd = _pending.length;
+        _queueEnd = _requests.length;
+        stage = 1;
+        emit CheckpointSettled(point.id, point.executionBlock, riskAssets, exemptGain);
+    }
+
+    function activateDeposits(uint256 limit) external guarded returns (uint256 processed) {
+        require(stage == 1 && limit != 0 && limit <= MAX_BATCH, "invalid admission batch");
+        require(_authorityStatus() == 0 && _stagingCheckpointFresh(lastCheckpointId), "staged checkpoint stale");
+        while (processed < limit && pendingHead < _pendingEnd) {
+            PendingDeposit storage item = _pending[pendingHead];
+            if (item.requestedBlock >= stageCutoff) break;
+            if (!item.cancelled) {
+                if (totalShares != 0 && riskAssets == 0) break;
+                uint512 wideUnits = totalShares == 0 ? uint512(item.amount) * uint512(SHARE_SCALE) :
+                    uint512(item.amount) * uint512(totalShares) / uint512(riskAssets);
+                if (wideUnits == 0 || wideUnits > uint512(type(uint256).max - totalShares)) break;
+                uint256 units = uint256(wideUnits);
+                Position storage user = _positions[item.beneficiary];
+                _touch(user);
+                user.shares += units;
+                user.principalBasis += item.amount;
+                user.feeBasis += item.amount;
+                user.feeBasisFraction = 0;
+                user.pending -= item.amount;
+                totalShares += units;
+                riskAssets += item.amount;
+                pendingTotal -= item.amount;
+                emit DepositAdmitted(item.beneficiary, pendingHead, item.amount, units);
+            }
+            pendingHead++;
+            processed++;
+        }
+        if (processed < limit || pendingHead == _pendingEnd) stage = 2;
+    }
+
+    function processQueue(uint256 limit) external guarded returns (uint256 processed) {
+        require(stage == 2 && limit != 0 && limit <= MAX_BATCH, "invalid withdrawal batch");
+        require(_authorityStatus() == 0 && _stagingCheckpointFresh(lastCheckpointId), "staged checkpoint stale");
+        while (processed < limit && queueHead < _queueEnd) {
+            WithdrawalRequest storage request = _requests[queueHead];
+            if (request.requestedBlock >= stageCutoff) break;
+            if (!request.cancelled && !_reserve(request)) break;
+            queueHead++;
+            processed++;
+        }
+        if (processed < limit || queueHead == _queueEnd) stage = 0;
+    }
+
+    function abortStaging() external guarded {
+        require(stage != 0 && (_authorityStatus() != 0 || !_stagingCheckpointFresh(lastCheckpointId)),
+            "staging remains fresh");
+        stage = 0;
+        emit StagingAborted(lastCheckpointId);
+    }
+
+    function _reserve(WithdrawalRequest storage request) private returns (bool) {
+        Position storage user = _positions[request.beneficiary];
+        uint256 value = totalShares == 0 ? 0 : _mulDiv(user.shares, riskAssets, totalShares, false);
+        if (value == 0 && !_allValidatorsTerminal()) {
+            // Complete the request while preserving every late-return right.
+            user.activeRequestPlusOne = 0;
+            emit ZeroValueRequestCompleted(request.beneficiary, queueHead);
+            return true;
+        }
+        uint256 gross = request.rewardsOnly ? (value > user.principalBasis ? value - user.principalBasis : 0) : value;
+        gross = _min(gross, request.amount);
+        uint256 units = gross == 0 ? 0 : _mulDiv(gross, totalShares, riskAssets, true);
+        uint256 basis;
+        if (!request.rewardsOnly) {
+            if (units >= user.shares || request.amount == type(uint256).max || value == 0) {
+                units = user.shares;
+                gross = value;
+                basis = user.principalBasis;
+            } else basis = _mulDiv(user.principalBasis, units, user.shares, false);
+        } else if (user.principalBasis != 0 && units >= user.shares) return false;
+        if (gross > freeCash()) return false;
+        if (units != 0 && (units == totalShares || gross == 0) && !_allValidatorsTerminal()) return false;
+        _touch(user);
+        uint256 contributedGain = gross > basis ? gross - basis : 0;
+        uint256 feeBasisUsed;
+        uint256 taxable;
+        if (request.rewardsOnly) {
+            taxable = _min(_min(gross, value > user.feeBasis ? value - user.feeBasis : 0), eligibleConsensusRewardBudget);
+            feeBasisUsed = gross - taxable;
+        } else {
+            feeBasisUsed = units == user.shares ? user.feeBasis : _mulDiv(user.feeBasis, units, user.shares, true);
+            taxable = _min(_min(contributedGain, gross > feeBasisUsed ? gross - feeBasisUsed : 0), eligibleConsensusRewardBudget);
+        }
+        eligibleConsensusRewardBudget -= taxable;
+        uint512 numerator = uint512(taxable) + uint512(user.feeRemainder);
+        uint256 fee = uint256(numerator / 10);
+        user.feeRemainder = uint256(numerator % 10);
+        require(fee <= contributedGain, "fee exceeds realized gain");
+        user.shares -= units;
+        user.principalBasis -= basis;
+        user.feeBasis -= _min(user.feeBasis, feeBasisUsed);
+        if (user.feeBasis < user.principalBasis) user.feeBasis = user.principalBasis;
+        user.feeBasisFraction = 0;
+        user.activeRequestPlusOne = 0;
+        totalShares -= units;
+        riskAssets -= gross;
+        if (totalShares == 0) {
+            eligibleConsensusRewardBudget = 0;
+            consensusLossCarry = 0;
+        }
+        user.principalClaim += _min(gross, basis);
+        user.rewardClaim += contributedGain - fee;
+        claimReserve += gross - fee;
+        feeReserve += fee;
+        emit WithdrawalReserved(request.beneficiary, queueHead, gross, fee);
+        return true;
+    }
+
+    function claim() external guarded returns (uint256 amount) {
+        Position storage user = _positions[msg.sender];
+        amount = user.principalClaim + user.rewardClaim;
+        require(amount != 0, "no reserved claim");
+        user.principalClaim = 0;
+        user.rewardClaim = 0;
+        claimReserve -= amount;
+        emit Claimed(msg.sender, amount);
+        _send(msg.sender, amount);
+    }
+
+    function claimFees() external guarded returns (uint256 amount) {
+        amount = feeReserve;
+        require(amount != 0, "no earned fee");
+        feeReserve = 0;
+        totalFeesPaid += amount;
+        emit FeesClaimed(feeRecipient, amount);
+        _send(feeRecipient, amount);
+    }
+
+    function _assertCashReserves() private view {
+        require(address(this).balance >= pendingTotal + claimReserve + feeReserve + orphanCash, "cash reserves underbacked");
+    }
+
+    function freeCash() public view returns (uint256) {
+        uint256 reserved = pendingTotal + claimReserve + feeReserve + orphanCash;
+        return address(this).balance > reserved ? address(this).balance - reserved : 0;
+    }
+
+    function _send(address beneficiary, uint256 amount) private {
+        cumulativeCashPayments += amount;
+        _writeFlow();
+        (bool ok, ) = beneficiary.call{value: amount}("");
+        require(ok, "native payment failed");
+        _assertCashReserves();
+    }
+
+    function beginRecovery() external guarded {
+        require(!recovering && _authorityStatus() == 2, "verifier must be expired");
+        _assertCashReserves();
+        recovering = true;
+        stage = 0;
+        frozenShares = totalShares;
+        recoveryCash = freeCash();
+        emit RecoveryStarted(frozenShares, recoveryCash);
+    }
+
+    function claimRecovery() external guarded returns (uint256 amount) {
+        require(recovering && frozenShares != 0, "no recovery cohort");
+        Position storage user = _positions[msg.sender];
+        uint256 cumulative = freeCash() + recoveryPaid;
+        require(cumulative >= recoveryCash, "recovery cash regressed");
+        recoveryCash = cumulative;
+        uint256 entitlement = _mulDiv(cumulative, user.shares, frozenShares, false);
+        amount = entitlement - user.recoveryClaimed;
+        require(amount != 0, "no recovered cash");
+        user.recoveryClaimed = entitlement;
+        recoveryPaid += amount;
+        emit RecoveryClaimed(msg.sender, amount);
+        _send(msg.sender, amount);
+    }
+
+    function getPosition(address beneficiary) external view returns (Position memory result) {
+        Position storage user = _positions[beneficiary];
+        result = user;
+        (result.feeBasis, result.feeBasisFraction) = _basisView(user);
+        result.feeBasisDebt = accFeeBasisPerShare;
+    }
+
+    function positionValue(address beneficiary) public view returns (uint256) {
+        return totalShares == 0 ? 0 : _mulDiv(_positions[beneficiary].shares, riskAssets, totalShares, false);
+    }
+
+    function rewardValue(address beneficiary) external view returns (uint256) {
+        uint256 value = positionValue(beneficiary);
+        uint256 basis = _positions[beneficiary].principalBasis;
+        return value > basis ? value - basis : 0;
+    }
+
+    function claimable(address beneficiary) external view returns (uint256) {
+        return _positions[beneficiary].principalClaim + _positions[beneficiary].rewardClaim;
+    }
+
+    function pendingCount() external view returns (uint256) { return _pending.length; }
+    function requestCount() external view returns (uint256) { return _requests.length; }
+    function getPending(uint256 id) external view returns (PendingDeposit memory) { return _pending[id]; }
+    function getRequest(uint256 id) external view returns (WithdrawalRequest memory) { return _requests[id]; }
+
+    receive() external payable {}
+}

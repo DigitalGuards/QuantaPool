@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-09-14",
+  "purpose": "Isolated native-QRL safety prototype. Revisions were frozen at source refresh; this does not qualify production pool contracts.",
+  "goVersion": "go1.26.5",
+  "repositories": {
+    "go-qrl": {
+      "repository": "https://github.com/cyyber/go-qrl.git",
+      "commit": "9b404c38a63bfebe07cfd07b5f5d144d1c2cf9b9",
+      "requiredCommits": [
+        "f313724147f8fd39f63e0e75c43de4ee6153a615",
+        "81cad58b9599367c336e4dcb5bb331a632d31d97",
+        "a09cf0d9f46991ce3fa6450c01d9cb02700f1db0",
+        "fa2cc537b32caebf1969dbb384e17d8d7e096116"
+      ],
+      "tests": {
+        "packages": ["./common", "./accounts/abi", "./core/vm"],
+        "pattern": "Test(IsAddress|MustParseAddress|MustParseMixedcaseAddress|Address|Mixedcase|PrecompiledDepositroot|DepositrootInputLayout|PrecompiledMLDSA87|ABI|Abi|Pack|Unpack|Type|Event|Method|DefaultFunctionParsing)"
+      }
+    },
+    "qrysm": {
+      "repository": "https://github.com/cyyber/qrysm.git",
+      "commit": "9b57ae0bbfba13e5f4d9cb0b7c6a45dd02a36de3",
+      "requiredCommits": [
+        "4f84e81b88b3dab985ff3b1fb1a89ace15e5a82d",
+        "820954d3a2877d4e04e34f23276b478a5e4f2266",
+        "a0c6ec51ee557fb2365f029013665dfaee8b3c06",
+        "734600fc68829cf147020705250683c10657f862"
+      ],
+      "tests": {
+        "tags": "develop",
+        "packages": ["./config/params", "./contracts/deposit", "./beacon-chain/core/blocks"],
+        "pattern": "Test(Validate|UnmarshalConfig|Register_MinimumDepositBoundary|DepositInput|VerifyDepositSignature|ProcessDeposit|ProcessDeposits|ProcessVoluntaryExits|VerifyExitAndSignature|ProcessWithdrawals|ProcessBlindWithdrawals|Config_Mainnet|Config_Default)"
+      }
+    },
+    "hyperion": {
+      "repository": "https://github.com/cyyber/hyperion.git",
+      "commit": "cee9d335984c139c1dc0b0e84ec13290031ea4b1",
+      "requiredCommits": [
+        "3232b592ae89d68dd3301c4cb842a43445555f3c",
+        "27b4107544b34cabd1e5d7d0c30b27b3f0345486",
+        "2b9a0f1d5352cf7a4d64718fb04b4b6640041ba1"
+      ]
+    }
+  },
+  "networkSources": {
+    "qrl-genesis-generator": {
+      "repository": "https://github.com/cyyber/qrl-genesis-generator.git",
+      "commit": "97d65b671a7b86602e932b6e2ec1e0a9bd5ca22c"
+    },
+    "qrl-package": {
+      "repository": "https://github.com/cyyber/qrl-package.git",
+      "commit": "04fd3133a7107229531da425dc750129bb691514"
+    }
+  },
+  "excludedSemanticRuntime": {
+    "qrvmoneCommit": "bca84a21a046bc8506ee4b7a89b31ac9e621904f",
+    "qrvmcCommit": "b70fb65874ce9a50a55475f800dcb33e39a5a261",
+    "reason": "Hyperion test host QRVMC_ZOND=1 differs from runtime QRVMC_ZOND=0, despite ABI_VERSION=2 in both; host also lacks required ML-DSA precompile. Prototype uses unmodified go-qrl runtime directly."
+  },
+  "localNetwork": {
+    "chainId": 3151914,
+    "genesisValidatorCount": 64,
+    "secondsPerSlot": 6,
+    "slotsPerEpoch": 8,
+    "epochsPerExecutionVotingPeriod": 64,
+    "minimumActiveEpochsBeforeVoluntaryExit": 16,
+    "minimumValidatorWithdrawabilityDelay": 16,
+    "executionFollowDistance": 512
+  },
+  "localLifecycleNetwork": {
+    "chainId": 3151915,
+    "genesisValidatorCount": 64,
+    "secondsPerSlot": 3,
+    "slotsPerEpoch": 8,
+    "epochsPerExecutionVotingPeriod": 64,
+    "minimumActiveEpochsBeforeVoluntaryExit": 16,
+    "minimumValidatorWithdrawabilityDelay": 16,
+    "executionFollowDistance": 512,
+    "purpose": "Disposable native-return lifecycle with the same consensus counts and a supported shorter local slot clock. No upstream source changes."
+  }
+}

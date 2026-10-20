@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma hyperion >=0.0;
+
+/// @notice Test-only fee receiver checking claim rollback and nested-call guards.
+contract ProbeFeeCallback {
+    address public probe;
+    uint256 public received;
+    uint256 public attempts;
+    uint256 public guardedCalls;
+    bool public rejectPayment;
+
+    function configure(address value) external {
+        require(probe == address(0) && value != address(0), "already configured");
+        probe = value;
+    }
+
+    function setRejectPayment(bool value) external {
+        rejectPayment = value;
+    }
+
+    receive() external payable {
+        require(msg.sender == probe, "unexpected fixture sender");
+        require(!rejectPayment, "fixture rejects payment");
+        received += msg.value;
+        _checkGuard("claimPrincipal()");
+        _checkGuard("claimRewards()");
+        _checkGuard("claimFees()");
+    }
+
+    function _checkGuard(string memory method) private {
+        attempts++;
+        (bool ok, bytes memory result) = probe.call(abi.encodeWithSignature(method));
+        require(!ok, "nested claim succeeded");
+        require(
+            keccak256(result) == keccak256(abi.encodeWithSignature("Error(string)", "reentrant call")),
+            "unexpected nested failure"
+        );
+        guardedCalls++;
+    }
+}

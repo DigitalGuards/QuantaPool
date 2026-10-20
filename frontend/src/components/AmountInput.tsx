@@ -14,7 +14,13 @@ interface AmountInputProps {
 const PERCENTAGES = [25, 50, 75] as const;
 
 /** Numeric amount input with the wallet's 25/50/75/Max quick buttons. */
-export function AmountInput({ value, onChange, balance, symbol, disabled }: AmountInputProps) {
+export function AmountInput({
+  value,
+  onChange,
+  balance,
+  symbol,
+  disabled,
+}: AmountInputProps) {
   const setFraction = (percent: number) => {
     if (balance === null) return;
     const amount = (balance * BigInt(percent)) / 100n;
@@ -26,6 +32,7 @@ export function AmountInput({ value, onChange, balance, symbol, disabled }: Amou
       <div className="relative">
         <Input
           inputMode="decimal"
+          aria-label={`Amount in ${symbol}`}
           placeholder="0.0"
           value={value}
           disabled={disabled}
@@ -33,7 +40,7 @@ export function AmountInput({ value, onChange, balance, symbol, disabled }: Amou
             const next = e.target.value.replace(",", ".");
             if (next === "" || /^\d*\.?\d*$/.test(next)) onChange(next);
           }}
-          className="font-data h-12 pr-16 text-lg"
+          className="font-numeric h-12 pr-16 text-lg"
         />
         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground">
           {symbol}
@@ -47,7 +54,9 @@ export function AmountInput({ value, onChange, balance, symbol, disabled }: Amou
             variant="outline"
             size="sm"
             disabled={disabled || balance === null}
-            onClick={() => setFraction(percent)}
+            onClick={() => {
+              setFraction(percent);
+            }}
           >
             {percent}%
           </Button>
@@ -57,7 +66,9 @@ export function AmountInput({ value, onChange, balance, symbol, disabled }: Amou
           variant="outline"
           size="sm"
           disabled={disabled || balance === null}
-          onClick={() => setFraction(100)}
+          onClick={() => {
+            setFraction(100);
+          }}
         >
           Max
         </Button>

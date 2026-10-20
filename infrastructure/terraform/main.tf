@@ -49,10 +49,9 @@ module "primary_validator" {
   labels      = merge(var.labels, { role = "primary-validator" })
 
   # QRL configuration
-  qrl_rpc_url               = var.qrl_rpc_url
-  stqrl_address             = var.stqrl_address
-  deposit_pool_address      = var.deposit_pool_address
-  validator_manager_address = var.validator_manager_address
+  qrl_rpc_url         = var.qrl_rpc_url
+  native_pool_address = var.native_pool_address
+  qrl_chain_id        = var.qrl_chain_id
 }
 
 # ============================================================================
@@ -103,10 +102,9 @@ module "monitoring" {
   telegram_chat_id    = var.telegram_chat_id
 
   # Contract configuration
-  qrl_rpc_url               = var.qrl_rpc_url
-  stqrl_address             = var.stqrl_address
-  deposit_pool_address      = var.deposit_pool_address
-  validator_manager_address = var.validator_manager_address
+  qrl_rpc_url         = var.qrl_rpc_url
+  native_pool_address = var.native_pool_address
+  qrl_chain_id        = var.qrl_chain_id
 }
 
 # ============================================================================

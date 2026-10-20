@@ -8,7 +8,7 @@ import {
   shouldIgnoreRelayResetEvent,
 } from "./relayReset.ts";
 
-test("SDK reset teardown events are ignored only while a rotation is active", () => {
+void test("SDK reset teardown events are ignored only while a rotation is active", () => {
   const guard = new RelayResetGuard();
   assert.equal(shouldIgnoreRelayResetEvent(guard, "accounts"), false);
   assert.equal(shouldIgnoreRelayResetEvent(guard, "disconnect"), false);
@@ -22,7 +22,7 @@ test("SDK reset teardown events are ignored only while a rotation is active", ()
   assert.equal(shouldIgnoreRelayResetEvent(guard, "accounts"), false);
 });
 
-test("a stale reset completion cannot clear a newer rotation", () => {
+void test("a stale reset completion cannot clear a newer rotation", () => {
   const guard = new RelayResetGuard();
   const first = guard.begin();
   const second = guard.begin();
@@ -33,7 +33,7 @@ test("a stale reset completion cannot clear a newer rotation", () => {
   assert.equal(guard.finish(second), true);
 });
 
-test("invalidation makes late reset work stale", () => {
+void test("invalidation makes late reset work stale", () => {
   const guard = new RelayResetGuard();
   const generation = guard.begin();
   guard.invalidate();
@@ -43,23 +43,23 @@ test("invalidation makes late reset work stale", () => {
   assert.equal(guard.active, false);
 });
 
-test("wallet selection attempts are serialized and generation-bound", () => {
+void test("wallet selection attempts are serialized and generation-bound", () => {
   const guard = new ConnectionAttemptGuard();
   const extension = guard.begin("extension");
-  assert.notEqual(extension, null);
+  assert(extension !== null);
   assert.equal(guard.isPending("extension"), true);
   assert.equal(guard.begin("relay"), null);
 
-  assert.equal(guard.finish(extension as number), true);
+  assert.equal(guard.finish(extension), true);
   const relay = guard.begin("relay");
-  assert.notEqual(relay, null);
-  assert.equal(guard.finish(extension as number), false);
-  assert.equal(guard.isCurrent(relay as number), true);
+  assert(relay !== null);
+  assert.equal(guard.finish(extension), false);
+  assert.equal(guard.isCurrent(relay), true);
   guard.invalidate();
-  assert.equal(guard.isCurrent(relay as number), false);
+  assert.equal(guard.isCurrent(relay), false);
 });
 
-test("relay retirement precedes extension approval and activation", async () => {
+void test("relay retirement precedes extension approval and activation", async () => {
   const order: string[] = [];
   const result = await activateExtensionAfterRelayRetirement(
     async () => {
@@ -76,11 +76,15 @@ test("relay retirement precedes extension approval and activation", async () => 
     },
   );
 
-  assert.deepEqual(order, ["retire relay", "request approval", "activate extension"]);
+  assert.deepEqual(order, [
+    "retire relay",
+    "request approval",
+    "activate extension",
+  ]);
   assert.deepEqual(result, { ok: true, value: "account" });
 });
 
-test("failed relay retirement blocks extension approval and activation", async () => {
+void test("failed relay retirement blocks extension approval and activation", async () => {
   const retirementError = new Error("relay still live");
   let requested = false;
   let activated = false;
@@ -100,7 +104,7 @@ test("failed relay retirement blocks extension approval and activation", async (
   assert.deepEqual(result, { ok: false, retirementError });
 });
 
-test("rejected extension approval cannot activate the extension transport", async () => {
+void test("rejected extension approval cannot activate the extension transport", async () => {
   const order: string[] = [];
   await assert.rejects(
     activateExtensionAfterRelayRetirement(
@@ -121,7 +125,7 @@ test("rejected extension approval cannot activate the extension transport", asyn
   assert.deepEqual(order, ["retire relay", "request approval"]);
 });
 
-test("authorization work deduplicates per channel without blocking a replacement", async () => {
+void test("authorization work deduplicates per channel without blocking a replacement", async () => {
   const guard = new ChannelTaskGuard();
   let resolveOld!: () => void;
   let resolveNew!: () => void;

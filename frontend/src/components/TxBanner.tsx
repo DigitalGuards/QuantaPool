@@ -15,19 +15,21 @@ export const TxBanner = observer(() => {
     <div
       className={cn(
         "fixed bottom-4 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-center gap-3 rounded-lg border bg-background/95 p-4 shadow-lg backdrop-blur",
-        tx.state === "pending" && "border-l-4 border-l-blue-accent",
+        tx.state === "pending" && "border-l-4 border-l-identity-accent",
         tx.state === "confirmed" && "border-l-4 border-l-success",
         tx.state === "failed" && "border-l-4 border-l-destructive",
       )}
       role="status"
     >
       {tx.state === "pending" && (
-        <Loader2 className="h-5 w-5 shrink-0 animate-spin text-blue-accent" />
+        <Loader2 className="h-5 w-5 shrink-0 animate-spin text-identity-accent" />
       )}
       {tx.state === "confirmed" && (
         <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
       )}
-      {tx.state === "failed" && <XCircle className="h-5 w-5 shrink-0 text-destructive" />}
+      {tx.state === "failed" && (
+        <XCircle className="h-5 w-5 shrink-0 text-destructive" />
+      )}
 
       <div className="min-w-0 flex-1 text-sm">
         <p className="font-medium">
@@ -37,15 +39,19 @@ export const TxBanner = observer(() => {
           {tx.state === "failed" && " failed"}
         </p>
         {tx.state === "pending" && !tx.txHash && (
-          <p className="text-muted-foreground">Confirm the transaction in your wallet.</p>
+          <p className="text-muted-foreground">
+            Confirm the transaction in your wallet.
+          </p>
         )}
-        {tx.error && <p className="truncate text-muted-foreground">{tx.error}</p>}
-        {tx.txHash && (
+        {tx.error && (
+          <p className="break-words text-muted-foreground">{tx.error}</p>
+        )}
+        {tx.txHash && poolStore.network.explorer && (
           <a
             href={getExplorerTxUrl(tx.txHash)}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 text-blue-accent hover:underline"
+            className="inline-flex items-center gap-1 text-identity-accent hover:underline"
           >
             View on explorer <ExternalLink className="h-3 w-3" />
           </a>
@@ -54,7 +60,9 @@ export const TxBanner = observer(() => {
 
       {tx.state !== "pending" && (
         <button
-          onClick={() => poolStore.clearTx()}
+          onClick={() => {
+            poolStore.clearTx();
+          }}
           className="cursor-pointer shrink-0 text-muted-foreground hover:text-foreground"
           aria-label="Dismiss"
         >

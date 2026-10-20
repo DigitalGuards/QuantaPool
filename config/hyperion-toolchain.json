@@ -1,0 +1,7 @@
+{
+  "hyperionCommit": "cee9d335984c139c1dc0b0e84ec13290031ea4b1",
+  "compilerVersion": "0.2.0-develop.2026.9.15+commit.cee9d335.Linux.g++",
+  "compilerSha256": "11b53f5b2519f381aa46d5704d9e0dde3f0ff2552be07b0cd3aba17741ee612a",
+  "runtime": "Unmodified go-qrl QRVM from native/network/source-lock.json",
+  "maximumRuntimeBytes": 24576
+}

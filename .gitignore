@@ -29,7 +29,11 @@ validator_keys/
 keystore_password.txt
 *.swp
 
-# Foundry build artifacts
+# Local compiler and analysis artifacts
 cache/
 out/
 findings/*
+
+# Generated Python helper caches
+__pycache__/
+*.py[cod]

@@ -7,38 +7,9 @@ on:
   pull_request:
   workflow_dispatch:
 
-env:
-  FOUNDRY_PROFILE: ci
-
 jobs:
-  check:
-    name: Foundry project
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          persist-credentials: false
-          submodules: recursive
-
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
-
-      - name: Show Forge version
-        run: forge --version
-
-      - name: Run Forge fmt
-        run: forge fmt --check
-
-      - name: Run Forge build
-        run: forge build --sizes
-
-      - name: Run Forge tests
-        run: forge test -vvv
-
   javascript:
-    name: Deployment tooling and frontend
+    name: Contract tooling and frontend
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -58,11 +29,17 @@ jobs:
       - name: Install deployment dependencies
         run: npm ci
 
-      - name: Compile Solidity deployment artifacts
-        run: npm run compile
+      # The complete local gate also compiles the pinned native contracts and
+      # executes their bytecode in unmodified go-qrl QRVM. A reviewed compiler
+      # binary is required; these hosted gates make no VM-execution claim.
+      - name: Test native accounting model
+        run: npm run test:model
 
-      - name: Test deployment safety controls
-        run: node scripts/deploy-hyperion-safety.test.js
+      - name: Test contract tooling
+        run: npm run test:tooling
+
+      - name: Test monitoring rules
+        run: sh monitoring/test-rules.sh
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -75,6 +52,10 @@ jobs:
       - name: Test frontend lifecycle guards
         working-directory: frontend
         run: npm test
+
+      - name: Typecheck frontend
+        working-directory: frontend
+        run: npm run typecheck
 
       - name: Build frontend
         working-directory: frontend

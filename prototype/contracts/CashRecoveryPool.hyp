@@ -1,0 +1,139 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma hyperion >=0.0;
+
+interface IRecoveryStatus {
+    function status() external view returns (uint8);
+}
+
+/**
+ * @notice Isolated native-cash recovery candidate with one immutable verifier.
+ * @dev This experiment holds every deposit in cash. It has no validator funding,
+ *      normal rewards, pre-expiry withdrawals, fees or senior reserved claims.
+ *      The reference model's pending-deposit and existing-claim reserves require
+ *      separate integration into a normal pool before this can hold user funds.
+ *      Live deposits create equal nontransferable risk shares for msg.sender.
+ *      Permanent verifier expiry freezes membership in O(1); future native cash
+ *      follows the same weights forever. No administrator, upgrade, receiver
+ *      override, fee setter, share transfer or dust sweep exists.
+ */
+contract CashRecoveryPool {
+    IRecoveryStatus public immutable verifier;
+    bool public recovering;
+    uint256 public totalShares;
+    uint256 public frozenTotalShares;
+    uint256 public cumulativeRecovered;
+    uint256 public totalPaid;
+    mapping(address => uint256) public shares;
+    mapping(address => uint256) public paidDebt;
+    bool private entered;
+
+    event Deposited(address indexed beneficiary, uint256 amount);
+    event RecoveryStarted(uint256 shares, uint256 cash);
+    event CashSynchronized(uint256 cumulativeCash);
+    event Claimed(address indexed beneficiary, uint256 amount);
+
+    constructor(address finalityVerifier) {
+        require(finalityVerifier.code.length != 0, "verifier must have code");
+        verifier = IRecoveryStatus(finalityVerifier);
+    }
+
+    modifier guarded() {
+        require(!entered, "reentrant call");
+        entered = true;
+        _;
+        entered = false;
+    }
+
+    function deposit() external payable guarded {
+        require(!recovering && verifier.status() == 0, "deposits require Live verifier");
+        require(msg.value != 0, "zero deposit");
+        totalShares += msg.value;
+        shares[msg.sender] += msg.value;
+        emit Deposited(msg.sender, msg.value);
+    }
+
+    function beginRecovery() external guarded {
+        require(!recovering, "recovery already started");
+        require(verifier.status() == 2, "verifier has not expired");
+        recovering = true;
+        frozenTotalShares = totalShares;
+        _syncCash();
+        emit RecoveryStarted(frozenTotalShares, cumulativeRecovered);
+    }
+
+    function syncCash() external guarded returns (uint256) {
+        require(recovering, "recovery not started");
+        _syncCash();
+        return cumulativeRecovered;
+    }
+
+    /// @notice Uses the last synchronized cash total; claim() synchronizes first.
+    function claimable(address beneficiary) public view returns (uint256) {
+        if (!recovering || frozenTotalShares == 0) return 0;
+        uint256 entitlement = _mulDiv(cumulativeRecovered, shares[beneficiary], frozenTotalShares);
+        return entitlement - paidDebt[beneficiary];
+    }
+
+    function claim() external guarded {
+        require(recovering, "recovery not started");
+        _syncCash();
+        uint256 amount = claimable(msg.sender);
+        require(amount != 0, "nothing to claim");
+        paidDebt[msg.sender] += amount;
+        totalPaid += amount;
+        (bool ok, ) = msg.sender.call{value: amount}("");
+        require(ok, "payment failed");
+        emit Claimed(msg.sender, amount);
+    }
+
+    function _syncCash() private {
+        // Native consensus withdrawals credit balances without invoking code.
+        uint256 observed = address(this).balance + totalPaid;
+        require(observed >= cumulativeRecovered, "cash accounting decreased");
+        cumulativeRecovered = observed;
+        emit CashSynchronized(observed);
+    }
+
+    function _mulDiv(uint256 x, uint256 y, uint256 denominator) private pure returns (uint256) {
+        require(denominator != 0, "zero denominator");
+        // Hyperion/QRVM has native uint512 arithmetic. Two uint256 operands fit
+        // exactly in uint512 even when their uint256 intermediate would overflow.
+        uint512 result = (uint512(x) * uint512(y)) / uint512(denominator);
+        require(result <= uint512(type(uint256).max), "mulDiv result overflow");
+        return uint256(result);
+    }
+}
+
+/// @notice Test-only companion compiled to a separate artifact; never pool logic.
+contract CashRecoveryCallback {
+    CashRecoveryPool public immutable pool;
+    bool public rejectPayment;
+    uint256 public received;
+    uint256 public guardedCalls;
+
+    constructor(address target) { pool = CashRecoveryPool(target); }
+
+    function join() external payable { pool.deposit{value: msg.value}(); }
+    function claim() external { pool.claim(); }
+    function setRejectPayment(bool value) external { rejectPayment = value; }
+
+    receive() external payable {
+        require(msg.sender == address(pool), "unexpected fixture sender");
+        require(!rejectPayment, "fixture rejects payment");
+        received += msg.value;
+        _guard("claim()");
+        _guard("syncCash()");
+        _guard("beginRecovery()");
+        _guard("deposit()");
+    }
+
+    function _guard(string memory method) private {
+        (bool ok, bytes memory data) = address(pool).call(abi.encodeWithSignature(method));
+        require(!ok, "nested call succeeded");
+        require(
+            keccak256(data) == keccak256(abi.encodeWithSignature("Error(string)", "reentrant call")),
+            "unexpected nested failure"
+        );
+        guardedCalls++;
+    }
+}

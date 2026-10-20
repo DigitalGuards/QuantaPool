@@ -31,7 +31,7 @@ const App = observer(() => {
         <div className="border-b border-destructive/40 bg-destructive/10">
           <div className="mx-auto flex max-w-5xl items-center gap-2 px-4 py-2 text-sm text-destructive">
             <AlertTriangle className="h-4 w-4 shrink-0" />
-            Could not reach the QRL network: {poolStore.rpcError}
+            {poolStore.rpcError}
           </div>
         </div>
       )}
@@ -42,7 +42,9 @@ const App = observer(() => {
             <AlertTriangle className="h-4 w-4 shrink-0" />
             <span className="flex-1">{poolStore.connectError}</span>
             <button
-              onClick={() => poolStore.dismissConnectError()}
+              onClick={() => {
+                poolStore.dismissConnectError();
+              }}
               className="cursor-pointer hover:text-foreground"
               aria-label="Dismiss"
             >

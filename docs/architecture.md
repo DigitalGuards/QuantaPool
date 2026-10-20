@@ -1,254 +1,91 @@
-# QuantaPool v2 Architecture
+# Native QRL pooled staking
 
-## Overview
+QuantaPool uses four immutable core contracts and an optional immutable checkpoint executor. A new deployment has fresh state and no legacy token compatibility. There is no transferable staking receipt, lending, leverage, rehypothecation, discretionary investment allocation, guaranteed principal or guaranteed return.
 
-QuantaPool is a decentralized liquid staking protocol for QRL. Users deposit QRL and receive stQRL tokens representing their stake. The protocol uses a **fixed-balance token model** (like Lido's wstETH) where share balances remain constant and QRL value grows with rewards.
+## Contract map and asset flow
 
-## Architecture Diagram
+| Contract | Authoritative state and responsibility |
+|---|---|
+| `NativeFinalityVerifier` | Initial trusted header, immutable chain/domain/timing policy, authenticated current and next committee roots, accepted finalized headers, trust deadline and irreversible expiry |
+| `NativePortfolioVerifier` | Gate-only canonical validator registry; complete bounded proofs of pool cash, validator records, all intervening deposits and withdrawals; committed snapshot and terminal observations |
+| `NativeValidatorGate` | Original operator bootstrap beneficiary; canonical deposit runtime/domain; valid public exits; exact native top-up transactions and deposit-index history |
+| `NativeQrlPool` / `NativeLedger` | Immutable fee beneficiary, risk assets, nontransferable positions, fee basis, loss/reward budget, cash reserves, FIFO requests, historical cash flows and recovery rights |
+| `NativeCheckpointExecutor` | Optional typed batching of proof completion, settlement and bounded ledger work; immutable pool/portfolio bindings, no funds or authority |
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                         User                                │
-└───────────────────────────┬─────────────────────────────────┘
-                            │ deposit() / requestWithdrawal()
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    DepositPool-v2.sol                       │
-│  - Accepts QRL deposits, mints stQRL shares                 │
-│  - Manages withdrawal queue (128-block delay)               │
-│  - Trustless reward sync via balance checking               │
-│  - Funds validators via beacon deposit contract             │
-└───────────────────────────┬─────────────────────────────────┘
-                            │ mintShares() / burnShares()
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      stQRL-v2.sol                           │
-│  - Fixed-balance QRC-20 token (shares-based)                │
-│  - balanceOf() = shares (stable, tax-friendly)              │
-│  - getQRLValue() = QRL equivalent (grows with rewards)      │
-│  - Virtual shares prevent first-depositor attacks           │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  ValidatorManager.sol                       │
-│  - Tracks validator lifecycle (Pending → Active → Exited)   │
-│  - Stores Dilithium pubkeys (2592 bytes)                    │
-│  - MVP: single trusted operator model                       │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│               QRL Beacon Deposit Contract                  │
-│  - 40,000 QRL per validator                                 │
-│  - Withdrawal credentials → DepositPool                     │
-└─────────────────────────────────────────────────────────────┘
-```
+Users send QRL directly to `NativeQrlPool.deposit()`. Pending principal stays fully cash-backed, belongs to the sender and can be refunded before admission. A later finalized execution cutoff admits it at the settled portfolio value. Native funding moves from the pool through the immutable gate to the canonical deposit contract in one transaction. The gate has no discretionary asset transfer or pool balance editor. Validator withdrawal recipients are the pool's full 64-byte address. Consensus principal and rewards return directly to that address.
 
-## Core Contracts
+Ordinary deposits require the configured minimum. Validator funding requires 38,000 QRL of free cash plus a 5% buffer against risk assets after bootstrap adoption. Reserved user claims, pending deposits, earned fees and quarantined ownerless cash cannot fund validators. Funding also waits for an empty withdrawal queue. The lifetime registry is capped at 64 admitted validators, including terminal records, with no privileged override. A new pool instance is required for additional lifetime admissions.
 
-### stQRL-v2.sol - Liquid Staking Token
+## Operator preparation and canonical recipient
 
-**Fixed-balance model** where `balanceOf()` returns shares (stable) and `getQRLValue()` returns QRL equivalent (fluctuates with rewards/slashing).
+Only the immutable validator-operator address can pay a native 2,000 QRL preparation through the gate. That address authorizes future signing-key enrollment and supplies its own capital. Anyone may later submit the complete proofs and finish admission of that authorized preparation. That preparation is outside the active pool ledger until admission. The gate validates the native deposit signature and root; the protocol determines the canonical validator record. After finalization, the portfolio verifier proves the exact public key, original pool withdrawal recipient, unslashed inactive status, RANDAO commitment and exact 2,000 QRL balance.
 
-| Function | Returns | Changes When |
-|----------|---------|--------------|
-| `balanceOf(user)` | Shares | Only on deposit/withdraw/transfer |
-| `getQRLValue(user)` | QRL equivalent | Rewards accrue or slashing occurs |
-| `getExchangeRate()` | QRL per share (1e18 scaled) | Rewards/slashing |
+Before releasing pooled funds, the gate verifies and stores an epoch-zero exit for the proven validator index and validates the 38,000 QRL top-up signature. It then atomically adopts the operator's 2,000 QRL as ordinary loss-bearing principal at the already settled checkpoint price and deposits the remaining 38,000 QRL. Any failure rolls back registration, stake adoption, exit storage and pooled funding together.
 
-**Key Features:**
-- Virtual shares/assets (1e3) prevent first-depositor inflation attacks
-- All QRC-20 operations work with shares, not QRL amounts
-- Tax-friendly: balance only changes on explicit user actions
+An existing public key cannot change its canonical recipient through a later deposit. A foreign recipient, wrong balance or incompatible validator state fails admission. An unsolicited top-up can make preparation ineligible. New preparation is rejected after lifetime capacity is full, but concurrent preparations can exhaust remaining admission capacity before an earlier preparation is ready. Failed or abandoned preparation can leave the operator's own 2,000 QRL locked under unchanged native rules, particularly if the key disappears before publishing an exit. Pooled user funds never reimburse that preparation by discretion.
 
-**Example:**
-```
-1. User deposits 100 QRL when pool has 1000 QRL / 1000 shares
-2. User receives 100 shares, balanceOf() = 100
-3. Validators earn 50 QRL rewards (pool now 1050 QRL)
-4. User's balanceOf() still = 100 shares (unchanged)
-5. User's getQRLValue() = 100 × 1050 / 1000 = 105 QRL
-```
+## Authentication and complete accounting
 
-### DepositPool-v2.sol - User Entry Point
+A deployment supplies an independently reviewed recent finalized header and chain identity. This is the initial trust anchor. Later updates require signatures authenticating at least 86 of the native 128 committee positions, Merkle membership, finalized-header proofs and authenticated committee transitions. RPC responses and node agreement only provide public proof material; they confer no reporting authority.
 
-Handles deposits, withdrawals, and reward synchronization.
+This is a sampled-committee verifier with explicit committee-key honesty and initial-anchor assumptions. It does not replay the complete native state transition or whole-network stake-weighted consensus. Repeated committee keys can occupy multiple positions. The implementation supports the pinned fixed fork, consecutive occupied signing slots and occupied finalized epoch boundaries. Unsupported histories fail closed. The 64-slot economic freshness and 4,096-slot recovery window used locally are test parameters, not established safe production values.
 
-**Deposit Flow:**
-1. User calls `deposit()` with QRL
-2. Contract reconciles the balance that existed before `msg.value` arrived
-3. Shares calculated at current exchange rate
-4. `stQRL.mintShares()` called, shares minted to user
-5. `totalPooledQRL` updated
+Each portfolio snapshot authenticates one matched finalized beacon state and its execution cutoff:
 
-**Withdrawal Flow:**
-1. User calls `requestWithdrawal(shares)`
-2. Shares lock and the contract returns an informational QRL estimate
-3. Request queued with 128-block delay (~2 hours)
-4. The owner earmarks liquid QRL in `withdrawalReserve`; those assets remain in
-   `totalPooledQRL` while the queued shares remain in total supply
-5. User calls `claimWithdrawal()` after the delay and settled accounting
-6. The contract calculates the current QRL value, then atomically burns shares,
-   reduces `totalPooledQRL`, reduces the reserve, and transfers QRL
-7. If a funded request is cancelled or needs less QRL after settlement, the
-   owner releases the unused earmark with `releaseWithdrawalReserve(amount)`
+1. The execution state root, execution block and consumed native deposit index through SSZ proofs.
+2. The exact pool account cash through its native 64-byte account trie proof.
+3. Every registered validator, in registry order, including true zero balances and terminal status.
+4. Every occupied parent-linked block back to the previous snapshot, with complete native withdrawal and deposit lists. All deposits to registered public keys are counted, including third-party top-ups.
 
-Queued shares continue receiving rewards and bearing slashing losses until they
-are burned. Reserve funding cannot change the exchange rate because the assets
-and their corresponding shares leave the conversion totals together at claim.
+Validator and deposit indices are separate namespaces. In-flight pool funding counts only deposits sent at or before the execution cutoff whose native deposit index is still unconsumed at that same cutoff. The ledger normalizes the historical balance sheet using on-chain cumulative user/adopted deposits and actual cash payouts. It never combines current cash with historical validator balances without that reconciliation.
 
-**Trustless Reward Sync:**
-- No oracle needed for reward detection
-- `_syncRewards()` reconciles `address(this).balance + stakedQRL` against `totalPooledQRL`
-- `withdrawalReserve` is a liquid subset of `totalPooledQRL`, not an additional
-  liability outside pooled accounting
-- Balance increase = rewards, decrease = slashing
-- EIP-4895 withdrawals automatically credit the contract
-- `stakedQRL` tracks principal forwarded to the beacon deposit contract by the
-  real `fundValidator()` path, so the outgoing 40k stake is not misread as a
-  slashing event. When exit proceeds return, the owner calls
-  `recordValidatorExit(amount)` to settle that principal back into the
-  on-contract balance. Observed returned principal refills `bufferedQRL`, capped
-  at the nominal stake retired, so a slashed exit cannot create unsupported
-  validator-funding credit and unused exit proceeds can be staked again.
-- Permissionless while all principal is on-contract (`stakedQRL == 0`): anyone
-  may call `syncRewards()`. Once principal is staked off-contract
-  (`stakedQRL > 0`), reward sync - including the implicit sync inside
-  `requestWithdrawal`/`claimWithdrawal` - is restricted to the owner. This
-  closes a front-running window: an exit sweep lands principal in the balance a
-  block before the owner can `recordValidatorExit()`, and an unrestricted sync
-  in that window would book the principal as a phantom reward and spike the
-  rate. Claims with unsettled on-chain deltas revert. With sync owner-gated
-  during that window, settlement and reward recognition are sequenced by the
-  operator and cannot be front-run.
+For an interval, consensus gain or loss is `new validator balance + native withdrawals - old validator balance - consumed validator deposits - newly adopted bootstrap principal`. The remaining independently authenticated asset increase is fee-exempt. Returned principal and third-party deposits therefore cannot masquerade as consensus rewards.
 
-> **Known limitation (production):** the balance-diff sync is fully trustless
-> only while staked QRL sits in the contract (`fundValidatorMVP`). Once
-> `fundValidator()` moves principal off-contract, reward sync becomes
-> owner-driven (see above) and cannot observe a *live* validator's accruing
-> beacon balance, inactivity leak, or slashing until those amounts are swept
-> on-chain via EIP-4895 - and the principal/reward split on return depends on
-> the owner calling `recordValidatorExit()`. A fully self-custodial production
-> reward mechanism over live beacon balances will require either periodic
-> beacon-state input or an automated exit-settlement path. This is acceptable
-> for the MVP/testnet trust model (single trusted operator) but must be
-> hardened before mainnet.
+## Positions, precision and losses
 
-**Key Parameters:**
-- `WITHDRAWAL_DELAY`: 128 blocks (~2 hours on QRL v2 testnet at ~60s/block, verified)
-- `minDeposit`: 100 QRL default (configurable by owner, down to `ABSOLUTE_MIN_DEPOSIT = 0.001 QRL`)
-- `VALIDATOR_STAKE`: 40,000 QRL
+The pool stores a position for each immutable beneficiary: internal stake units, contributed principal basis, separate fee basis and fractional carry, pending deposits, reserved principal/reward claims, one active request and recovery payments. The global ledger stores risk assets, total internal units and the fee-exempt-basis accumulator. Positions cannot be transferred or approved to another spender.
 
-### ValidatorManager.sol - Validator Lifecycle
+Unreserved position value is the user's fraction of risk assets. Positive value above contributed principal is the available gross gain; value below principal records current loss exposure. Unreserved gains remain exposed to later native losses. A global asset change allocates rewards or losses proportionally without visiting every staker. A fee-basis accumulator allocates verified gifts in constant cost per later user action. Historical earned amounts can be indexed from on-chain events; the operator cannot set them.
 
-Tracks validators through their lifecycle:
+Multiplication uses native 512-bit intermediates. Admissions round internal units down; sales round units up; fee-exempt basis rounds conservatively against charging fees. Internal scales are `1e27` and `1e54`. The last normal exit requires the same priced snapshot to prove every validator terminal and all funding consumed, allowing a complete cash drain. A zero-valued user retains its position while validators remain nonterminal. Ownerless cash is quarantined and cannot be swept by the operator. Recovery can retain less than one smallest native unit per participant as rounding residue.
 
-```
-None → Pending → Active → Exiting → Exited
-                    ↓
-                 Slashed
-```
+## Withdrawals and rewards
 
-**State Transitions:**
-- `registerValidator(pubkey)` → Pending
-- `activateValidator(id)` → Active (confirmed on beacon chain)
-- `requestValidatorExit(id)` → Exiting
-- `markValidatorExited(id)` → Exited
-- `markValidatorSlashed(id)` → Slashed (from Active or Exiting)
+`requestWithdrawal(amount)` and `requestRewards(amount)` join the same global FIFO. The maximum integer requests the full available amount. Requests retain their stake exposure until a strictly later authenticated execution cutoff and successful cash reservation. A deposit made just before settlement cannot capture earlier rewards; a request made after a loss cannot use an earlier cutoff to avoid it.
 
-**Access Control:**
-- Owner can perform all operations (trusted operator MVP)
-- DepositPool can register validators
+Anyone can stage a checkpoint, process bounded admissions and process the FIFO. A head request without enough free cash stays first. The keeper processes available cash before requesting further validator exits; public signed exits remain independently usable. Once reserved, principal and reward claims are fixed and fully cash-backed. `claim()` pays only the original beneficiary. A failing recipient does not block other reserved claims. No administrator can reorder or selectively compensate requests. Owners can cancel their own unprocessed requests and cash-backed pending deposits.
 
-## Security Model
+Staged work has its own authenticated freshness check. Anyone may abandon a stale stage while preserving completed admissions and reserved payouts, then continue from a new verified snapshot. A newer finality root cannot make an old pricing stage fresh again.
 
-### Access Control
+## Operator fee
 
-| Contract | Role | Capabilities |
-|----------|------|--------------|
-| stQRL | Owner | Set depositPool (once), pause/unpause |
-| stQRL | DepositPool | Mint/burn shares, update totalPooledQRL |
-| DepositPool | Owner | Pause, set parameters, emergency withdraw excess |
-| ValidatorManager | Owner | All validator state transitions |
+The fee is fixed at 1,000 basis points, or 10%. Its base is eligible realized net consensus gain when a FIFO request reserves actual cash. Unresolved consensus losses consume the global gain budget and then accumulate as loss carry. Subsequent gains recover that carry before creating new eligible fee income. Per-user principal and fee bases also constrain the chargeable amount. Gifts and unclassified cash add fee basis and never create a consensus fee budget.
 
-### Attack Mitigations
+Each user carries a remainder from zero through nine base units, so splitting claims cannot evade the cumulative floor of the 10% charge. Fees go into a cash-backed earned reserve. Anyone can execute `claimFees()`, which always pays the immutable fee recipient. There is no arbitrary fee withdrawal, rate change, recipient change, principal sweep or retroactive accounting report. Previously earned fees are not clawed back after later losses. Recovery earns zero new fees, including on unknown later receipts.
 
-| Attack | Mitigation |
-|--------|------------|
-| First depositor inflation | Virtual shares/assets (1e3 offset) |
-| Reentrancy | CEI pattern, no external calls before state changes |
-| Withdrawal front-running | 128-block delay, FIFO queue |
-| Reserve-funded share dilution | Reserve and queued shares remain in the rate until atomic claim settlement |
-| Unsynced reward capture | Deposits reconcile pre-deposit assets before minting |
-| Reserved QRL sent to validators | Funding requires both buffer and liquid balance net of reserve |
-| Withdrawal slashing evasion | Claims use the settled share value rather than the request estimate |
-| Emergency fund drain | emergencyWithdraw limited to excess balance only |
+## Exits, expiry and disappearance
 
-### Slashing Protection
+The gate exposes signed epoch-zero exits before pooled top-up. An independent relayer can retrieve and broadcast them after native activation and eligibility. Mechanical exit-work events follow funding order. The native signature remains independently usable, so anyone holding it can force an eligible exit even without a pool request. This affects staking uptime and replacement cost. Future fork changes can invalidate stored exit domains.
 
-When slashing occurs:
-1. `_syncRewards()` detects balance decrease
-2. `totalPooledQRL` reduced proportionally
-3. All stQRL holders share the loss via reduced `getQRLValue()`
-4. Share balances unchanged (loss is implicit)
+Keepers can authenticate fresh updates or perform bounded historical catch-up before the previously established verifier trust deadline. Historical progress alone does not extend that deadline. The pool also has an immutable accounting recovery window, initially anchored to its constructor checkpoint and renewed only by a complete portfolio checkpoint applied to the ledger. Finality updates, staged proofs and unapplied portfolios cannot renew that pool deadline. Once either deadline expires, normal pool operations cannot restart. Anyone can begin recovery, including while native finality remains healthy; no owner can reset the root, swap the verifier or reopen the pool.
 
-## QRL-Specific Adaptations
+Recovery freezes existing risk weights, protects pending refunds, reserved user claims and already earned fees, and allocates actual current and later free cash proportionally. Rights survive earlier recovery payouts. The remaining validators may return cash later or suffer losses. Recovery cannot impose a native withdrawal deadline or recreate unavailable cash. If all proof suppliers disappear, expiry can occur despite a healthy native chain. A portfolio-specific data or capacity stall can also trigger pool recovery even while finality updates continue. Public proof caching and adequate archive retention improve liveness without supplying economic authority. The lifetime registry and occupied-header workload need explicit capacity qualification; see [measured scale limits](../native/proofs/SCALE.md).
 
-| Parameter | Ethereum | QRL |
-|-----------|----------|----------|
-| Validator stake | 32 ETH | 40,000 QRL |
-| Block time | ~12s | ~60s |
-| Signature scheme | ECDSA | Dilithium (ML-DSA-87) |
-| Pubkey size | 48 bytes | 2,592 bytes |
-| Signature size | 96 bytes | 4,627 bytes |
+## Privileges and trust
 
-## Test Coverage
+| Actor | Power, effect on deposits, compromise and disappearance |
+|---|---|
+| Deployer | Chooses immutable initial anchor, chain policy, graph bindings, minimum deposit and fee beneficiary. A malicious initial configuration undermines the deployment. No later owner or upgrade power exists; users must review the deployment before depositing. |
+| Validator preparation address | Immutable and restricted to authorizing new validator preparations with its own capital. Cannot redirect pooled principal, edit positions or block existing public exits. Compromise exposes future validator operations to harmful signing-key selection; disappearance prevents new preparations. |
+| Proof submitter / keeper | Supplies public authenticated data and executes deterministic batches. Cannot edit balances, redirect funds, change fees or bypass expiry. Withholding all useful proofs harms liveness; other keepers may continue. |
+| Validator signing-key holder | Performs native consensus duties, can exit, go offline, be slashed and select execution-tip routing. Cannot change the established consensus withdrawal recipient or user beneficiary. Public signatures remove the need for a new exit signature under the supported fork. |
+| Bootstrap payer | Risks its own preparation capital. Successful admission creates ordinary principal for its original address. Cannot claim another depositor's principal or obtain a discretionary reimbursement. |
+| Fee recipient | Receives only earned reserved fees. Cannot select another destination, take principal, alter rates or block user claims. A recipient that rejects payment leaves only its fee reserve unpaid. |
+| User / recovery caller | Requests or claims its own entitlement; anyone can begin permitted mechanical work or irreversible recovery after expiry. Cannot select other beneficiaries or change weights. |
+| Owner, admin, proxy admin, upgrader, pauser, oracle/reward reporter, emergency multisig | No such privilege exists in the native contracts. There is no administrative pause, confiscation, discretionary balance setter, rescue transfer or upgrade. |
 
-**Unit (Foundry, `contracts/test/`):** 226 tests, all green.
-- `stQRL-v2.t.sol`: 68 tests (shares, conversions, rewards, slashing, minimum stake lock)
-- `DepositPool-v2.t.sol`: 103 tests (deposits, withdrawals, reserve invariants, sync, off-contract stake accounting, front-run protection, access control)
-- `ValidatorManager.t.sol`: 55 tests (lifecycle, slashing, batch operations)
+Execution transaction tips are a material operator-control limitation. Only received, authenticated assets enter enforceable accounting. The product must not promise every tip reaches the pool. Public exits, committee honesty, deployment trust, proof availability, unsupported forks and indefinite native recovery remain review items before launch. These technical facts support review of actual control under the supplied Dutch BV report; this implementation makes no new legal classification or clearance claim.
 
-**Integration (live testnet, `scripts/integration-test-v2.js`):** 16 phases, all verified against the deployed contracts on chainId 1337. Covers deposit/mint, reward sync via EIP-4895-style balance donation, withdrawal request → 128-block delay → reserve funding → claim, pause/unpause, revert paths, validator lifecycle, QRC-20 allowance, batch activation, cancel. See `docs/V2-DEPLOYMENT-STATUS.md` for the phase matrix and current live state.
+## Storage and history
 
-## Deployment Checklist
-
-Automated by `node scripts/deploy-hyperion.js` in a single run. For reference, the sequence it performs:
-
-The deploy script refuses to submit transactions unless the connected chain matches the configured
-`chainId` and `HYPERION_DEPLOY_CONFIRM` exactly matches
-`DEPLOY:<chainId>:<deployer address>:<deployment fingerprint>`. The fingerprint binds the provider,
-chain, deployer, existing addresses, confirmation depth, pending starting nonce, predicted CREATE
-addresses, ABIs, and the exact in-memory bytecode snapshot used for deployment. Replacing non-empty
-contract addresses also requires `HYPERION_REPLACE_EXISTING=true`. Set these values only after
-checking the printed provider endpoint, chain, deployer, nonce, predicted addresses, fingerprint,
-and existing deployment. A chain-and-deployer lock serializes local runs. The script rechecks both
-the pending nonce and the original config digest before its first transaction, uses explicit
-consecutive nonces, and rejects any deployed address that differs from the confirmed prediction.
-Before updating the address config, it waits for the final nonce-ordered wiring transaction to reach
-the configured `txConfirmations` depth, verifies that its receipt remains in the same canonical
-block, verifies all links, owners, and paused states, and rechecks the config digest. Persistence uses
-a randomized exclusive temporary file, file and directory syncs, and an atomic rename.
-
-1. Deploy `stQRLv2` (no constructor args)
-2. Deploy `DepositPoolV2` (no constructor args; sets `minDeposit = 100 QRL`, `lastSyncBlock = block.number`)
-3. Deploy `ValidatorManager` (no constructor args)
-4. Pause `DepositPoolV2` and `stQRLv2` before wiring enables deposits
-5. `pool.setStQRL(stQRL)` (**one-shot, irreversible**)
-6. `stQRL.setDepositPool(pool)` (**one-shot, irreversible**)
-7. `vm.setDepositPool(pool)` (reversible by owner)
-8. Wait for confirmation depth, then verify all links, owners, and paused states
-9. Transfer ownership to multisig (optional for mainnet)
-
-Fresh deployments remain paused until a separate operator action completes read-only verification,
-seed-liquidity planning, and address publication.
-
-The two one-shot steps mean that wiring to the wrong address requires full redeploy. `deploy-hyperion.js` deploys in one tx each and wires immediately afterward using the contract instances returned by `.deploy().send()` (the wallet is pre-bound on those; see `contracts/hyperion/README.md` for the `@theqrl/web3` wallet-binding notes).
-
-## Future Improvements
-
-- [ ] Multi-operator support (permissionless registration)
-- [ ] Two-step ownership transfer pattern
-- [ ] Pagination for `getValidatorsByStatus()`
-- [ ] On-chain integration between DepositPool and ValidatorManager
+All four contracts use new storage and immutable cross-contract references. The old token balances, approvals, exchange rates, proxy/admin slots and deployed validators are not imported. [Removed executable files](../native/RETIRED-FILES.json) and [historical documentation](legacy/V2-ARCHITECTURE.md) record the previous system. The compiler emits each new storage layout under `build/native/`; there is no in-place storage migration.

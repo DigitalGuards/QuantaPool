@@ -1,5 +1,7 @@
 # Upstream QRL v2 Findings
 
+Historical April 2026 source notes. Current native behavior and tested commits are recorded in [the source lock](../native/network/source-lock.json) and [native network qualification](../native/network/README.md). These old dimensions and protocol assumptions must not drive the current implementation.
+
 Facts read directly from the cloned upstream repos at:
 - `qrysm` (QRL consensus client)
 - `go-qrl` (QRL execution client)

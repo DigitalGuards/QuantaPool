@@ -1,146 +1,29 @@
-/**
- * QuantaPool Contract Metrics Exporter
- *
- * Prometheus exporter for QuantaPool smart contract metrics on QRL.
- * Collects metrics from stQRL, DepositPool, RewardsOracle, and OperatorRegistry contracts.
- */
-
+require('dotenv').config();
 const express = require('express');
-const { collectDefaultMetrics, Registry } = require('prom-client');
+const { Registry, collectDefaultMetrics } = require('prom-client');
 const { Web3 } = require('@theqrl/web3');
+const { loadConfig } = require('./config');
 const { setupMetrics } = require('./metrics');
 const { ContractMonitor } = require('./contracts');
-const config = require('./config');
-
-const app = express();
-const register = new Registry();
-
-// Collect default Node.js metrics (memory, CPU, event loop, etc.)
-collectDefaultMetrics({
-    register,
-    prefix: 'quantapool_exporter_'
-});
-
-let monitor = null;
 
 async function main() {
-    console.log('='.repeat(60));
-    console.log('QuantaPool Contract Metrics Exporter');
-    console.log('='.repeat(60));
-    console.log('');
-    console.log('Configuration:');
-    console.log(`  RPC URL: ${config.QRL_RPC_URL}`);
-    console.log(`  Metrics Port: ${config.METRICS_PORT}`);
-    console.log(`  Scrape Interval: ${config.SCRAPE_INTERVAL_MS}ms`);
-    console.log(`  Event Poll Interval: ${config.EVENT_POLL_INTERVAL_MS}ms`);
-    console.log('');
-
-    // Initialize Web3 connection
-    console.log('Connecting to QRL RPC...');
-    const web3 = new Web3(config.QRL_RPC_URL);
-
-    // Test connection
-    try {
-        const blockNumber = await web3.qrl.getBlockNumber();
-        const chainId = await web3.qrl.getChainId();
-        console.log(`Connected! Chain ID: ${chainId}, Block: ${blockNumber}`);
-    } catch (error) {
-        console.error('Failed to connect to QRL RPC:', error.message);
-        process.exit(1);
-    }
-
-    // Setup custom metrics
-    const metrics = setupMetrics(register);
-
-    // Initialize contract monitor
-    monitor = new ContractMonitor(web3, metrics, config);
-
-    // Start monitoring
+    const config = loadConfig();
+    const register = new Registry();
+    collectDefaultMetrics({ register, prefix: 'quantapool_exporter_' });
+    const monitor = new ContractMonitor(new Web3(config.rpcUrl), setupMetrics(register), config);
     await monitor.start();
-
-    // ============================================
-    // HTTP Endpoints
-    // ============================================
-
-    // Prometheus metrics endpoint
-    app.get('/metrics', async (req, res) => {
-        try {
-            res.set('Content-Type', register.contentType);
-            res.end(await register.metrics());
-        } catch (error) {
-            console.error('Error serving metrics:', error);
-            res.status(500).end(error.message);
-        }
+    const app = express();
+    app.get('/metrics', async (_req, res) => {
+        try { res.type(register.contentType).send(await register.metrics()); }
+        catch { res.status(503).end(); }
     });
-
-    // Health check endpoint
-    app.get('/health', (req, res) => {
-        const healthy = monitor && monitor.lastUpdate;
-        const lastUpdateAge = monitor?.lastUpdate
-            ? Math.floor((Date.now() - new Date(monitor.lastUpdate).getTime()) / 1000)
-            : null;
-
-        res.status(healthy ? 200 : 503).json({
-            status: healthy ? 'healthy' : 'unhealthy',
-            lastUpdate: monitor?.lastUpdate || null,
-            lastUpdateAgeSeconds: lastUpdateAge,
-            uptime: process.uptime()
-        });
+    app.get('/health', (_req, res) => {
+        const healthy = monitor.lastUpdate !== 0 && Date.now() - monitor.lastUpdate <= config.interval * 3;
+        res.status(healthy ? 200 : 503).json({ healthy, lastUpdate: monitor.lastUpdate });
     });
-
-    // Ready check endpoint
-    app.get('/ready', (req, res) => {
-        if (monitor && monitor.lastUpdate) {
-            res.status(200).json({ ready: true });
-        } else {
-            res.status(503).json({ ready: false, reason: 'Not yet collected metrics' });
-        }
-    });
-
-    // Root endpoint with info
-    app.get('/', (req, res) => {
-        res.json({
-            name: 'QuantaPool Contract Metrics Exporter',
-            version: '1.0.0',
-            endpoints: {
-                metrics: '/metrics',
-                health: '/health',
-                ready: '/ready'
-            },
-            contracts: {
-                stQRL: config.STQRL_ADDRESS,
-                depositPool: config.DEPOSIT_POOL_ADDRESS,
-                validatorManager: config.VALIDATOR_MANAGER_ADDRESS
-            }
-        });
-    });
-
-    // Start HTTP server
-    app.listen(config.METRICS_PORT, '0.0.0.0', () => {
-        console.log('');
-        console.log(`Metrics server listening on http://0.0.0.0:${config.METRICS_PORT}`);
-        console.log('');
-        console.log('Endpoints:');
-        console.log(`  GET /metrics - Prometheus metrics`);
-        console.log(`  GET /health  - Health check`);
-        console.log(`  GET /ready   - Readiness check`);
-        console.log('');
-    });
+    const server = app.listen(config.port, config.host);
+    const stop = () => { monitor.stop(); server.close(); };
+    process.once('SIGINT', stop);
+    process.once('SIGTERM', stop);
 }
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-    console.log('Received SIGTERM, shutting down...');
-    process.exit(0);
-});
-
-process.on('SIGINT', () => {
-    console.log('Received SIGINT, shutting down...');
-    process.exit(0);
-});
-
-// Start the exporter
-main().catch(error => {
-    console.error('Fatal error:', error);
-    process.exit(1);
-});
+main().catch(error => { console.error(error.message); process.exitCode = 1; });

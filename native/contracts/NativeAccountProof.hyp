@@ -1,0 +1,147 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma hyperion >=0.0;
+
+/// @dev Bounded inclusion verifier for pinned go-qrl's secure account trie.
+///      Keys hash all 64 address bytes. Canonical account RLP has four fields.
+///      An absent account is rejected; absence must never stand in for zero cash.
+library NativeAccountProof {
+    struct Item {
+        uint256 start;
+        uint256 data;
+        uint256 length;
+        uint256 end;
+        bool list;
+    }
+
+    function balance(bytes32 root, address account, bytes[] memory proof) internal pure returns (uint256) {
+        require(root != bytes32(0) && proof.length > 0 && proof.length <= 65, "proof bound");
+        bytes32 key = keccak256(abi.encodePacked(account));
+        bytes32 expected = root;
+        bytes memory embedded;
+        uint256 used;
+        uint256 offset;
+        for (uint256 visit = 0; visit < 65; visit++) {
+            bytes memory raw;
+            if (embedded.length != 0) {
+                raw = embedded;
+                embedded = new bytes(0);
+            } else {
+                require(used < proof.length, "missing trie node");
+                raw = proof[used++];
+                require(raw.length <= 1024 && (used == 1 || raw.length >= 32) &&
+                    keccak256(raw) == expected, "wrong trie node");
+            }
+            (Item[] memory items, uint256 count) = _list(raw);
+            Item memory child;
+            if (count == 17) {
+                if (offset == 64) {
+                    require(used == proof.length && !items[16].list, "trailing proof");
+                    return _account(_slice(raw, items[16].data, items[16].length));
+                }
+                child = items[_nibble(key, offset++)];
+            } else {
+                require(count == 2 && !items[0].list && items[0].length != 0, "invalid trie shape");
+                uint256 flag = uint8(raw[items[0].data]) >> 4;
+                require(flag <= 3, "invalid compact flag");
+                bool odd = flag % 2 == 1;
+                require(odd || uint8(raw[items[0].data]) % 16 == 0, "invalid compact padding");
+                uint256 pathLength = items[0].length * 2 - (odd ? 1 : 2);
+                require(pathLength <= 64 - offset, "path exceeds key");
+                for (uint256 j = 0; j < pathLength; j++) {
+                    uint256 position = j + (odd ? 1 : 2);
+                    uint8 octet = uint8(raw[items[0].data + position / 2]);
+                    uint256 nibble = position % 2 == 0 ? octet >> 4 : octet % 16;
+                    require(nibble == _nibble(key, offset + j), "wrong account path");
+                }
+                offset += pathLength;
+                if (flag >= 2) {
+                    require(offset == 64 && used == proof.length && !items[1].list, "incomplete leaf");
+                    return _account(_slice(raw, items[1].data, items[1].length));
+                }
+                require(pathLength != 0, "empty extension");
+                child = items[1];
+            }
+            if (child.list) {
+                require(child.end - child.start < 32, "oversized embedded node");
+                embedded = _slice(raw, child.start, child.end - child.start);
+            } else {
+                require(child.length == 32, "missing or invalid child");
+                expected = bytes32(_slice(raw, child.data, 32));
+            }
+        }
+        revert("trie traversal bound");
+    }
+
+    function _account(bytes memory raw) private pure returns (uint256) {
+        (Item[] memory items, uint256 count) = _list(raw);
+        require(count == 4 && !items[2].list && items[2].length == 32 &&
+            !items[3].list && items[3].length == 32, "invalid account");
+        _integer(raw, items[0], 8);
+        return _integer(raw, items[1], 32);
+    }
+
+    function _integer(bytes memory raw, Item memory item, uint256 limit) private pure returns (uint256 value) {
+        require(!item.list && item.length <= limit &&
+            (item.length == 0 || uint8(raw[item.data]) != 0), "noncanonical integer");
+        for (uint256 i = 0; i < item.length; i++) value = (value << 8) | uint8(raw[item.data + i]);
+    }
+
+    function _list(bytes memory raw) private pure returns (Item[] memory items, uint256 count) {
+        Item memory parent = _item(raw, 0, raw.length);
+        require(parent.list && parent.end == raw.length, "invalid RLP list");
+        items = new Item[](17);
+        uint256 cursor = parent.data;
+        while (cursor < parent.end) {
+            require(count < 17, "RLP item bound");
+            items[count] = _item(raw, cursor, parent.end);
+            cursor = items[count++].end;
+        }
+    }
+
+    function _item(bytes memory raw, uint256 start, uint256 limit) private pure returns (Item memory item) {
+        require(start < limit && limit <= raw.length, "truncated RLP");
+        uint256 prefix = uint8(raw[start]);
+        item.start = start;
+        if (prefix < 128) {
+            item.data = start;
+            item.length = 1;
+        } else if (prefix <= 183) {
+            item.data = start + 1;
+            item.length = prefix - 128;
+        } else if (prefix <= 191) {
+            item = _long(raw, start, limit, prefix - 183, false);
+        } else if (prefix <= 247) {
+            item.list = true;
+            item.data = start + 1;
+            item.length = prefix - 192;
+        } else {
+            item = _long(raw, start, limit, prefix - 247, true);
+        }
+        item.end = item.data + item.length;
+        require(item.end <= limit, "truncated RLP payload");
+        if (prefix >= 128 && prefix <= 183 && item.length == 1) {
+            require(uint8(raw[item.data]) >= 128, "noncanonical short string");
+        }
+    }
+
+    function _long(bytes memory raw, uint256 start, uint256 limit, uint256 width, bool list)
+        private pure returns (Item memory item)
+    {
+        require(width <= 4 && start + 1 + width <= limit && raw[start + 1] != bytes1(0), "invalid RLP length");
+        uint256 length;
+        for (uint256 i = 0; i < width; i++) length = (length << 8) | uint8(raw[start + 1 + i]);
+        require(length >= 56, "noncanonical long form");
+        item = Item(start, start + 1 + width, length, 0, list);
+    }
+
+    function _nibble(bytes32 key, uint256 offset) private pure returns (uint256) {
+        uint8 octet = uint8(key[offset / 2]);
+        return offset % 2 == 0 ? octet >> 4 : octet % 16;
+    }
+
+    function _slice(bytes memory raw, uint256 start, uint256 length) private pure returns (bytes memory result) {
+        require(start + length <= raw.length, "slice bound");
+        result = new bytes(length);
+        for (uint256 i = 0; i < length; i++) result[i] = raw[start + i];
+    }
+}

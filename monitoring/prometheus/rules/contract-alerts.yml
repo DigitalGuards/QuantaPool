@@ -1,107 +1,46 @@
 groups:
-  - name: contract_alerts
+  - name: quantapool-native
     rules:
-      # Contract exporter down
       - alert: ContractExporterDown
-        expr: up{job="contract-exporter"} == 0
+        expr: up{job="contract-exporter"} == 0 or absent(up{job="contract-exporter"})
         for: 2m
         labels:
           severity: warning
         annotations:
-          summary: "Contract exporter is down"
-          description: "Unable to collect smart contract metrics for more than 2 minutes."
-
-      # Deposit pool paused
-      - alert: DepositPoolPaused
-        expr: quantapool_deposit_pool_paused == 1
+          summary: Native pool exporter is unreachable or missing from monitoring
+      - alert: NativePoolVerifierUnavailable
+        expr: quantapool_native_finality_status > 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "DepositPool is paused"
-          description: "The QuantaPool DepositPool has been paused. Deposits, withdrawal requests, minting, and burning are disabled."
-
-      # stQRL token paused (separate flag, distinct from pool)
-      - alert: StQRLPaused
-        expr: quantapool_stqrl_paused == 1
-        for: 1m
+          summary: Native pool finality needs catch-up or has permanently expired
+      - alert: NativePoolRecoveryActive
+        expr: quantapool_native_recovering == 1
         labels:
           severity: critical
         annotations:
-          summary: "stQRL token is paused"
-          description: "Transfers and allowance flows on the stQRL token are disabled."
-
-      # Exchange rate anomaly (sudden change > 5% in 1 hour)
-      - alert: ExchangeRateAnomaly
+          summary: Native pool is distributing recovery cash
+      - alert: NativePoolRecoveryAvailable
+        expr: quantapool_native_pool_status == 2 and quantapool_native_recovering == 0
+        labels:
+          severity: critical
+        annotations:
+          summary: Verification or complete pool accounting expired; permissionless cash recovery is available
+      - alert: NativePoolMetricsStale
         expr: |
-          abs(
-            (quantapool_exchange_rate_normalized - quantapool_exchange_rate_normalized offset 1h)
-            / quantapool_exchange_rate_normalized offset 1h
-          ) > 0.05
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Unusual exchange rate change"
-          description: "The stQRL exchange rate changed by more than 5% in the last hour. Current rate: {{ $value }}."
-
-      # Validator creation threshold approaching (buffer closing in on 40k)
-      - alert: ValidatorThresholdApproaching
-        expr: quantapool_buffered_qrl > 35000
-        for: 5m
-        labels:
-          severity: info
-        annotations:
-          summary: "Validator creation threshold approaching"
-          description: "Buffered QRL: {{ $value | printf \"%.0f\" }}. Threshold: 40,000 QRL. Time to prepare validator keys."
-
-      # Validator threshold reached - action required
-      - alert: ValidatorThresholdReached
-        expr: quantapool_buffered_qrl >= 40000
+          (time() - quantapool_native_last_success_timestamp_seconds{job="contract-exporter"} > 120)
+          or
+          (up{job="contract-exporter"} == 1 unless on (job, instance)
+            quantapool_native_last_success_timestamp_seconds{job="contract-exporter"})
         for: 1m
         labels:
           severity: warning
         annotations:
-          summary: "Validator creation threshold reached"
-          description: "Buffered QRL: {{ $value | printf \"%.0f\" }}. Fund a new validator now via pool.fundValidator() or fundValidatorMVP()."
-
-      # Withdrawal reserve insufficient while users have pending withdrawals
-      - alert: WithdrawalReserveUnderfunded
-        expr: quantapool_withdrawal_reserve_qrl < 1000 and quantapool_pending_withdrawal_shares > 0
-        for: 10m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Withdrawal reserve is low while withdrawals are pending"
-          description: "Reserve: {{ $value | printf \"%.0f\" }} QRL. Owner must call fundWithdrawalReserve() to unblock claims."
-
-      # Slashing detected - critical, may indicate validator misbehavior
-      - alert: SlashingDetected
-        expr: increase(quantapool_slashing_events_total[15m]) > 0
-        for: 0m
+          summary: Complete native pool metrics have stopped updating
+      - alert: NativePoolFeeConfigurationMismatch
+        expr: quantapool_native_fee_bps != 1000
         labels:
           severity: critical
         annotations:
-          summary: "Slashing event emitted by DepositPool"
-          description: "Slashing loss detected via _syncRewards. Investigate qrysm validator logs and stQRL rate impact."
-
-      # High RPC error rate
-      - alert: HighRPCErrorRate
-        expr: rate(quantapool_rpc_errors_total[5m]) > 0.1
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "High RPC error rate"
-          description: "Contract exporter experiencing high RPC error rate. Check RPC endpoint availability."
-
-      # TVL exceeds validator capacity (more capital pooled than the existing
-      # validators can account for - signal to fund more)
-      - alert: TVLValidatorMismatch
-        expr: (quantapool_total_pooled_qrl / 40000) - quantapool_validator_count > 1
-        for: 1h
-        labels:
-          severity: warning
-        annotations:
-          summary: "TVL exceeds validator capacity"
-          description: "Pooled QRL suggests {{ $value | printf \"%.0f\" }} more validators should exist than currently registered."
+          summary: Configured pool differs from the fixed 10 percent fee design

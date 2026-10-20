@@ -1,0 +1,305 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma hyperion >=0.0;
+
+/**
+ * @notice QRL sync-certificate candidate with bounded historical recovery.
+ * @dev Deployment supplies an independently trusted recent checkpoint and chain
+ *      configuration. Subsequent roots require 86 authenticated committee seats.
+ *      This intentionally supports one fixed fork, consecutive occupied signing
+ *      slots and occupied finalized epoch boundaries. Unsupported transitions
+ *      fail closed. The immutable recovery window assumes committee key honesty
+ *      throughout that window. Expiry is irreversible; no administrator can reset
+ *      the root. Consumers MUST use economicCheckpoint(), not historical getters.
+ */
+contract RecoverableFinalityVerifier {
+    uint64 public constant EPOCHS_PER_SYNC_COMMITTEE_PERIOD = 8;
+    struct Header {
+        uint64 slot;
+        uint64 proposerIndex;
+        bytes32 parentRoot;
+        bytes32 stateRoot;
+        bytes32 bodyRoot;
+    }
+
+    struct Vote {
+        uint64 seat;
+        bytes32 publicKeyRoot;
+        bytes publicKey;
+        bytes signature;
+        bytes32[] branch;
+    }
+
+    struct Proposal {
+        bytes32 committee;
+        bytes32 signingRoot;
+        bytes32 finalizedRoot;
+        bytes32 finalizedStateRoot;
+        bytes32 nextCommittee;
+        uint64 attestedSlot;
+        uint64 finalizedSlot;
+        uint64 period;
+        uint64 votes;
+        uint256 bitmap;
+    }
+
+    uint64 public immutable genesisTime;
+    uint64 public immutable secondsPerSlot;
+    uint64 public immutable slotsPerEpoch;
+    uint64 public immutable maxAgeSlots;
+    uint64 public immutable recoveryWindowSlots;
+    bytes32 public immutable syncDomain;
+    bytes32 public immutable bootstrapRoot;
+
+    uint64 public finalizedSlot;
+    bytes32 public finalizedHeaderRoot;
+    bytes32 public finalizedStateRoot;
+    uint64 public currentPeriod;
+    bytes32 public currentCommitteeRoot;
+    bytes32 public nextCommitteeRoot;
+    uint64 public trustAnchorSlot;
+    bool public expired;
+    mapping(bytes32 => Proposal) private proposals;
+    mapping(bytes32 => bytes32) public cachedKeyHash;
+
+    error InvalidConfiguration();
+    error InvalidProof();
+    error InvalidUpdate();
+    error UnknownProposal();
+    error InsufficientQuorum();
+    error InvalidVote();
+    error DuplicateSeat();
+    error InvalidPublicKey();
+    error InvalidSignature();
+    error TrustExpired();
+
+    event CheckpointVerified(uint64 slot, bytes32 stateRoot, bool economic);
+    event PermanentlyExpired(uint256 deadlineSlot);
+
+    constructor(
+        Header memory bootstrap,
+        bytes32 trustedBootstrapRoot,
+        bytes32 currentCommittee,
+        bytes32[] memory currentBranch,
+        bytes32 nextCommittee,
+        bytes32[] memory nextBranch,
+        bytes32 genesisValidatorsRoot,
+        bytes4 forkVersion,
+        uint64 chainGenesisTime,
+        uint64 chainSecondsPerSlot,
+        uint64 chainSlotsPerEpoch,
+        uint64 freshnessSlots,
+        uint64 recoverySlots
+    ) {
+        if (
+            trustedBootstrapRoot == bytes32(0) || genesisValidatorsRoot == bytes32(0) ||
+            currentCommittee == bytes32(0) || nextCommittee == bytes32(0) ||
+            chainSecondsPerSlot == 0 || chainSlotsPerEpoch == 0 || freshnessSlots == 0 ||
+            recoverySlots <= freshnessSlots ||
+            currentBranch.length != 5 || nextBranch.length != 5 ||
+            headerRoot(bootstrap) != trustedBootstrapRoot
+        ) revert InvalidConfiguration();
+        _branch(bootstrap.stateRoot, currentCommittee, 54, currentBranch);
+        _branch(bootstrap.stateRoot, nextCommittee, 55, nextBranch);
+        genesisTime = chainGenesisTime;
+        secondsPerSlot = chainSecondsPerSlot;
+        slotsPerEpoch = chainSlotsPerEpoch;
+        maxAgeSlots = freshnessSlots;
+        recoveryWindowSlots = recoverySlots;
+        bytes32 forkDataRoot = sha256(abi.encodePacked(bytes32(forkVersion), genesisValidatorsRoot));
+        syncDomain = bytes32(abi.encodePacked(hex"07000000", bytes28(forkDataRoot)));
+        bootstrapRoot = trustedBootstrapRoot;
+        finalizedSlot = bootstrap.slot;
+        finalizedHeaderRoot = trustedBootstrapRoot;
+        finalizedStateRoot = bootstrap.stateRoot;
+        currentPeriod = bootstrap.slot / chainSlotsPerEpoch / EPOCHS_PER_SYNC_COMMITTEE_PERIOD;
+        currentCommitteeRoot = currentCommittee;
+        nextCommitteeRoot = nextCommittee;
+        _fresh(bootstrap.slot);
+        trustAnchorSlot = bootstrap.slot;
+    }
+
+    function proposalId(Header memory attested, Header memory finalized, bytes32 nextCommittee) public pure returns (bytes32) {
+        return keccak256(abi.encode(attested, finalized, nextCommittee));
+    }
+
+    function beginUpdate(
+        Header calldata attested,
+        Header calldata finalized,
+        bytes32[] calldata finalityBranch,
+        bytes32 nextCommittee,
+        bytes32[] calldata nextBranch
+    ) external returns (bytes32 id) {
+        uint64 period = (attested.slot + 1) / slotsPerEpoch / EPOCHS_PER_SYNC_COMMITTEE_PERIOD;
+        _eligible(attested.slot, finalized.slot, period);
+        if (
+            nextCommittee == bytes32(0) || finalityBranch.length != 6 || nextBranch.length != 5 ||
+            finalized.slot % slotsPerEpoch != 0 ||
+            finalityBranch[0] != _uint64Root(finalized.slot / slotsPerEpoch)
+        ) revert InvalidUpdate();
+        bytes32 finalizedRoot = headerRoot(finalized);
+        _branch(attested.stateRoot, finalizedRoot, 105, finalityBranch);
+        _branch(finalized.stateRoot, nextCommittee, 55, nextBranch);
+        // Same-period next committee must agree with the bootstrap/prior proof.
+        if (period == currentPeriod && nextCommittee != nextCommitteeRoot) revert InvalidUpdate();
+        id = proposalId(attested, finalized, nextCommittee);
+        if (proposals[id].committee != bytes32(0)) revert InvalidUpdate();
+        proposals[id] = Proposal(
+            period == currentPeriod ? currentCommitteeRoot : nextCommitteeRoot,
+            sha256(abi.encodePacked(headerRoot(attested), syncDomain)),
+            finalizedRoot, finalized.stateRoot, nextCommittee,
+            attested.slot, finalized.slot, period, 0, 0
+        );
+    }
+
+    function submit(bytes32 id, Vote[] calldata votes) external {
+        Proposal storage proposal = proposals[id];
+        _live(proposal);
+        if (votes.length == 0 || votes.length > 12) revert InvalidVote();
+        for (uint256 i = 0; i < votes.length; i++) {
+            Vote calldata vote = votes[i];
+            if (vote.seat >= 128 || vote.branch.length != 7) revert InvalidVote();
+            uint256 flag = uint256(1) << vote.seat;
+            if (proposal.bitmap & flag != 0) revert DuplicateSeat();
+            _branch(proposal.committee, vote.publicKeyRoot, uint256(128) + vote.seat, vote.branch);
+            if (vote.publicKey.length != 2592) revert InvalidPublicKey();
+            bytes32 keyHash = keccak256(vote.publicKey);
+            bytes32 cached = cachedKeyHash[vote.publicKeyRoot];
+            if (cached == bytes32(0)) {
+                if (_publicKeyRoot(vote.publicKey) != vote.publicKeyRoot) revert InvalidPublicKey();
+                cachedKeyHash[vote.publicKeyRoot] = keyHash;
+            } else if (cached != keyHash) revert InvalidPublicKey();
+            _signature(proposal.signingRoot, vote.publicKey, vote.signature);
+            proposal.bitmap |= flag;
+            proposal.votes++;
+        }
+    }
+
+    function finalize(bytes32 id) external {
+        Proposal storage proposal = proposals[id];
+        _live(proposal);
+        if (proposal.votes < 86) revert InsufficientQuorum();
+        if (proposal.period == currentPeriod + 1) {
+            currentPeriod = proposal.period;
+            currentCommitteeRoot = nextCommitteeRoot;
+        }
+        nextCommitteeRoot = proposal.nextCommittee;
+        finalizedSlot = proposal.finalizedSlot;
+        finalizedHeaderRoot = proposal.finalizedRoot;
+        finalizedStateRoot = proposal.finalizedStateRoot;
+        bool economic = _nowSlot() - proposal.finalizedSlot <= maxAgeSlots;
+        // _live checked the PREVIOUS deadline. Historical progress cannot renew it.
+        if (economic) trustAnchorSlot = proposal.finalizedSlot;
+        emit CheckpointVerified(finalizedSlot, finalizedStateRoot, economic);
+        delete proposals[id];
+    }
+
+    function discard(bytes32 id) external {
+        Proposal storage proposal = proposals[id];
+        if (proposal.committee == bytes32(0)) revert UnknownProposal();
+        if (proposal.finalizedSlot > finalizedSlot && status() != 2) revert InvalidUpdate();
+        delete proposals[id];
+    }
+
+    function trustDeadlineSlot() public view returns (uint256) {
+        return uint256(trustAnchorSlot) + recoveryWindowSlots;
+    }
+
+    /// @return 0 Fresh economic checkpoint, 1 historical catch-up, 2 permanent expiry.
+    function status() public view returns (uint8) {
+        uint256 nowSlot = _nowSlot();
+        if (expired || nowSlot > trustDeadlineSlot()) return 2;
+        return nowSlot - finalizedSlot <= maxAgeSlots ? 0 : 1;
+    }
+
+    function economicCheckpoint() external view returns (uint64 slot, bytes32 stateRoot) {
+        _withinTrustWindow();
+        _fresh(finalizedSlot);
+        return (finalizedSlot, finalizedStateRoot);
+    }
+
+    /// @notice Status already reports expiry without a transaction. This latches it.
+    function expire() external {
+        if (expired || _nowSlot() <= trustDeadlineSlot()) revert InvalidUpdate();
+        expired = true;
+        emit PermanentlyExpired(trustDeadlineSlot());
+    }
+
+    function proposalVotes(bytes32 id) external view returns (uint64) { return proposals[id].votes; }
+    function proposalBitmap(bytes32 id) external view returns (uint256) { return proposals[id].bitmap; }
+
+    function headerRoot(Header memory header) public pure returns (bytes32) {
+        bytes32[8] memory nodes;
+        nodes[0] = _uint64Root(header.slot);
+        nodes[1] = _uint64Root(header.proposerIndex);
+        nodes[2] = header.parentRoot;
+        nodes[3] = header.stateRoot;
+        nodes[4] = header.bodyRoot;
+        for (uint256 width = 8; width > 1; width /= 2) {
+            for (uint256 i = 0; i < width / 2; i++) nodes[i] = sha256(abi.encodePacked(nodes[i * 2], nodes[i * 2 + 1]));
+        }
+        return nodes[0];
+    }
+
+    function _live(Proposal storage proposal) private view {
+        if (proposal.committee == bytes32(0)) revert UnknownProposal();
+        _eligible(proposal.attestedSlot, proposal.finalizedSlot, proposal.period);
+        bytes32 expected = proposal.period == currentPeriod ? currentCommitteeRoot : nextCommitteeRoot;
+        if (proposal.committee != expected) revert InvalidUpdate();
+    }
+
+    function _eligible(uint64 attested, uint64 finalized, uint64 period) private view {
+        _withinTrustWindow();
+        if (
+            uint256(attested) + 1 > _nowSlot() ||
+            finalized <= finalizedSlot || attested < finalized ||
+            period < currentPeriod || period > currentPeriod + 1 ||
+            finalized / slotsPerEpoch / EPOCHS_PER_SYNC_COMMITTEE_PERIOD != period
+        ) revert InvalidUpdate();
+    }
+
+    function _fresh(uint64 slot) private view {
+        uint256 nowSlot = _nowSlot();
+        if (slot > nowSlot || nowSlot - slot > maxAgeSlots) revert InvalidUpdate();
+    }
+
+    function _nowSlot() private view returns (uint256) {
+        if (block.timestamp < genesisTime) revert InvalidUpdate();
+        return (block.timestamp - genesisTime) / secondsPerSlot;
+    }
+
+    function _withinTrustWindow() private view {
+        if (expired || _nowSlot() > trustDeadlineSlot()) revert TrustExpired();
+    }
+
+    function _signature(bytes32 root, bytes calldata key, bytes calldata signature) private view {
+        if (signature.length != 4627) revert InvalidSignature();
+        (bool ok, bytes memory result) = address(3).staticcall(
+            abi.encodePacked(root, key, signature, hex"08", hex"5a4f4e4401010000")
+        );
+        if (!ok || result.length != 64 || abi.decode(result, (uint512)) != 1) revert InvalidSignature();
+    }
+
+    function _publicKeyRoot(bytes calldata key) private pure returns (bytes32) {
+        bytes32[128] memory nodes;
+        for (uint256 i = 0; i < 81; i++) nodes[i] = bytes32(key[i * 32:(i + 1) * 32]);
+        for (uint256 width = 128; width > 1; width /= 2) {
+            for (uint256 i = 0; i < width / 2; i++) nodes[i] = sha256(abi.encodePacked(nodes[i * 2], nodes[i * 2 + 1]));
+        }
+        return nodes[0];
+    }
+
+    function _uint64Root(uint64 value) private pure returns (bytes32) {
+        bytes memory encoded = new bytes(32);
+        for (uint256 i = 0; i < 8; i++) encoded[i] = bytes1(uint8(value >> (i * 8)));
+        return bytes32(encoded);
+    }
+
+    function _branch(bytes32 root, bytes32 leaf, uint256 index, bytes32[] memory branch) private pure {
+        bytes32 node = leaf;
+        for (uint256 i = 0; i < branch.length; i++) {
+            node = index % 2 == 0 ? sha256(abi.encodePacked(node, branch[i])) : sha256(abi.encodePacked(branch[i], node));
+            index /= 2;
+        }
+        if (index != 1 || node != root) revert InvalidProof();
+    }
+}

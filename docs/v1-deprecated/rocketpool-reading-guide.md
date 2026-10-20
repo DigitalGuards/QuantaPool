@@ -1,5 +1,7 @@
 # Rocket Pool Reading Guide for QuantaPool MVP
 
+Archived. The `vendor/rocketpool/` paths below refer to files in the upstream [rocket-pool/rocketpool](https://github.com/rocket-pool/rocketpool) repository, which this repository no longer vendors.
+
 ## Philosophy
 
 Keep it simple. Rocket Pool has ~50+ contracts built over years. QuantaPool MVP needs 4.

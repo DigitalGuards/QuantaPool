@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma hyperion >=0.0;
+
+/// @dev TEST ONLY: isolates gate mechanics from the separately tested pool ledger.
+contract GatePoolFixture {
+    address public immutable gate;
+    uint64 public lastCheckpointId = 1;
+    uint64 public lastCheckpointBlock = 80;
+    uint64 public appliedSlot = 80;
+    bytes32 public appliedStateRoot;
+    bool public recovering;
+    uint8 public poolStatus;
+    uint8 public stage;
+    uint256 public queueHead;
+    uint256 public requestCount;
+    address public adoptedBeneficiary;
+    bool public releaseEnabled = true;
+    constructor(address gateAddress, bytes32 stateRoot) payable { gate = gateAddress; appliedStateRoot = stateRoot; }
+    function setRelease(bool enabled) external { releaseEnabled = enabled; }
+    function addExitWork() external { requestCount++; }
+    function adoptAndReleaseBootstrap(address beneficiary) external {
+        require(msg.sender == gate && releaseEnabled, "only enabled gate");
+        adoptedBeneficiary = beneficiary;
+        (bool ok, ) = gate.call{value: 38_000 quanta}(""); require(ok, "funding failed");
+    }
+}

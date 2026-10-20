@@ -1,0 +1,16 @@
+{
+  "captureDate": "2026-09-15",
+  "chainId": 3151916,
+  "qrysmCommit": "3b816311ac3e86b7a7af40a062ae290318554f7a",
+  "goQrlCommit": "9b404c38a63bfebe07cfd07b5f5d144d1c2cf9b9",
+  "genesisFork": "0x31519160",
+  "bootstrapSlot": "640",
+  "finalizedSlots": [
+    "680",
+    "744",
+    "808"
+  ],
+  "sha256": "8e908553f5119b7e49843a52fb47d5567045c2b81107b5ae8a757c7cbf3fb4da",
+  "scope": "Public headers, committees, SSZ branches and genuine signatures captured from unchanged local QRL. No private key, seed or operational endpoint is included.",
+  "representation": "Lossless deduplication of public keys and identical signatures; 86 positional votes retained per certificate."
+}

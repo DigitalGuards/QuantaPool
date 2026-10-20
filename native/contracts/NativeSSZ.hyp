@@ -1,0 +1,160 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma hyperion >=0.0;
+
+/// @dev Canonical Qrysm 64-byte-address SSZ primitives. Fixed limits match the
+///      pinned mainnet/develop layout: 16 deposits and withdrawals per block.
+library NativeSSZ {
+    uint256 private constant VALIDATOR_LIMIT = uint256(1) << 40;
+
+    struct Header {
+        uint64 slot;
+        uint64 proposerIndex;
+        bytes32 parentRoot;
+        bytes32 stateRoot;
+        bytes32 bodyRoot;
+    }
+
+    struct ValidatorWitness {
+        uint64 index;
+        bytes32 publicKeyRoot;
+        bytes withdrawalRecipient;
+        uint64 effectiveBalance;
+        bool slashed;
+        uint64 activationEligibilityEpoch;
+        uint64 activationEpoch;
+        uint64 exitEpoch;
+        uint64 withdrawableEpoch;
+        bytes32 randaoCommitment;
+        bytes32[] validatorBranch;
+        bytes32 balanceChunk;
+        bytes32[] balanceBranch;
+    }
+
+    struct Withdrawal {
+        uint64 index;
+        uint64 validatorIndex;
+        bytes recipient;
+        uint64 amountShor;
+    }
+
+    /// @dev Roots stand for fixed-size public-key/signature/recipient vectors.
+    ///      The deposit proof is the native 33-root vector, without a length mixin.
+    struct DepositSummary {
+        bytes32 publicKeyRoot;
+        bytes32 withdrawalRecipientRoot;
+        uint64 amountShor;
+        bytes32 randaoCommitment;
+        bytes32 signatureRoot;
+        bytes32 depositProofRoot;
+    }
+
+    function headerRoot(Header calldata header) internal pure returns (bytes32) {
+        bytes32[8] memory nodes;
+        nodes[0] = uint64Root(header.slot);
+        nodes[1] = uint64Root(header.proposerIndex);
+        nodes[2] = header.parentRoot;
+        nodes[3] = header.stateRoot;
+        nodes[4] = header.bodyRoot;
+        for (uint256 width = 8; width > 1; width /= 2) {
+            for (uint256 i = 0; i < width / 2; i++) nodes[i] = sha256(abi.encodePacked(nodes[2 * i], nodes[2 * i + 1]));
+        }
+        return nodes[0];
+    }
+
+    function publicKeyRoot(bytes calldata key) internal pure returns (bytes32) {
+        require(key.length == 2592, "invalid public key length");
+        bytes32[128] memory nodes;
+        for (uint256 i = 0; i < 81; i++) nodes[i] = bytes32(key[i * 32:(i + 1) * 32]);
+        for (uint256 width = 128; width > 1; width /= 2) {
+            for (uint256 i = 0; i < width / 2; i++) nodes[i] = sha256(abi.encodePacked(nodes[2 * i], nodes[2 * i + 1]));
+        }
+        return nodes[0];
+    }
+
+    function validatorRoot(ValidatorWitness calldata witness) internal pure returns (bytes32) {
+        require(witness.withdrawalRecipient.length == 64, "invalid recipient length");
+        bytes32[16] memory nodes;
+        nodes[0] = witness.publicKeyRoot;
+        nodes[1] = sha256(witness.withdrawalRecipient);
+        nodes[2] = uint64Root(witness.effectiveBalance);
+        nodes[3] = uint64Root(witness.slashed ? 1 : 0);
+        nodes[4] = uint64Root(witness.activationEligibilityEpoch);
+        nodes[5] = uint64Root(witness.activationEpoch);
+        nodes[6] = uint64Root(witness.exitEpoch);
+        nodes[7] = uint64Root(witness.withdrawableEpoch);
+        nodes[8] = witness.randaoCommitment;
+        return merkle16(nodes);
+    }
+
+    function validatorBalance(bytes32 stateRoot, ValidatorWitness calldata witness, address recipient)
+        internal pure returns (uint64)
+    {
+        require(witness.validatorBranch.length == 46 && witness.balanceBranch.length == 44, "invalid proof length");
+        uint64 count = uint64At(witness.validatorBranch[40], 0);
+        require(count <= VALIDATOR_LIMIT && witness.index < count &&
+            witness.validatorBranch[40] == uint64Root(count) &&
+            witness.balanceBranch[38] == uint64Root(count), "invalid registry list length");
+        branch(stateRoot, validatorRoot(witness), (uint256(43) << 41) + witness.index, witness.validatorBranch);
+        branch(stateRoot, witness.balanceChunk, (uint256(44) << 39) + witness.index / 4, witness.balanceBranch);
+        require(keccak256(witness.withdrawalRecipient) == keccak256(abi.encodePacked(recipient)), "wrong canonical recipient");
+        return uint64At(witness.balanceChunk, (witness.index % 4) * 8);
+    }
+
+    function withdrawalsRoot(Withdrawal[] calldata withdrawals) internal pure returns (bytes32) {
+        require(withdrawals.length <= 16, "withdrawal list limit");
+        bytes32[16] memory nodes;
+        for (uint256 i = 0; i < withdrawals.length; i++) {
+            Withdrawal calldata value = withdrawals[i];
+            require(value.recipient.length == 64, "invalid recipient length");
+            nodes[i] = sha256(abi.encodePacked(
+                sha256(abi.encodePacked(uint64Root(value.index), uint64Root(value.validatorIndex))),
+                sha256(abi.encodePacked(sha256(value.recipient), uint64Root(value.amountShor)))
+            ));
+        }
+        return sha256(abi.encodePacked(merkle16(nodes), uint64Root(uint64(withdrawals.length))));
+    }
+
+    function depositsRoot(DepositSummary[] calldata deposits) internal pure returns (bytes32) {
+        require(deposits.length <= 16, "deposit list limit");
+        bytes32[16] memory nodes;
+        for (uint256 i = 0; i < deposits.length; i++) {
+            DepositSummary calldata value = deposits[i];
+            bytes32 left = sha256(abi.encodePacked(
+                sha256(abi.encodePacked(value.publicKeyRoot, value.withdrawalRecipientRoot)),
+                sha256(abi.encodePacked(uint64Root(value.amountShor), value.randaoCommitment))
+            ));
+            bytes32 right = sha256(abi.encodePacked(
+                sha256(abi.encodePacked(value.signatureRoot, bytes32(0))),
+                sha256(abi.encodePacked(bytes32(0), bytes32(0)))
+            ));
+            nodes[i] = sha256(abi.encodePacked(value.depositProofRoot, sha256(abi.encodePacked(left, right))));
+        }
+        return sha256(abi.encodePacked(merkle16(nodes), uint64Root(uint64(deposits.length))));
+    }
+
+    function uint64Root(uint64 value) internal pure returns (bytes32) {
+        bytes memory data = new bytes(32);
+        for (uint256 i = 0; i < 8; i++) data[i] = bytes1(uint8(value >> (8 * i)));
+        return bytes32(data);
+    }
+
+    function uint64At(bytes32 chunk, uint256 offset) internal pure returns (uint64 value) {
+        for (uint256 i = 0; i < 8; i++) value |= uint64(uint8(chunk[offset + i])) << uint64(8 * i);
+    }
+
+    function branch(bytes32 root, bytes32 leaf, uint256 index, bytes32[] calldata siblings) internal pure {
+        bytes32 node = leaf;
+        for (uint256 i = 0; i < siblings.length; i++) {
+            node = index % 2 == 0 ? sha256(abi.encodePacked(node, siblings[i])) : sha256(abi.encodePacked(siblings[i], node));
+            index /= 2;
+        }
+        require(index == 1 && node == root, "invalid SSZ proof");
+    }
+
+    function merkle16(bytes32[16] memory nodes) private pure returns (bytes32) {
+        for (uint256 width = 16; width > 1; width /= 2) {
+            for (uint256 i = 0; i < width / 2; i++) nodes[i] = sha256(abi.encodePacked(nodes[2 * i], nodes[2 * i + 1]));
+        }
+        return nodes[0];
+    }
+}

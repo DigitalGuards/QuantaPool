@@ -1,0 +1,127 @@
+rule_files:
+  - ../rules/contract-alerts.yml
+evaluation_interval: 30s
+tests:
+  - name: Startup failure alerts without any native metrics
+    interval: 30s
+    input_series:
+      - series: 'up{job="contract-exporter",instance="contract-exporter:9101"}'
+        values: '0x6'
+    alert_rule_test:
+      - eval_time: 90s
+        alertname: ContractExporterDown
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: ContractExporterDown
+        exp_alerts:
+          - exp_labels:
+              job: contract-exporter
+              instance: contract-exporter:9101
+              severity: warning
+            exp_annotations:
+              summary: Native pool exporter is unreachable or missing from monitoring
+
+  - name: Missing scrape target alerts without any series
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ContractExporterDown
+        exp_alerts:
+          - exp_labels:
+              job: contract-exporter
+              severity: warning
+            exp_annotations:
+              summary: Native pool exporter is unreachable or missing from monitoring
+
+  - name: Brief startup failure recovers before the alert delay
+    interval: 30s
+    input_series:
+      - series: 'up{job="contract-exporter",instance="contract-exporter:9101"}'
+        values: '0x2 1x8'
+      - series: 'quantapool_native_last_success_timestamp_seconds{job="contract-exporter",instance="contract-exporter:9101"}'
+        values: '_ _ _ 90+30x8'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ContractExporterDown
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: NativePoolMetricsStale
+        exp_alerts: []
+
+  - name: A recovered exporter clears its firing alert
+    interval: 30s
+    input_series:
+      - series: 'up{job="contract-exporter",instance="contract-exporter:9101"}'
+        values: '0x4 1x6'
+      - series: 'quantapool_native_last_success_timestamp_seconds{job="contract-exporter",instance="contract-exporter:9101"}'
+        values: '_ _ _ _ _ 150+30x6'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ContractExporterDown
+        exp_alerts:
+          - exp_labels:
+              job: contract-exporter
+              instance: contract-exporter:9101
+              severity: warning
+            exp_annotations:
+              summary: Native pool exporter is unreachable or missing from monitoring
+      - eval_time: 3m
+        alertname: ContractExporterDown
+        exp_alerts: []
+
+  - name: Reachable exporter with missing completion metric alerts
+    interval: 30s
+    input_series:
+      - series: 'up{job="contract-exporter",instance="contract-exporter:9101"}'
+        values: '1x6'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: NativePoolMetricsStale
+        exp_alerts:
+          - exp_labels:
+              job: contract-exporter
+              instance: contract-exporter:9101
+              severity: warning
+            exp_annotations:
+              summary: Complete native pool metrics have stopped updating
+      - eval_time: 2m
+        alertname: ContractExporterDown
+        exp_alerts: []
+
+  - name: Stale successful read alerts and clears when reads resume
+    interval: 30s
+    input_series:
+      - series: 'up{job="contract-exporter",instance="contract-exporter:9101"}'
+        values: '1x12'
+      - series: 'quantapool_native_last_success_timestamp_seconds{job="contract-exporter",instance="contract-exporter:9101"}'
+        values: '0x7 240+30x4'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: NativePoolMetricsStale
+        exp_alerts: []
+      - eval_time: 210s
+        alertname: NativePoolMetricsStale
+        exp_alerts:
+          - exp_labels:
+              job: contract-exporter
+              instance: contract-exporter:9101
+              severity: warning
+            exp_annotations:
+              summary: Complete native pool metrics have stopped updating
+      - eval_time: 4m
+        alertname: NativePoolMetricsStale
+        exp_alerts: []
+
+  - name: Fresh complete native metrics remain healthy
+    interval: 30s
+    input_series:
+      - series: 'up{job="contract-exporter",instance="contract-exporter:9101"}'
+        values: '1x12'
+      - series: 'quantapool_native_last_success_timestamp_seconds{job="contract-exporter",instance="contract-exporter:9101"}'
+        values: '0+30x12'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: ContractExporterDown
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: NativePoolMetricsStale
+        exp_alerts: []

@@ -35,20 +35,17 @@ export function shouldIgnoreRelayResetEvent(
   guard: RelayResetGuard,
   event: RelayResetEvent,
 ): boolean {
-  return (
-    guard.active && (event === "accounts" || event === "disconnect" || event === "status")
-  );
+  return guard.active && ["accounts", "disconnect", "status"].includes(event);
 }
 
 export type WalletConnectionKind = "relay" | "extension";
 
 export type ExtensionActivationResult<T> =
-  | { ok: true; value: T }
-  | { ok: false; retirementError: unknown };
+  { ok: true; value: T } | { ok: false; retirementError: unknown };
 
 /** Retire every relay session before requesting and activating an extension. */
 export async function activateExtensionAfterRelayRetirement<TAccounts, TResult>(
-  retireRelay: () => Promise<unknown | null>,
+  retireRelay: () => Promise<unknown>,
   requestAccounts: () => Promise<TAccounts>,
   activate: (accounts: TAccounts) => TResult | Promise<TResult>,
 ): Promise<ExtensionActivationResult<TResult>> {
@@ -62,7 +59,8 @@ export async function activateExtensionAfterRelayRetirement<TAccounts, TResult>(
 /** Serializes picker selections and generation-binds their async results. */
 export class ConnectionAttemptGuard {
   private generation = 0;
-  private current: { generation: number; kind: WalletConnectionKind } | null = null;
+  private current: { generation: number; kind: WalletConnectionKind } | null =
+    null;
 
   begin(kind: WalletConnectionKind): number | null {
     if (this.current) return null;
@@ -76,7 +74,10 @@ export class ConnectionAttemptGuard {
   }
 
   isPending(kind?: WalletConnectionKind): boolean {
-    return this.current !== null && (kind === undefined || this.current.kind === kind);
+    return (
+      this.current !== null &&
+      (kind === undefined || this.current.kind === kind)
+    );
   }
 
   finish(generation: number): boolean {

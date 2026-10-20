@@ -18,7 +18,7 @@ services:
       - '--web.console.templates=/etc/prometheus/consoles'
       - '--web.enable-lifecycle'
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     networks:
       - monitoring
     depends_on:
@@ -36,7 +36,7 @@ services:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--storage.path=/alertmanager'
     ports:
-      - "9093:9093"
+      - "127.0.0.1:9093:9093"
     networks:
       - monitoring
 
@@ -69,15 +69,14 @@ services:
     container_name: quantapool-contract-exporter
     restart: unless-stopped
     environment:
-      - QRL_RPC_URL=${QRL_RPC_URL:-https://qrlwallet.com/api/qrl-rpc/testnet}
-      - STQRL_ADDRESS=${STQRL_ADDRESS}
-      - DEPOSIT_POOL_ADDRESS=${DEPOSIT_POOL_ADDRESS}
-      - VALIDATOR_MANAGER_ADDRESS=${VALIDATOR_MANAGER_ADDRESS}
+      - QRL_RPC_URL=${QRL_RPC_URL:?Set an explicit RPC URL}
+      - QRL_CHAIN_ID=${QRL_CHAIN_ID:?Set the expected chain ID}
+      - NATIVE_POOL_ADDRESS=${NATIVE_POOL_ADDRESS:?Set the native pool address}
       - CONTRACT_SCRAPE_INTERVAL=${CONTRACT_SCRAPE_INTERVAL:-30000}
-      - EVENT_POLL_INTERVAL_MS=${EVENT_POLL_INTERVAL_MS:-60000}
+      - METRICS_HOST=0.0.0.0
       - METRICS_PORT=9101
     ports:
-      - "9101:9101"
+      - "127.0.0.1:9101:9101"
     networks:
       - monitoring
 

@@ -15,8 +15,9 @@ export const ConnectButton = observer(() => {
           href={getExplorerAddressUrl(poolStore.account.address)}
           target="_blank"
           rel="noreferrer"
-          title="View address on Zondscan"
-          className="hidden sm:inline rounded-md border border-border bg-muted/40 px-3 py-1.5 font-data text-xs text-blue-accent hover:border-blue-accent/40"
+          title={poolStore.account.address}
+          aria-label={`View wallet ${poolStore.account.address} on explorer`}
+          className="inline-flex min-h-9 items-center whitespace-nowrap rounded-md border border-identity-accent/15 bg-identity-accent/[0.04] px-2.5 font-data text-xs text-identity-accent transition-colors hover:border-identity-accent/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
           {shortenAddress(poolStore.account.address)}
         </a>
@@ -39,11 +40,18 @@ export const ConnectButton = observer(() => {
   return (
     <Button
       size="sm"
-      disabled={poolStore.isConnecting}
-      onClick={() => void poolStore.connect()}
+      disabled={!poolStore.network.configured || poolStore.isConnecting}
+      onClick={() => {
+        poolStore.connect();
+      }}
     >
       <Wallet className="h-4 w-4" />
-      {poolStore.isConnecting ? "Connecting…" : "Connect wallet"}
+      <span className="sm:hidden">
+        {poolStore.isConnecting ? "Connecting…" : "Connect"}
+      </span>
+      <span className="hidden sm:inline">
+        {poolStore.isConnecting ? "Connecting…" : "Connect wallet"}
+      </span>
     </Button>
   );
 });

@@ -77,7 +77,7 @@ inhibit_rules:
   - source_match:
       alertname: ContractExporterDown
     target_match_re:
-      alertname: 'ExchangeRateAnomaly|DepositPoolPaused|StQRLPaused|ValidatorThresholdApproaching|ValidatorThresholdReached|WithdrawalReserveUnderfunded|SlashingDetected|TVLValidatorMismatch|HighRPCErrorRate'
+      alertname: 'NativePoolVerifierUnavailable|NativePoolRecoveryActive|NativePoolMetricsStale|NativePoolFeeConfigurationMismatch'
     equal: ['instance']
 
   # Node exporter down → squelch all system-resource alerts
