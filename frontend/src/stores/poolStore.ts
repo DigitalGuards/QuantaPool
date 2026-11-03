@@ -1206,8 +1206,10 @@ export class PoolStore {
       `${event.name}(${event.inputs.map((input) => input.type).join(",")})`,
     );
     const topics = nativeEventTopics(signature, beneficiary);
-    // The SDK's getPastEvents filter still assumes narrower log topics. The
-    // unmodified native node uses VM64 topics; keep its native ABI decoder.
+    // The unmodified native node uses VM64 topics. @theqrl/web3 1.x's filter
+    // validator accepted only 32-byte topics, so this request went out raw.
+    // 2.0.0 validates 64-byte topics; the raw request stays because it sends
+    // exactly the filter checked below, and the native ABI decoder reads it.
     const response = await fetch(this.network.rpcUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },

@@ -693,8 +693,12 @@ void test("position and request response guards reject malformed fields", async 
   });
 });
 
-const eventSignature =
+// The VM64 topic of DepositQueued(address,uint256,uint256) as
+// encodeEventSignature returns it since @theqrl/web3 2.0.0: the keccak hash in
+// the high 32 bytes and zeros in the low 32 bytes.
+const eventHash =
   "0xff465791f48805b0254fc0e26cc605e27ef7706d8ee0cf018f8696f58db83679";
+const eventSignature = eventHash + "00".repeat(32);
 const nativeLog = {
   address: poolAddress,
   topics: [
@@ -739,6 +743,24 @@ void test("native event RPC preserves complete topics and exact decoded values",
       ],
     }),
   );
+});
+
+void test("native event RPC refuses a 32-byte event signature before any request", async (t) => {
+  const f = fixture();
+  // The width @theqrl/web3 1.x returned. Padding it here would hide a change
+  // in the library's topic layout, so the filter fails closed.
+  f.internal.getWeb3 = async () => ({
+    qrl: { abi: { encodeEventSignature: () => eventHash } },
+  });
+  const fetched = t.mock.method(
+    globalThis,
+    "fetch",
+    async () => new Response(JSON.stringify({ result: [nativeLog] })),
+  );
+  await assert.rejects(f.internal.queryNativeEvents("DepositQueued", address), {
+    message: "Invalid native event filter",
+  });
+  assert.equal(fetched.mock.callCount(), 0);
 });
 
 void test("native event RPC drops malformed envelopes, logs and decoded records", async (t) => {
