@@ -5,6 +5,7 @@ import test from "node:test";
 import { buildSync } from "esbuild";
 import { Web3 } from "@theqrl/web3";
 import { nativePoolMethods } from "./web3/nativePool.ts";
+import { NativeQrlPoolABI } from "../abi/NativeQrlPool.ts";
 import { nativeEventTopics } from "./nativeLogs.ts";
 import { requireRecord } from "./guards.ts";
 import type { PoolStore, TxStatus } from "../stores/poolStore";
@@ -189,6 +190,56 @@ void test("older pending refunds become visible after the latest 64 deposits are
     [0n],
   );
   assert.deepEqual(reads, [0n]);
+});
+
+void test("pending deposits accept the checksummed beneficiary the installed web3 decodes", async () => {
+  const f = fixture();
+  // Hex letters make the QIP-55 checksum casing visible.
+  const account = `Q${"ab".repeat(32)}${"12".repeat(32)}`;
+  f.connect(account);
+  const getPending = NativeQrlPoolABI.find(
+    (item) => item.type === "function" && item.name === "getPending",
+  );
+  assert(getPending?.type === "function");
+  const [output] = getPending.outputs;
+  assert(output);
+  const record = offlineWeb3.qrl.abi.decodeParameter(
+    output,
+    offlineWeb3.qrl.abi.encodeParameter(output, {
+      beneficiary: account,
+      amount: 100n,
+      requestedBlock: 5n,
+      cancelled: false,
+    }),
+  );
+  // Since @theqrl/web3 2.0.0 the decoder returns the checksummed spelling,
+  // so the beneficiary check meets a mixed-case address; 1.x returned the
+  // lowercase body.
+  const beneficiary = String(requireRecord(record).beneficiary);
+  assert.notEqual(beneficiary, account);
+  assert.equal(beneficiary.toLowerCase(), account.toLowerCase());
+  f.internal.queryNativeEvents = async (name) =>
+    name === "DepositQueued"
+      ? [
+          {
+            blockNumber: 1n,
+            transactionHash: oldHash,
+            returnValues: { id: 0n, amount: 100n },
+          },
+        ]
+      : [];
+  f.internal.getContracts = async () => ({
+    pool: {
+      pendingHead: () => ({ call: async () => 0n }),
+      getPending: () => ({ call: async () => record }),
+    },
+  });
+
+  await f.internal.fetchActivity(account);
+  assert.equal(f.store.activityError, null);
+  assert.deepEqual(f.store.pendingDeposits, [
+    { id: 0n, amount: 100n, requestBlock: 5n },
+  ]);
 });
 
 for (const outcome of ["hash", "error"] as const) {
@@ -693,8 +744,12 @@ void test("position and request response guards reject malformed fields", async 
   });
 });
 
-const eventSignature =
+// The VM64 topic of DepositQueued(address,uint256,uint256) as
+// encodeEventSignature returns it since @theqrl/web3 2.0.0: the keccak hash in
+// the high 32 bytes and zeros in the low 32 bytes.
+const eventHash =
   "0xff465791f48805b0254fc0e26cc605e27ef7706d8ee0cf018f8696f58db83679";
+const eventSignature = eventHash + "00".repeat(32);
 const nativeLog = {
   address: poolAddress,
   topics: [
@@ -739,6 +794,24 @@ void test("native event RPC preserves complete topics and exact decoded values",
       ],
     }),
   );
+});
+
+void test("native event RPC refuses a 32-byte event signature before any request", async (t) => {
+  const f = fixture();
+  // The width @theqrl/web3 1.x returned. Padding it here would hide a change
+  // in the library's topic layout, so the filter fails closed.
+  f.internal.getWeb3 = async () => ({
+    qrl: { abi: { encodeEventSignature: () => eventHash } },
+  });
+  const fetched = t.mock.method(
+    globalThis,
+    "fetch",
+    async () => new Response(JSON.stringify({ result: [nativeLog] })),
+  );
+  await assert.rejects(f.internal.queryNativeEvents("DepositQueued", address), {
+    message: "Invalid native event filter",
+  });
+  assert.equal(fetched.mock.callCount(), 0);
 });
 
 void test("native event RPC drops malformed envelopes, logs and decoded records", async (t) => {
