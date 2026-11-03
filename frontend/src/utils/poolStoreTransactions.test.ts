@@ -5,6 +5,7 @@ import test from "node:test";
 import { buildSync } from "esbuild";
 import { Web3 } from "@theqrl/web3";
 import { nativePoolMethods } from "./web3/nativePool.ts";
+import { NativeQrlPoolABI } from "../abi/NativeQrlPool.ts";
 import { nativeEventTopics } from "./nativeLogs.ts";
 import { requireRecord } from "./guards.ts";
 import type { PoolStore, TxStatus } from "../stores/poolStore";
@@ -189,6 +190,56 @@ void test("older pending refunds become visible after the latest 64 deposits are
     [0n],
   );
   assert.deepEqual(reads, [0n]);
+});
+
+void test("pending deposits accept the checksummed beneficiary the installed web3 decodes", async () => {
+  const f = fixture();
+  // Hex letters make the QIP-55 checksum casing visible.
+  const account = `Q${"ab".repeat(32)}${"12".repeat(32)}`;
+  f.connect(account);
+  const getPending = NativeQrlPoolABI.find(
+    (item) => item.type === "function" && item.name === "getPending",
+  );
+  assert(getPending?.type === "function");
+  const [output] = getPending.outputs;
+  assert(output);
+  const record = offlineWeb3.qrl.abi.decodeParameter(
+    output,
+    offlineWeb3.qrl.abi.encodeParameter(output, {
+      beneficiary: account,
+      amount: 100n,
+      requestedBlock: 5n,
+      cancelled: false,
+    }),
+  );
+  // Since @theqrl/web3 2.0.0 the decoder returns the checksummed spelling,
+  // so the beneficiary check meets a mixed-case address; 1.x returned the
+  // lowercase body.
+  const beneficiary = String(requireRecord(record).beneficiary);
+  assert.notEqual(beneficiary, account);
+  assert.equal(beneficiary.toLowerCase(), account.toLowerCase());
+  f.internal.queryNativeEvents = async (name) =>
+    name === "DepositQueued"
+      ? [
+          {
+            blockNumber: 1n,
+            transactionHash: oldHash,
+            returnValues: { id: 0n, amount: 100n },
+          },
+        ]
+      : [];
+  f.internal.getContracts = async () => ({
+    pool: {
+      pendingHead: () => ({ call: async () => 0n }),
+      getPending: () => ({ call: async () => record }),
+    },
+  });
+
+  await f.internal.fetchActivity(account);
+  assert.equal(f.store.activityError, null);
+  assert.deepEqual(f.store.pendingDeposits, [
+    { id: 0n, amount: 100n, requestBlock: 5n },
+  ]);
 });
 
 for (const outcome of ["hash", "error"] as const) {
