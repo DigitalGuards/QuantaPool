@@ -2,23 +2,39 @@ name: CI
 
 permissions: {}
 
+# Each change is tested once, on its pull request. Pushes to a branch with an open
+# pull request used to run everything twice. The weekly run surfaces drift in the
+# registry.
 on:
-  push:
   pull_request:
+    branches: [dev, main]
+  schedule:
+    - cron: '0 3 * * 1'
   workflow_dispatch:
+
+# The weekly run tests dev, where changes land first. Scheduled runs read this
+# file from main.
+env:
+  TEST_REF: ${{ github.event_name == 'schedule' && 'dev' || '' }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   javascript:
     name: Contract tooling and frontend
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.TEST_REF }}
           persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22.22.x
           cache: npm
