@@ -37,6 +37,23 @@ test('loads a 51-byte extended seed into both QRL wallet registries', () => {
     ]);
 });
 
+test('hands the installed QRL web3 client a 0x seed for every accepted spelling', () => {
+    // @theqrl/web3 2.0.0 refuses a seed without a lowercase 0x prefix
+    // (InvalidSeedError); 1.0.3 accepted the bare hex. loadDeployer accepts the
+    // bare, 0x and 0X spellings and must keep giving web3 the 0x form.
+    const { InvalidSeedError, Web3 } = require('@theqrl/web3');
+    const expected = new Web3().qrl.accounts.create();
+    const bare = expected.seed.slice(2);
+    assert.throws(() => new Web3().qrl.accounts.seedToAccount(bare), InvalidSeedError);
+    for (const secret of [bare, `0X${bare}`, ` ${expected.seed}\n`]) {
+        const web3 = new Web3();
+        const account = loadDeployer(web3, secret);
+        assert.equal(account.seed, expected.seed);
+        assert.equal(account.address, expected.address);
+        assert.equal(web3.qrl.wallet.get(account.address)?.address, expected.address);
+    }
+});
+
 test('parses only full QIP-55 public development account fixtures', () => {
     const seed = 'cd'.repeat(51);
     const valid = `new_prefunded_account("Q${'12'.repeat(64)}", "${seed}")`;
