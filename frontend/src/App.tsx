@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { observer } from "mobx-react-lite";
 import { BrowserRouter, Route, Routes } from "react-router";
 import { AlertTriangle, X } from "lucide-react";
@@ -8,6 +8,7 @@ import { TxBanner } from "@/components/TxBanner";
 import { WalletPickerModal } from "@/components/WalletPickerModal";
 import { QrPairModal } from "@/components/QrPairModal";
 import { RouteSeo } from "@/components/RouteSeo";
+import { ApprovalHint } from "@/components/ApprovalHint";
 import { StakePage } from "@/pages/StakePage";
 import { WithdrawalsPage } from "@/pages/WithdrawalsPage";
 import { StatsPage } from "@/pages/StatsPage";
@@ -22,10 +23,26 @@ const App = observer(() => {
     void poolStore.init();
   }, [poolStore]);
 
+  const approvalPending = useSyncExternalStore(
+    (listener) => poolStore.approvals.subscribe(listener),
+    () => poolStore.approvals.pending(),
+  );
+
   return (
     <BrowserRouter>
       <RouteSeo />
       <Header />
+
+      {/* The wallet a request is waiting for, named where the user is
+          looking: a prompt can sit unseen behind the wallet's toolbar icon
+          or on a paired device. It only informs, so clicks pass through. */}
+      <div className="pointer-events-none fixed right-4 top-20 z-50 w-[calc(100%-2rem)] max-w-sm">
+        <ApprovalHint
+          wallet={poolStore.approvalWallet}
+          pending={approvalPending}
+          className="rounded-xl bg-background [&:has([shown])]:shadow-xl"
+        />
+      </div>
 
       {poolStore.rpcError && (
         <div className="border-b border-destructive/40 bg-destructive/10">
