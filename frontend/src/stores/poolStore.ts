@@ -7,7 +7,13 @@ import {
 } from "@qrlwallet/connect";
 // The dependency-free subpath: this module is loaded in plain Node by the
 // store tests, and the package index pulls in the DOM pairing modal.
-import { groupMyQrlWallet } from "@qrlwallet/connect-ui/wallets";
+import {
+  approvalWalletFor,
+  groupMyQrlWallet,
+  type ApprovalWallet,
+} from "@qrlwallet/connect-ui/wallets";
+// Also free of DOM code: counts the wallet requests that wait for the user.
+import { createApprovalRequests } from "@qrlwallet/connect-ui/flow";
 import { NativeQrlPoolABI } from "@/abi/NativeQrlPool";
 import { ACTIVE_NETWORK, type NetworkConfig } from "@/config/networks";
 import { getQrlWeb3, type Web3Instance } from "@/utils/web3/web3Lazy";
@@ -93,6 +99,15 @@ export interface OtherWalletRow {
 
 /** A row shown in the picker. */
 export type DiscoveredWallet = MyQrlWalletRow | OtherWalletRow;
+
+/**
+ * The relay always is MyQRLWallet on a paired device. One object, so the
+ * hint is not handed a new wallet on every relay event.
+ */
+const RELAY_APPROVAL_WALLET: ApprovalWallet = approvalWalletFor({
+  ...QRL_CONNECT_PROVIDER_INFO,
+  uuid: "",
+});
 
 /** Which transport the active provider uses (drives the tx param shape). */
 type ProviderKind = "extension" | "relay";
@@ -223,6 +238,17 @@ export class PoolStore {
   pairingStatus = "";
   /** Display name of the connected wallet (e.g. "MyQRLWallet"). */
   activeWalletName: string | null = null;
+  /**
+   * The wallet a request is waiting for, for the hint that names it: the
+   * connected wallet, or the one a connection request just went to.
+   */
+  approvalWallet: ApprovalWallet | null = null;
+  /**
+   * The wallet requests that wait for the user. Open from the moment a
+   * request goes to the wallet until the wallet answers; a prompt can sit
+   * unseen behind the wallet's toolbar icon or on a paired device.
+   */
+  readonly approvals = createApprovalRequests();
   account: AccountState | null = null;
   withdrawals: WithdrawalRequestView[] = [];
   pendingDeposits: PendingDepositView[] = [];
@@ -276,6 +302,7 @@ export class PoolStore {
       wiredExtensionProviders: false,
       transactionGeneration: false,
       onEip6963Announce: false,
+      approvals: false,
     } as const;
     makeAutoObservable<this, keyof typeof overrides>(this, overrides);
   }
@@ -390,6 +417,7 @@ export class PoolStore {
       this.provider = qrl;
       runInAction(() => {
         this.activeWalletName = QRL_CONNECT_PROVIDER_INFO.name;
+        this.approvalWallet = RELAY_APPROVAL_WALLET;
         this.pairingStatus = qrl.getStatus();
       });
     }
@@ -474,8 +502,12 @@ export class PoolStore {
       this.provider = qrl;
       this.providerKind = "relay";
       this.relayEstablished = false;
+      // A new relay connection: a request still open in the wallet before
+      // belongs to that wallet, and this page no longer waits for it.
+      this.approvals.reset();
       runInAction(() => {
         this.activeWalletName = QRL_CONNECT_PROVIDER_INFO.name;
+        this.approvalWallet = RELAY_APPROVAL_WALLET;
         this.account = null;
         this.withdrawals = [];
         this.activity = [];
@@ -556,9 +588,16 @@ export class PoolStore {
           if (!this.connectionAttemptGuard.isCurrent(attemptGeneration)) {
             throw new Error("Wallet connection attempt changed");
           }
-          return detail.provider.request({
-            method: "qrl_requestAccounts",
+          // A new extension connection starts its own count.
+          this.approvals.reset();
+          runInAction(() => {
+            this.approvalWallet = approvalWalletFor(detail.info);
           });
+          return this.approvals.track(() =>
+            detail.provider.request({
+              method: "qrl_requestAccounts",
+            }),
+          );
         },
         (accounts) => {
           if (!this.connectionAttemptGuard.isCurrent(attemptGeneration)) {
@@ -616,8 +655,12 @@ export class PoolStore {
       this.provider = qrl;
       this.providerKind = "relay";
       this.relayEstablished = false;
+      // A new relay connection: a request still open in the wallet before
+      // belongs to that wallet, and this page no longer waits for it.
+      this.approvals.reset();
       runInAction(() => {
         this.activeWalletName = QRL_CONNECT_PROVIDER_INFO.name;
+        this.approvalWallet = RELAY_APPROVAL_WALLET;
         this.account = null;
         this.withdrawals = [];
         this.activity = [];
@@ -715,6 +758,13 @@ export class PoolStore {
     const isNewAddress = !this.account || this.account.address !== address;
     runInAction(() => {
       this.activeWalletName = name;
+      // An extension keeps the announcement it was named from when its
+      // connection began.
+      if (kind === "relay") {
+        this.approvalWallet = RELAY_APPROVAL_WALLET;
+      } else if (this.approvalWallet?.name !== name) {
+        this.approvalWallet = { name, icon: null, kind: "extension" };
+      }
       this.walletPickerOpen = false;
       this.pairingUri = null;
       this.connectError = null;
@@ -785,7 +835,10 @@ export class PoolStore {
     this.providerKind = null;
     this.relayUserDisconnected = false;
     this.relayEstablished = false;
+    // A request lost with the connection never settles: forget it.
+    this.approvals.reset();
     runInAction(() => {
+      this.approvalWallet = null;
       this.account = null;
       this.withdrawals = [];
       this.activity = [];
@@ -982,7 +1035,9 @@ export class PoolStore {
         throw new Error("Wallet returned an invalid QRL account cache");
       const accounts = cached.length
         ? cached
-        : await qrl.request({ method: "qrl_requestAccounts" });
+        : await this.approvals.track(() =>
+            qrl.request({ method: "qrl_requestAccounts" }),
+          );
       const address = requireQrlAccount(accounts);
       if (
         this.providerKind !== "relay" ||
@@ -1497,10 +1552,12 @@ export class PoolStore {
           "Switch your wallet to the chain configured for this native pool.",
         );
 
-      const hash = await provider.request({
-        method: "qrl_sendTransaction",
-        params: [txParams],
-      });
+      const hash = await this.approvals.track(() =>
+        provider.request({
+          method: "qrl_sendTransaction",
+          params: [txParams],
+        }),
+      );
       if (!isCurrent()) return false;
       txHash = readTransactionHash(hash);
       runInAction(() => {
