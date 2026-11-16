@@ -100,6 +100,15 @@ export interface OtherWalletRow {
 /** A row shown in the picker. */
 export type DiscoveredWallet = MyQrlWalletRow | OtherWalletRow;
 
+/**
+ * The relay always is MyQRLWallet on a paired device. One object, so the
+ * hint is not handed a new wallet on every relay event.
+ */
+const RELAY_APPROVAL_WALLET: ApprovalWallet = approvalWalletFor({
+  ...QRL_CONNECT_PROVIDER_INFO,
+  uuid: "",
+});
+
 /** Which transport the active provider uses (drives the tx param shape). */
 type ProviderKind = "extension" | "relay";
 
@@ -408,6 +417,7 @@ export class PoolStore {
       this.provider = qrl;
       runInAction(() => {
         this.activeWalletName = QRL_CONNECT_PROVIDER_INFO.name;
+        this.approvalWallet = RELAY_APPROVAL_WALLET;
         this.pairingStatus = qrl.getStatus();
       });
     }
@@ -492,8 +502,12 @@ export class PoolStore {
       this.provider = qrl;
       this.providerKind = "relay";
       this.relayEstablished = false;
+      // A new relay connection: a request still open in the wallet before
+      // belongs to that wallet, and this page no longer waits for it.
+      this.approvals.reset();
       runInAction(() => {
         this.activeWalletName = QRL_CONNECT_PROVIDER_INFO.name;
+        this.approvalWallet = RELAY_APPROVAL_WALLET;
         this.account = null;
         this.withdrawals = [];
         this.activity = [];
@@ -574,6 +588,8 @@ export class PoolStore {
           if (!this.connectionAttemptGuard.isCurrent(attemptGeneration)) {
             throw new Error("Wallet connection attempt changed");
           }
+          // A new extension connection starts its own count.
+          this.approvals.reset();
           runInAction(() => {
             this.approvalWallet = approvalWalletFor(detail.info);
           });
@@ -639,8 +655,12 @@ export class PoolStore {
       this.provider = qrl;
       this.providerKind = "relay";
       this.relayEstablished = false;
+      // A new relay connection: a request still open in the wallet before
+      // belongs to that wallet, and this page no longer waits for it.
+      this.approvals.reset();
       runInAction(() => {
         this.activeWalletName = QRL_CONNECT_PROVIDER_INFO.name;
+        this.approvalWallet = RELAY_APPROVAL_WALLET;
         this.account = null;
         this.withdrawals = [];
         this.activity = [];
@@ -738,13 +758,10 @@ export class PoolStore {
     const isNewAddress = !this.account || this.account.address !== address;
     runInAction(() => {
       this.activeWalletName = name;
-      // The relay always is MyQRLWallet on a paired device. An extension
-      // keeps the announcement it was named from when its connection began.
+      // An extension keeps the announcement it was named from when its
+      // connection began.
       if (kind === "relay") {
-        this.approvalWallet = approvalWalletFor({
-          ...QRL_CONNECT_PROVIDER_INFO,
-          uuid: "",
-        });
+        this.approvalWallet = RELAY_APPROVAL_WALLET;
       } else if (this.approvalWallet?.name !== name) {
         this.approvalWallet = { name, icon: null, kind: "extension" };
       }

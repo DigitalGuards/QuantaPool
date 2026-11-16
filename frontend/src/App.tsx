@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { observer } from "mobx-react-lite";
 import { BrowserRouter, Route, Routes } from "react-router";
 import { AlertTriangle, X } from "lucide-react";
@@ -23,9 +23,12 @@ const App = observer(() => {
     void poolStore.init();
   }, [poolStore]);
 
-  const approvalPending = useSyncExternalStore(
-    (listener) => poolStore.approvals.subscribe(listener),
-    () => poolStore.approvals.pending(),
+  const subscribeApprovals = useCallback(
+    (listener: () => void) => poolStore.approvals.subscribe(listener),
+    [poolStore],
+  );
+  const approvalPending = useSyncExternalStore(subscribeApprovals, () =>
+    poolStore.approvals.pending(),
   );
 
   return (
